@@ -829,16 +829,21 @@ export class Core implements BurrowArea {
     }
     const before = new Map(this.#mirror);
     const holder = await SecretHolder.wrap(secret);
-    await this.#lock("secret", async () => {
-      if (this.#remember) await holder.persist(this.#cache);
+    // A pass that started under the old secret must finish before the identity changes, and no
+    // pass may start until it has: passes read the keys once, inside the sync lock.
+    await this.#drain();
+    await this.#lock("sync", async () => {
+      await this.#lock("secret", async () => {
+        if (this.#remember) await holder.persist(this.#cache);
+      });
+      this.#secret?.forget();
+      this.#secret = holder;
+      this.#protection = via;
+      if (this.#remember) await this.#cache.setDevice({ protection: via });
+      await this.#cache.setMeta({ owner: "" }); // the cache now belongs to nobody; #adoptIdentity resets it
+      await this.#adoptIdentity();
+      this.#paused = false;
     });
-    this.#secret?.forget();
-    this.#secret = holder;
-    this.#protection = via;
-    if (this.#remember) await this.#cache.setDevice({ protection: via });
-    await this.#cache.setMeta({ owner: "" }); // the cache now belongs to nobody; #adoptIdentity resets it
-    await this.#adoptIdentity();
-    this.#paused = false;
     this.#broadcast({ t: "identity" });
     this.#unsubscribe?.(); this.#unsubscribe = null; this.#subscribe();
     this.#suppressEmit = true;
@@ -848,6 +853,11 @@ export class Core implements BurrowArea {
     this.#emitChanges(ch, "remote");
   }
 
+  /** Wait for the running pass (and any rerun it has queued) to finish. */
+  async #drain(): Promise<void> {
+    while (this.#running) await this.#running;
+  }
+
   async unlink(options: { discardLocal?: boolean } = {}): Promise<void> {
     this.#alive();
     await this.#flush();
@@ -855,6 +865,7 @@ export class Core implements BurrowArea {
       await this.#sync();
       if ([...this.#mirror.values()].some((e) => e.dirty)) throw new BurrowError("would-orphan");
     }
+    await this.#drain();
     // API-8: like clearing a session cookie. The cache and remote documents stay.
     this.#secret?.forget();
     this.#secret = null;

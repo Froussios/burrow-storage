@@ -72,8 +72,11 @@ export class FirestoreBackend implements Backend {
   async get(id: string): Promise<Envelope | null> {
     const { sdk, db } = await this.#connect();
     try {
-      // From the server: a cached read would only turn into a conflict later.
-      const snap = await sdk.getDocFromServer(sdk.doc(db, this.#collection, id));
+      // A transactional read goes straight to the backend. getDoc/getDocFromServer can be served
+      // from the watch stream of our own onSnapshot listener on the same document, which may not
+      // yet reflect a transaction that just committed; that read would report a stale revision.
+      const ref = sdk.doc(db, this.#collection, id);
+      const snap = await sdk.runTransaction(db, (tx) => tx.get(ref));
       return snap.exists() ? toEnvelope(snap.data()) : null;
     } catch (e) {
       throw mapError(e);

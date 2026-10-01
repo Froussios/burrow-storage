@@ -144,6 +144,22 @@ export function backendConformance(name: string, make: () => Backend | Promise<B
       expect(got.map((e) => e?.ct ?? null)).toEqual([(await b.get(d.id))!.ct, null, (await b.get(c.id))!.ct]);
     });
 
+    it("get reflects a committed put at once, even while subscribed to that document", async () => {
+      const b = await make();
+      const c = await chain();
+      const stop = b.capabilities.subscribe && b.subscribe ? b.subscribe(c.id, () => {}) : () => {};
+      try {
+        await new Promise((r) => setTimeout(r, 300));
+        expect(await b.get(c.id)).toBeNull();
+        await b.put(c.id, await c.env(0), null);
+        expect((await b.get(c.id))?.rev).toBe(0);
+        await b.put(c.id, await c.env(1), 0);
+        expect((await b.get(c.id))?.rev).toBe(1);
+      } finally {
+        stop();
+      }
+    });
+
     it("BE-7 subscribe, when offered, delivers later writes", async () => {
       const b = await make();
       if (!b.capabilities.subscribe || !b.subscribe) return;

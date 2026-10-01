@@ -376,6 +376,15 @@ describe("§6 link, protect, unlink", () => {
     expect(await b.get()).toEqual({ k: 1 });
   });
 
+  it("link() while the first sync pass is still in flight pulls the new identity's data", async () => {
+    const w = fresh();
+    const a = await w.device().open();
+    await a.set({ theme: "dark" }); await a.syncNow();
+    const b = await w.device({ latencyMs: 80 }).open(); // its first pass is still running
+    await b.link({ code: await a.exportCode() });
+    expect(await b.get()).toEqual({ theme: "dark" });
+  });
+
   it("API-7 would-orphan: a device holding unsynced data under another secret", async () => {
     const w = fresh();
     const a = await w.device().open();

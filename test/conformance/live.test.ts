@@ -53,8 +53,12 @@ describe("Burrow over the live store", () => {
       const b = await world.device().open({ app: "gate2", backend: make() });
       await a.set({ theme: "dark", draft: "hello from gate 2" });
       await a.syncNow();
+      const statuses: string[] = [];
+      b.onStatus.addListener((s) => statuses.push(`${s.status}${s.error ? `:${s.error.code}:${String((s.error.cause as Error)?.message ?? "")}` : ""}`));
       await b.link({ code: await a.exportCode() });
-      expect(await b.get()).toEqual({ theme: "dark", draft: "hello from gate 2" });
+      const data = await b.get();
+      if (!Object.keys(data).length) throw new Error("EMPTY statuses=" + JSON.stringify(statuses) + " b=" + JSON.stringify(b.inspect()) + " a=" + JSON.stringify(a.inspect()) + " aGet=" + JSON.stringify(await a.get()));
+      expect({ data, statuses }).toMatchObject({ data: { theme: "dark", draft: "hello from gate 2" } });
     } finally {
       world.close();
     }
