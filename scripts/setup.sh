@@ -2,6 +2,8 @@
 # One-shot setup of the shared Burrow Firestore project on the Spark plan.
 # Needs: node 18+, gcloud (https://cloud.google.com/sdk), a Google account.
 # Everything here is idempotent enough to re-run; already-exists errors are fine.
+# Run from the directory holding firebase.json and firestore.rules (`npx burrow-setup firestore --run`
+# does this for you).
 set -euo pipefail
 
 PROJECT="${PROJECT:-burrow-storage-shared}"      # project id (also the display name)
@@ -42,7 +44,7 @@ firebase apps:sdkconfig WEB "$APP_ID" --json | node -e '
   console.log(JSON.stringify(t));'
 echo "   wrote burrow.firestore.json (the three fields the adapter uses)"
 
-echo "== 5. restrict the auto-created browser key to Firestore + your domains"
+echo "== 5. restrict the auto-created browser key to Firestore + your domains (FS-12)"
 KEY_NAME=$(gcloud services api-keys list --format='value(name)' \
   --filter='displayName~"Browser key"' | head -n1)
 if [ -n "$KEY_NAME" ]; then
@@ -56,7 +58,9 @@ fi
 echo "== 6. deploy rules"
 firebase deploy --only firestore:rules --project "$PROJECT"
 
-echo "== 7. run the rules tests against the emulator"
-( cd tests && npm install --silent && npm test )
+if [ -d tests ]; then
+  echo "== 7. run the rules tests against the emulator"
+  ( cd tests && npm install --silent && npm test )
+fi
 
 echo "done. Project: $PROJECT  App: $APP_ID"

@@ -156,3 +156,49 @@ A pass clears `dirty` only for cache entries whose `ts` still equals what it pus
 does this in one IndexedDB transaction, so a write from another tab during the pass is
 never lost. Reads of the cache that began before a key's latest local write never
 overwrite that key in memory. A stress test found a race here, now fixed.
+
+## D-21 Firestore reads go through a transaction (BE-1, FS-8, FS-9)
+
+`getDocFromServer` can be answered from the watch stream of the page's own `onSnapshot`
+listener on the same document. That stream may not yet reflect a transaction that just
+committed. Live, this made the manifest look missing right after it was written, roughly 40% of
+the time. `FirestoreBackend.get` therefore reads with `runTransaction(tx => tx.get(ref))`, which
+goes straight to the backend. It costs the same one read. The conformance suite now checks that
+a `get` sees a committed `put` at once while subscribed.
+
+## D-22 `link()` waits for any running sync pass (API-7)
+
+A pass started under the old secret must not finish after the identity changes. `link()`
+drains the running pass and swaps the secret inside the sync lock. Passes read their keys once,
+inside that lock.
+
+## D-23 Live project configuration (FS-10, FS-12)
+
+The shared project `burrow-storage-shared` was created with Firestore's default deny-all rules,
+so Gate 2 first failed. With the owner's go-ahead, `firebase/firestore.rules` was deployed through
+the Firebase Rules API (ruleset `06220eed-…`). The browser API key was restricted to the Cloud
+Firestore API only. **A referrer restriction was not applied:** it depends on where the demo is
+hosted, and it would stop the Node-based live checks (`npm run test:live`), which send no Referer.
+`setup.sh` applies both when run with `REFERRERS`.
+
+## D-24 Script-tag SDK is a classic script (NF-1, SEC-5)
+
+`burrow-firestore.js` is an IIFE that sets `BurrowFirestoreSdk`, loaded with a `<script>`
+element next to `burrow.min.js`. Module `import()` of a `file://` URL is blocked in Chromium, so
+an ES module chunk would have broken sync from `file://`. A classic same-origin script works
+there and under `script-src 'self'`.
+
+## D-25 Local browser runs: Chromium and Firefox only
+
+This development machine has no root access and lacks the browsers' system libraries. Chromium
+and Firefox ran with user-local copies of those libraries. WebKit's launcher replaces
+`LD_LIBRARY_PATH`, so it did not run locally. The CI workflow installs system dependencies
+(`playwright install --with-deps`) and runs all three engines.
+
+## D-26 Setting an unchanged value is still a write (SYNC-10, API-5)
+
+A property test found that `set({ k: 67 })` on device A, `set({ k: 0 })` on device B, then
+`set({ k: 67 })` again on A converged on `0`. A still showed 67, so the third write was dropped as
+a no-op, and B's earlier write won. An unchanged `set()` now takes a new timestamp and syncs, so
+the last write wins. Only the `onChanged` event is skipped, as in `chrome.storage`. The cost: an
+app that re-sets unchanged values causes one write per debounce window.

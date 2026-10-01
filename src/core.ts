@@ -332,7 +332,8 @@ export class Core implements BurrowArea {
     const keys: string[] = [];
     for (const [k, e] of updates) {
       const old = this.#mirror.get(k);
-      if (sameVisible(old, e)) continue; // chrome.storage does not report no-op writes
+      // An unchanged value is still a new write: it must beat any concurrent write made elsewhere
+      // in the meantime (last writer wins). Only the onChanged event is skipped, as chrome.storage does.
       if (old?.rev !== undefined) e.rev = old.rev;
       this.#mirror.set(k, e);
       this.#lastWrite.set(k, ++this.#writeSeq);

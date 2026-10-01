@@ -251,6 +251,20 @@ describe("§8 sync between devices", () => {
     expect(await b.get("k")).toEqual({ k: "later" });
   });
 
+  it("re-setting an unchanged value still wins over a concurrent write elsewhere", async () => {
+    const { a, b, A, B } = await pair();
+    A.backend.failWith = "network"; B.backend.failWith = "network";
+    await a.set({ k: 67 });
+    await new Promise((r) => setTimeout(r, 3));
+    await b.set({ k: 0 });
+    await new Promise((r) => setTimeout(r, 3));
+    await a.set({ k: 67 }); // same value on A, but the last write overall
+    A.backend.failWith = null; B.backend.failWith = null;
+    await b.syncNow(); await a.syncNow(); await b.syncNow();
+    expect(await a.get("k")).toEqual({ k: 67 });
+    expect(await b.get("k")).toEqual({ k: 67 });
+  });
+
   it("SYNC-12 a delete on A removes the key on B, and a stale device C does not resurrect it", async () => {
     const w = fresh();
     const a = await w.device().open();
