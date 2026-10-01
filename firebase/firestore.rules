@@ -1,0 +1,37 @@
+rules_version = '2';
+service cloud.firestore {
+  // One collection for every Burrow app and user. Document id is an unguessable
+  // 43-char derived id; manifests, items and keyslots look identical to the store.
+  match /databases/{db}/documents/burrow/{id} {
+
+    function shape(d) {
+      return d.keys().hasOnly(['v', 'iv', 'ct', 'rev', 'ts', 'tok', 'next', 'z'])
+          && d.v == 1
+          && d.rev is int && d.ts is int
+          && d.iv is string && d.iv.size() == 16
+          && d.ct is string && d.ct.size() <= 1000000     // keeps the doc under Firestore's 1 MiB
+          && d.tok is string && d.tok.size() <= 64
+          && d.next is string && d.next.size() == 64
+          && (!('z' in d) || d.z == true)
+          && id.size() == 43;
+    }
+
+    // Anyone who knows an id may read it: the content is ciphertext.
+    allow get: if true;
+
+    // Never list: enumeration would break id-as-capability.
+    allow list: if false;
+
+    // First write at an unused id. Safe because ids are unguessable; bounded by the size cap.
+    allow create: if shape(request.resource.data) && request.resource.data.rev == 0;
+
+    // Chained write: must advance rev by exactly one and present the token whose
+    // SHA-256 the previous revision committed to in `next`.
+    allow update: if shape(request.resource.data)
+                  && request.resource.data.rev == resource.data.rev + 1
+                  && hashing.sha256(request.resource.data.tok).toHexString().lower() == resource.data.next;
+
+    // Removal is a manifest tombstone plus an overwrite; documents are never deleted.
+    allow delete: if false;
+  }
+}

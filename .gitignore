@@ -1,0 +1,11 @@
+node_modules/
+dist/
+coverage/
+test-results/
+playwright-report/
+*.log
+firebase/tests/node_modules/
+.firebase/
+burrow.firestore.json
+.firebase.emulator.json
+*-debug.log

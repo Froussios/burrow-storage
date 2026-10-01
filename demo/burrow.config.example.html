@@ -1,0 +1,35 @@
+<!--
+  Drop one of these into any prototype's <head>. The adapter (FS-3) reads the
+  <meta> tag first, then window.BURROW. Only apiKey, projectId and appId are
+  used; the key is an identifier, not a secret, and should be referrer-restricted
+  in the Google Cloud console to the domains you deploy to.
+-->
+
+<!-- Option A: meta tag, no JS needed -->
+<meta name="burrow-firestore"
+      content='{"apiKey":"AIzaSyAlBIGo0tVj_68_3JukpW-sQPNhJHhPJJk","projectId":"burrow-storage-shared","appId":"1:126236223407:web:6a19c0b9ddf3d9bbd3f15a"}'>
+
+<!-- Option B: global, for sites that prefer config in script -->
+<script>
+  window.BURROW = {
+    firestore: {
+      apiKey: "AIzaSyAlBIGo0tVj_68_3JukpW-sQPNhJHhPJJk",
+      projectId: "burrow-storage-shared",
+      appId: "1:126236223407:web:6a19c0b9ddf3d9bbd3f15a",
+    },
+  };
+</script>
+
+<!-- Option C: bundler users pass it explicitly -->
+<script type="module">
+  import { burrow } from "burrow-storage";
+  import { FirestoreBackend } from "burrow-storage/firestore";
+  const store = await burrow({
+    app: "my-prototype",
+    backend: new FirestoreBackend({
+      apiKey: "AIzaSyAlBIGo0tVj_68_3JukpW-sQPNhJHhPJJk",
+      projectId: "burrow-storage-shared",
+      appId: "1:126236223407:web:6a19c0b9ddf3d9bbd3f15a",
+    }),
+  });
+</script>

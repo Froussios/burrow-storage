@@ -1,0 +1,30 @@
+{
+  "rootSecretHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "app": "test-app",
+  "base": "GvRMZ7DsLEcZZyZRva3FW9gfyXyiZpktVMEOa6RPrGQ",
+  "docId": {
+    "theme": "-H_yJYZzKliHqV0KDk5AMUA1BKob0o8aPK112zXp8w4",
+    "draft": "pMeqIJDkjWPHip6IfoC784Ejyt-qMINJloQU40cht5g",
+    "": "hw7NO2gvgxXUr6fs-UV5UKExm2A41-i8VUcNeVt0Gnw"
+  },
+  "tok": {
+    "base0": "Ej8QbqtrOrkY-nYUM3VaTQ6Q5pbO5u6DnxNkWcJN4S4",
+    "base1": "0mabm8thRSXnIBDwwbiCSdbbQcOQyW4LtUuge_vrlg0",
+    "theme7": "kX-z7p_tx8KGaERX8kD4SoYjdSQHXC2Z8HUeRz6B_C0"
+  },
+  "next": {
+    "base0": "6ac6ae0810006a8e3acfafde0944f4583454ba394c93390a98206c3bf35b012e",
+    "theme7": "9c27174a1422ee1f96c9611fab6aa3c31f5d365f69d2467ef8e6b3cafbf1615d"
+  },
+  "slot": {
+    "prfHex": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+    "slotId": "03vZS2uCxKGE9kACRqrGOgP2VV1-EFHoC-5y6UQPJ9c",
+    "tok0": "TguVwHgqW1hVdbnELjpappPYA4jneuq1n6Ur-QOe1Mg",
+    "kekSha256": "fe0d8f3a8c8585adac517f5375550e7845b5f039b8897bac8012eedbb2cb4392"
+  },
+  "syncCode": "0400-20G3-0G2G-C1R8-1450-P30D-1R7H-048J-2CA1-A5GQ-30CH-M6RW-3MF1-YJ8H",
+  "otherApp": {
+    "app": "other",
+    "base": "G4wbI34boDMXw-jinB2Yo8BsMU8qT-w6N3yHDFn5rvY"
+  }
+}

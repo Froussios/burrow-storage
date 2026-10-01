@@ -1,0 +1,70 @@
+{
+  "name": "burrow-storage",
+  "version": "0.0.0",
+  "description": "Persistent, cross-device, per-user storage for static sites. No login, no backend.",
+  "license": "MIT",
+  "author": "Froussios",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Froussios/burrow-storage.git"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./firestore": {
+      "types": "./dist/firestore.d.ts",
+      "import": "./dist/firestore.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "burrow-setup": "./scripts/burrow-setup.mjs"
+  },
+  "files": [
+    "dist",
+    "scripts/burrow-setup.mjs",
+    "scripts/setup.sh",
+    "firebase/firestore.rules",
+    "firebase/firebase.json"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:rules": "node scripts/emulator.mjs \"node --test firebase/tests/rules.test.mjs\"",
+    "test:firestore": "node scripts/emulator.mjs \"vitest run --config vitest.firestore.config.ts\"",
+    "test:e2e": "playwright test",
+    "size": "node scripts/size.mjs",
+    "check": "npm run typecheck && npm test && npm run build && npm run size"
+  },
+  "peerDependencies": {
+    "firebase": ">=10"
+  },
+  "peerDependenciesMeta": {
+    "firebase": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^26.6.3",
+    "fake-indexeddb": "^6.2.5",
+    "fast-check": "^4.10.2",
+    "firebase": "^12.19.0",
+    "firebase-tools": "^15.32.1",
+    "tsup": "^8.5.1",
+    "typescript": "~5.9",
+    "vitest": "^5.0.3"
+  }
+}
