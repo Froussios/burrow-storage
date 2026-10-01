@@ -14,7 +14,7 @@ repository:
    layout, public types. When it disagrees with the requirements text, architecture.md wins.
 4. `docs/decisions.md` — decision records (D1…). Binding until superseded.
 5. `docs/implementation-plan.md` — milestones and work packages WP-00…WP-16 with definitions of done.
-6. GitHub issues — one per work package; the issue is the live status, the plan is the map.
+6. GitHub issues — one per work package (#2–#18, map in the plan); the issue is the live status, the plan is the map. Issue #1 holds the design-review decisions awaiting owner confirmation.
 
 Read them in that order the first time. Afterwards, for a given WP: the issue → the architecture
 sections it cites → the requirement ids it cites.
@@ -29,8 +29,7 @@ sections it cites → the requirement ids it cites.
   to `docs/decisions.md`. Do not leave the spec and the code disagreeing.
 - Do not change requirement ids or renumber anything; add new ids with a suffix (`SYNC-10a`) if needed.
 - Update the WP issue with progress and the DoD checklist; close it from the PR.
-- Decisions D1–D8 change MUST requirements and await owner confirmation in the "Confirm design-review
-  decisions" issue. Build to the adopted defaults; if the owner overrules one, the issue will say so.
+- Decisions D1–D8 change MUST requirements and await owner confirmation in issue #1. Build to the adopted defaults; if the owner overrules one, the issue will say so.
 
 ## Hard rules (from the requirements; not negotiable without the owner)
 

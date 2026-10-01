@@ -5,6 +5,29 @@ is the live status; this file is the map. An agent picking up a WP reads, in ord
 `CLAUDE.md` → this file → the WP's issue → the architecture sections it cites → the requirement ids
 it cites. Do not start a WP whose dependencies are not merged unless the issue says a stub is fine.
 
+## Issue map
+
+| WP | Issue | Milestone | Size |
+|---|---|---|---|
+| Confirm design-review decisions D1–D8 | [#1](https://github.com/Froussios/burrow-storage/issues/1) | — | owner |
+| WP-00 Spikes | [#2](https://github.com/Froussios/burrow-storage/issues/2) | M0 | S |
+| WP-01 Repo scaffold and CI | [#3](https://github.com/Froussios/burrow-storage/issues/3) | M0 | M |
+| WP-02 Primitives | [#4](https://github.com/Froussios/burrow-storage/issues/4) | M1 | S |
+| WP-03 Crypto and vectors | [#5](https://github.com/Froussios/burrow-storage/issues/5) | M1 | M |
+| WP-04 Backend contract, MemoryBackend, conformance | [#6](https://github.com/Froussios/burrow-storage/issues/6) | M1 | M |
+| WP-05 Cache | [#7](https://github.com/Froussios/burrow-storage/issues/7) | M1 | M |
+| WP-06 Merge logic | [#8](https://github.com/Froussios/burrow-storage/issues/8) | M1 | S |
+| WP-07 Sync engine | [#9](https://github.com/Froussios/burrow-storage/issues/9) | M1 | L |
+| WP-08 BurrowArea API | [#10](https://github.com/Froussios/burrow-storage/issues/10) | M1 | M |
+| WP-09 Storage facade | [#11](https://github.com/Froussios/burrow-storage/issues/11) | M1 | S |
+| WP-10 Multi-tab | [#12](https://github.com/Froussios/burrow-storage/issues/12) | M1 | M |
+| WP-11 Sync-code provider | [#13](https://github.com/Froussios/burrow-storage/issues/13) | M1 | S |
+| WP-12 Passkey provider | [#14](https://github.com/Froussios/burrow-storage/issues/14) | M3 | L |
+| WP-13 Firestore adapter, rules, CLI | [#15](https://github.com/Froussios/burrow-storage/issues/15) | M2 | L |
+| WP-14 Browser and acceptance tests | [#16](https://github.com/Froussios/burrow-storage/issues/16) | M4 | L |
+| WP-15 Demo and docs | [#17](https://github.com/Froussios/burrow-storage/issues/17) | M4 | M |
+| WP-16 Release 0.1.0 | [#18](https://github.com/Froussios/burrow-storage/issues/18) | M4 | S |
+
 ## Milestones
 
 | Milestone | Outcome | WPs |
