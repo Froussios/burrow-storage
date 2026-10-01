@@ -46,7 +46,8 @@
     "test:firestore": "node scripts/emulator.mjs \"vitest run --config vitest.firestore.config.ts\"",
     "test:e2e": "playwright test",
     "size": "node scripts/size.mjs",
-    "check": "npm run typecheck && npm test && npm run build && npm run size"
+    "check": "npm run typecheck && npm test && npm run build && npm run size",
+    "test:live": "vitest run --config vitest.live.config.ts"
   },
   "peerDependencies": {
     "firebase": ">=10"
