@@ -1,0 +1,18 @@
+{
+  "name": "burrow-spikes",
+  "private": true,
+  "description": "WP-00 spikes: Firestore rules hashing, unauthenticated REST + CORS, WebAuthn PRF at create vs get. Not part of the library.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "emulator": "firebase emulators:exec --only firestore --project demo-burrow-spike \"node run-emulator.mjs\"",
+    "browser": "node run-browser.mjs",
+    "prod": "node run-browser.mjs --prod"
+  },
+  "devDependencies": {
+    "firebase-tools": "15.32.1",
+    "playwright": "1.56.1"
+  }
+}

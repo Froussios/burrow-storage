@@ -1,0 +1,357 @@
+{
+  "chromium": "141.0.7390.37",
+  "playwright": "1.56.1",
+  "ranAt": "2026-10-01",
+  "https": {
+    "environment": {
+      "origin": "https://burrow-spike.example",
+      "isSecureContext": true,
+      "subtle": true,
+      "broadcastChannel": true,
+      "locks": true,
+      "deflateRaw": true,
+      "publicKeyCredential": true,
+      "indexedDB": "ok"
+    },
+    "corsAgainstProduction": [
+      {
+        "label": "GET, x-goog-api-key header (preflighted)",
+        "answeredAttempts": "3/3",
+        "http": 403,
+        "status": "PERMISSION_DENIED",
+        "reason": "CONSUMER_INVALID",
+        "message": "Permission denied on resource project burrow-wp00-no-such-project."
+      },
+      {
+        "label": "GET, ?key= query param (simple request)",
+        "answeredAttempts": "3/3",
+        "http": 403,
+        "status": "PERMISSION_DENIED",
+        "reason": "CONSUMER_INVALID",
+        "message": "Permission denied on resource project burrow-wp00-no-such-project."
+      },
+      {
+        "label": "GET, no key",
+        "answeredAttempts": "3/3",
+        "http": 403,
+        "status": "PERMISSION_DENIED",
+        "reason": "CONSUMER_INVALID",
+        "message": "Permission denied on resource project burrow-wp00-no-such-project."
+      },
+      {
+        "label": "POST create, key header + JSON (preflighted)",
+        "answeredAttempts": "2/3",
+        "http": 403,
+        "status": "PERMISSION_DENIED",
+        "reason": "CONSUMER_INVALID",
+        "message": "Permission denied on resource project burrow-wp00-no-such-project."
+      },
+      {
+        "label": "PATCH update, key header + JSON (preflighted)",
+        "answeredAttempts": "2/3",
+        "http": 403,
+        "status": "PERMISSION_DENIED",
+        "reason": "CONSUMER_INVALID",
+        "message": "Permission denied on resource project burrow-wp00-no-such-project."
+      }
+    ],
+    "corsConsoleErrors": 0,
+    "failedRequests": [
+      "POST net::ERR_TOO_MANY_RETRIES",
+      "PATCH net::ERR_TOO_MANY_RETRIES"
+    ]
+  },
+  "file": {
+    "environment": {
+      "origin": "null",
+      "isSecureContext": true,
+      "subtle": true,
+      "broadcastChannel": true,
+      "locks": true,
+      "deflateRaw": true,
+      "publicKeyCredential": true,
+      "indexedDB": "ok"
+    },
+    "corsAgainstProduction": [
+      {
+        "label": "GET, x-goog-api-key header (preflighted)",
+        "answeredAttempts": "2/3",
+        "http": 403,
+        "status": "PERMISSION_DENIED",
+        "reason": "CONSUMER_INVALID",
+        "message": "Permission denied on resource project burrow-wp00-no-such-project."
+      },
+      {
+        "label": "GET, ?key= query param (simple request)",
+        "answeredAttempts": "2/3",
+        "http": 403,
+        "status": "PERMISSION_DENIED",
+        "reason": "CONSUMER_INVALID",
+        "message": "Permission denied on resource project burrow-wp00-no-such-project."
+      },
+      {
+        "label": "GET, no key",
+        "answeredAttempts": "3/3",
+        "http": 403,
+        "status": "PERMISSION_DENIED",
+        "reason": "CONSUMER_INVALID",
+        "message": "Permission denied on resource project burrow-wp00-no-such-project."
+      },
+      {
+        "label": "POST create, key header + JSON (preflighted)",
+        "answeredAttempts": "3/3",
+        "http": 403,
+        "status": "PERMISSION_DENIED",
+        "reason": "CONSUMER_INVALID",
+        "message": "Permission denied on resource project burrow-wp00-no-such-project."
+      },
+      {
+        "label": "PATCH update, key header + JSON (preflighted)",
+        "answeredAttempts": "2/3",
+        "http": 403,
+        "status": "PERMISSION_DENIED",
+        "reason": "CONSUMER_INVALID",
+        "message": "Permission denied on resource project burrow-wp00-no-such-project."
+      }
+    ],
+    "corsConsoleErrors": 0,
+    "failedRequests": [
+      "GET net::ERR_TOO_MANY_RETRIES",
+      "PATCH net::ERR_TOO_MANY_RETRIES",
+      "GET net::ERR_TOO_MANY_RETRIES"
+    ]
+  },
+  "prf": {
+    "no-virtual-authenticator": {
+      "rpId": "burrow-spike.example",
+      "isUserVerifyingPlatformAuthenticatorAvailable": false,
+      "getClientCapabilities": {
+        "conditionalCreate": true,
+        "conditionalGet": true,
+        "extension:appid": true,
+        "extension:appidExclude": true,
+        "extension:credBlob": true,
+        "extension:credProps": true,
+        "extension:credentialProtectionPolicy": true,
+        "extension:enforceCredentialProtectionPolicy": true,
+        "extension:getCredBlob": true,
+        "extension:hmacCreateSecret": true,
+        "extension:largeBlob": true,
+        "extension:minPinLength": true,
+        "extension:payment": false,
+        "extension:prf": true,
+        "hybridTransport": false,
+        "passkeyPlatformAuthenticator": false,
+        "relatedOrigins": true,
+        "signalAllAcceptedCredentials": true,
+        "signalCurrentUserDetails": true,
+        "signalUnknownCredential": true,
+        "userVerifyingPlatformAuthenticator": false
+      }
+    },
+    "internal+uv+prf": {
+      "rpId": "burrow-spike.example",
+      "isUserVerifyingPlatformAuthenticatorAvailable": true,
+      "getClientCapabilities": {
+        "conditionalCreate": true,
+        "conditionalGet": true,
+        "extension:appid": true,
+        "extension:appidExclude": true,
+        "extension:credBlob": true,
+        "extension:credProps": true,
+        "extension:credentialProtectionPolicy": true,
+        "extension:enforceCredentialProtectionPolicy": true,
+        "extension:getCredBlob": true,
+        "extension:hmacCreateSecret": true,
+        "extension:largeBlob": true,
+        "extension:minPinLength": true,
+        "extension:payment": false,
+        "extension:prf": true,
+        "hybridTransport": false,
+        "passkeyPlatformAuthenticator": true,
+        "relatedOrigins": true,
+        "signalAllAcceptedCredentials": true,
+        "signalCurrentUserDetails": true,
+        "signalUnknownCredential": true,
+        "userVerifyingPlatformAuthenticator": true
+      },
+      "create": {
+        "prf": {
+          "enabled": true,
+          "resultsFirst": "32 bytes"
+        }
+      },
+      "getEmptyAllowCredentials": {
+        "sameCredential": true,
+        "resultsFirst": "32 bytes",
+        "equalsCreateOutput": true
+      },
+      "getWithAllowCredentials": {
+        "sameCredential": true,
+        "resultsFirst": "32 bytes",
+        "equalsEmptyAllowCredentials": true
+      },
+      "getOtherSalt": {
+        "sameCredential": true,
+        "resultsFirst": "32 bytes",
+        "differsFromLibrarySalt": true
+      }
+    },
+    "internal+uv, no prf": {
+      "rpId": "burrow-spike.example",
+      "isUserVerifyingPlatformAuthenticatorAvailable": true,
+      "getClientCapabilities": {
+        "conditionalCreate": true,
+        "conditionalGet": true,
+        "extension:appid": true,
+        "extension:appidExclude": true,
+        "extension:credBlob": true,
+        "extension:credProps": true,
+        "extension:credentialProtectionPolicy": true,
+        "extension:enforceCredentialProtectionPolicy": true,
+        "extension:getCredBlob": true,
+        "extension:hmacCreateSecret": true,
+        "extension:largeBlob": true,
+        "extension:minPinLength": true,
+        "extension:payment": false,
+        "extension:prf": true,
+        "hybridTransport": false,
+        "passkeyPlatformAuthenticator": true,
+        "relatedOrigins": true,
+        "signalAllAcceptedCredentials": true,
+        "signalCurrentUserDetails": true,
+        "signalUnknownCredential": true,
+        "userVerifyingPlatformAuthenticator": true
+      },
+      "create": {
+        "prf": {
+          "enabled": false,
+          "resultsFirst": "absent"
+        }
+      },
+      "getEmptyAllowCredentials": {
+        "sameCredential": true,
+        "resultsFirst": "absent",
+        "equalsCreateOutput": null
+      },
+      "getWithAllowCredentials": {
+        "sameCredential": true,
+        "resultsFirst": "absent",
+        "equalsEmptyAllowCredentials": null
+      },
+      "getOtherSalt": {
+        "sameCredential": true,
+        "resultsFirst": "absent",
+        "differsFromLibrarySalt": null
+      }
+    },
+    "usb (roaming key)+uv+prf": {
+      "rpId": "burrow-spike.example",
+      "isUserVerifyingPlatformAuthenticatorAvailable": false,
+      "getClientCapabilities": {
+        "conditionalCreate": true,
+        "conditionalGet": false,
+        "extension:appid": true,
+        "extension:appidExclude": true,
+        "extension:credBlob": true,
+        "extension:credProps": true,
+        "extension:credentialProtectionPolicy": true,
+        "extension:enforceCredentialProtectionPolicy": true,
+        "extension:getCredBlob": true,
+        "extension:hmacCreateSecret": true,
+        "extension:largeBlob": true,
+        "extension:minPinLength": true,
+        "extension:payment": false,
+        "extension:prf": true,
+        "hybridTransport": false,
+        "passkeyPlatformAuthenticator": false,
+        "relatedOrigins": true,
+        "signalAllAcceptedCredentials": true,
+        "signalCurrentUserDetails": true,
+        "signalUnknownCredential": true,
+        "userVerifyingPlatformAuthenticator": false
+      },
+      "create": {
+        "prf": {
+          "enabled": true,
+          "resultsFirst": "32 bytes"
+        }
+      },
+      "getEmptyAllowCredentials": {
+        "sameCredential": true,
+        "resultsFirst": "32 bytes",
+        "equalsCreateOutput": true
+      },
+      "getWithAllowCredentials": {
+        "sameCredential": true,
+        "resultsFirst": "32 bytes",
+        "equalsEmptyAllowCredentials": true
+      },
+      "getOtherSalt": {
+        "sameCredential": true,
+        "resultsFirst": "32 bytes",
+        "differsFromLibrarySalt": true
+      }
+    },
+    "internal+prf, uv fails": {
+      "rpId": "burrow-spike.example",
+      "isUserVerifyingPlatformAuthenticatorAvailable": true,
+      "getClientCapabilities": {
+        "conditionalCreate": true,
+        "conditionalGet": true,
+        "extension:appid": true,
+        "extension:appidExclude": true,
+        "extension:credBlob": true,
+        "extension:credProps": true,
+        "extension:credentialProtectionPolicy": true,
+        "extension:enforceCredentialProtectionPolicy": true,
+        "extension:getCredBlob": true,
+        "extension:hmacCreateSecret": true,
+        "extension:largeBlob": true,
+        "extension:minPinLength": true,
+        "extension:payment": false,
+        "extension:prf": true,
+        "hybridTransport": false,
+        "passkeyPlatformAuthenticator": true,
+        "relatedOrigins": true,
+        "signalAllAcceptedCredentials": true,
+        "signalCurrentUserDetails": true,
+        "signalUnknownCredential": true,
+        "userVerifyingPlatformAuthenticator": true
+      },
+      "create": {
+        "error": "NotAllowedError"
+      }
+    },
+    "internal+uv+prf on file://": {
+      "rpId": "",
+      "isUserVerifyingPlatformAuthenticatorAvailable": true,
+      "getClientCapabilities": {
+        "conditionalCreate": true,
+        "conditionalGet": true,
+        "extension:appid": true,
+        "extension:appidExclude": true,
+        "extension:credBlob": true,
+        "extension:credProps": true,
+        "extension:credentialProtectionPolicy": true,
+        "extension:enforceCredentialProtectionPolicy": true,
+        "extension:getCredBlob": true,
+        "extension:hmacCreateSecret": true,
+        "extension:largeBlob": true,
+        "extension:minPinLength": true,
+        "extension:payment": false,
+        "extension:prf": true,
+        "hybridTransport": false,
+        "passkeyPlatformAuthenticator": true,
+        "relatedOrigins": true,
+        "signalAllAcceptedCredentials": true,
+        "signalCurrentUserDetails": true,
+        "signalUnknownCredential": true,
+        "userVerifyingPlatformAuthenticator": true
+      },
+      "create": {
+        "error": "SecurityError"
+      }
+    }
+  }
+}

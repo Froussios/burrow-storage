@@ -90,6 +90,7 @@ gone; sites using Burrow must say so to their users.
 | [`docs/architecture.md`](docs/architecture.md) | The implementation spec: exact encodings, schemas, algorithms, module layout |
 | [`docs/decisions.md`](docs/decisions.md) | Decision records |
 | [`docs/implementation-plan.md`](docs/implementation-plan.md) | Milestones, work packages, dependency graph, definitions of done |
+| [`docs/platform-notes.md`](docs/platform-notes.md) | Measured platform behaviour (Firestore rules and REST, CORS, WebAuthn PRF) and what it changed |
 | [`SECURITY.md`](SECURITY.md) | Cryptographic design and threat model |
 | [`CLAUDE.md`](CLAUDE.md) | Working instructions for agents and contributors |
 

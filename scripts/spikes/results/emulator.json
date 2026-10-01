@@ -1,0 +1,215 @@
+{
+  "target": "firestore-emulator",
+  "firebaseTools": "15.32.1",
+  "emulator": "cloud-firestore-emulator-v1.22.0.jar",
+  "node": "v22.22.0",
+  "ranAt": "2026-10-01",
+  "rules": {
+    "hashing": [
+      {
+        "label": "ascii",
+        "utf8Bytes": 3,
+        "lower": "rejected 403",
+        "upper": "accepted"
+      },
+      {
+        "label": "base64url-token-43",
+        "utf8Bytes": 43,
+        "lower": "rejected 403",
+        "upper": "accepted"
+      },
+      {
+        "label": "non-ascii-utf8",
+        "utf8Bytes": 19,
+        "lower": "rejected 403",
+        "upper": "accepted"
+      }
+    ],
+    "authIsNull": "accepted"
+  },
+  "matrix": [
+    {
+      "name": "get-missing",
+      "assumption": "404 NOT_FOUND → adapter returns null",
+      "http": 404,
+      "status": "NOT_FOUND",
+      "message": "Document (projects/demo-burrow-spike/databases/(default)/documents/burrow/<id>) not found.",
+      "ok": true
+    },
+    {
+      "name": "create-rev0",
+      "assumption": "POST ?documentId at rev 0 is accepted",
+      "http": 200,
+      "status": null,
+      "message": null,
+      "ok": true
+    },
+    {
+      "name": "get-roundtrip",
+      "assumption": "GET returns exactly the written fields; integers come back as decimal strings",
+      "http": 200,
+      "status": null,
+      "message": null,
+      "ok": true,
+      "fieldTypes": {
+        "v": "integerValue",
+        "iv": "stringValue",
+        "ct": "stringValue",
+        "rev": "integerValue",
+        "ts": "integerValue",
+        "tok": "stringValue",
+        "next": "stringValue"
+      }
+    },
+    {
+      "name": "create-existing",
+      "assumption": "§9.3 maps this to conflict: 409 ALREADY_EXISTS (403 would also classify as conflict)",
+      "http": 409,
+      "status": "ALREADY_EXISTS",
+      "message": "entity already exists: EntityRef[partitionRef=dev~demo-burrow-spike, path=/burrow/<id>]",
+      "ok": true
+    },
+    {
+      "name": "update-rev1-correct-tok-with-z",
+      "assumption": "chained update (tok(id,1), next(tok(id,2))) is accepted",
+      "http": 200,
+      "status": null,
+      "message": null,
+      "ok": true
+    },
+    {
+      "name": "update-wrong-tok",
+      "assumption": "tok from another macKey is rejected 403 PERMISSION_DENIED",
+      "http": 403,
+      "status": "PERMISSION_DENIED",
+      "message": "\nevaluation error at L20:22 for 'update' @ L20, false for 'update' @ L20",
+      "ok": true
+    },
+    {
+      "name": "update-tok-of-other-id",
+      "assumption": "tok bound to another id is rejected",
+      "http": 403,
+      "status": "PERMISSION_DENIED",
+      "message": "\nevaluation error at L20:22 for 'update' @ L20, false for 'update' @ L20",
+      "ok": true
+    },
+    {
+      "name": "update-skipped-rev",
+      "assumption": "rev must be stored+1 (here +2) → 403",
+      "http": 403,
+      "status": "PERMISSION_DENIED",
+      "message": "\nevaluation error at L20:22 for 'update' @ L20, false for 'update' @ L20",
+      "ok": true
+    },
+    {
+      "name": "update-replayed-rev",
+      "assumption": "re-presenting the consumed rev-1 token is rejected",
+      "http": 403,
+      "status": "PERMISSION_DENIED",
+      "message": "\nevaluation error at L20:22 for 'update' @ L20, false for 'update' @ L20",
+      "ok": true
+    },
+    {
+      "name": "update-rev-as-doubleValue",
+      "assumption": "rev sent as doubleValue fails `rev is int` → adapter must send integerValue",
+      "http": 403,
+      "status": "PERMISSION_DENIED",
+      "message": "\nfalse for 'update' @ L20",
+      "ok": true
+    },
+    {
+      "name": "update-extra-field",
+      "assumption": "fields outside the envelope are rejected (FS-2)",
+      "http": 403,
+      "status": "PERMISSION_DENIED",
+      "message": "\nfalse for 'update' @ L20",
+      "ok": true
+    },
+    {
+      "name": "update-rev2-correct-tok-without-z",
+      "assumption": "chained update accepted",
+      "http": 200,
+      "status": null,
+      "message": null,
+      "ok": true
+    },
+    {
+      "name": "patch-replaces-document",
+      "assumption": "PATCH without updateMask replaces the whole document (stale `z` disappears)",
+      "http": 200,
+      "status": null,
+      "message": null,
+      "ok": true
+    },
+    {
+      "name": "update-missing-doc",
+      "assumption": "§9.3 maps PATCH ?currentDocument.exists=true on a missing doc to conflict (expects 404)",
+      "http": 403,
+      "status": "PERMISSION_DENIED",
+      "message": "\nevaluation error at L20:22 for 'update' @ L20, Null value error. for 'update' @ L20",
+      "ok": true
+    },
+    {
+      "name": "create-at-rev1",
+      "assumption": "create must be rev 0",
+      "http": 403,
+      "status": "PERMISSION_DENIED",
+      "message": "\nfalse for 'create' @ L19",
+      "ok": true
+    },
+    {
+      "name": "create-ct-1000000",
+      "assumption": "a 1 000 000-char ct fits under Firestore's 1 MiB document limit and passes rules",
+      "http": 200,
+      "status": null,
+      "message": null,
+      "ok": true
+    },
+    {
+      "name": "create-ct-1000001",
+      "assumption": "ct over the cap is rejected by rules (adapter pre-checks → too-large)",
+      "http": 403,
+      "status": "PERMISSION_DENIED",
+      "message": "\nfalse for 'create' @ L19",
+      "ok": true
+    },
+    {
+      "name": "list-collection",
+      "assumption": "list is denied",
+      "http": 403,
+      "status": "PERMISSION_DENIED",
+      "message": "\nfalse for 'list' @ L18",
+      "ok": true
+    },
+    {
+      "name": "query-in-documentId",
+      "assumption": "an `in` query on document ids needs list → denied",
+      "http": 403,
+      "status": "PERMISSION_DENIED",
+      "message": "\nfalse for 'list' @ L18",
+      "ok": true
+    },
+    {
+      "name": "delete",
+      "assumption": "delete is denied",
+      "http": 403,
+      "status": "PERMISSION_DENIED",
+      "message": "\nfalse for 'delete' @ L23",
+      "ok": true
+    },
+    {
+      "name": "race-concurrent-patch",
+      "assumption": "10 concurrent PATCHes at the same rev with the correct tok → exactly one 200 (D3, BE-1)",
+      "http": null,
+      "status": null,
+      "message": null,
+      "winners": 1,
+      "loserCodes": [
+        "409 ABORTED",
+        "403 PERMISSION_DENIED"
+      ],
+      "storedIsWinner": true,
+      "ok": true
+    }
+  ]
+}

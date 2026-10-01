@@ -1,0 +1,40 @@
+rules_version = '2';
+service cloud.firestore {
+  // ---- Verbatim copy of docs/architecture.md §9.4 as of WP-00. ----
+  // WP-13 owns the real file (firestore/firestore.rules); keep this one for the spike only.
+  match /databases/{db}/documents/burrow/{path} {
+    function shape(d) {
+      return d.keys().hasOnly(['v','iv','ct','rev','ts','tok','next','z'])
+          && d.v == 1
+          && d.rev is int && d.rev >= 0 && d.ts is int
+          && d.iv is string && d.iv.size() == 16
+          && d.ct is string && d.ct.size() <= 1000000
+          && d.tok is string && d.tok.size() == 43
+          && d.next is string && d.next.size() == 64
+          && (!('z' in d) || d.z == true)
+          && path.size() == 43;
+    }
+    allow get: if true;
+    allow list: if false;
+    allow create: if shape(request.resource.data) && request.resource.data.rev == 0;
+    allow update: if shape(request.resource.data)
+                  && request.resource.data.rev == resource.data.rev + 1
+                  && hashing.sha256(request.resource.data.tok).toHexString().lower() == resource.data.next;
+    allow delete: if false;
+  }
+
+  // ---- Spike-only probe: what exactly does hashing.sha256(string).toHexString() return? ----
+  // A create is accepted iff `h` equals the rules engine's hex digest of `s`, compared case-sensitively,
+  // so submitting the lowercase and the uppercase digest of the same `s` reveals the casing, and
+  // non-ASCII `s` reveals whether the string is hashed as UTF-8. Never deploy this block outside a
+  // throwaway spike project.
+  match /databases/{db}/documents/probe/{id} {
+    allow create: if request.resource.data.keys().hasOnly(['s', 'h'])
+                  && request.resource.data.h == hashing.sha256(request.resource.data.s).toHexString();
+  }
+
+  // ---- Spike-only probe: does a request carrying only an API key reach rules with request.auth == null? ----
+  match /databases/{db}/documents/authprobe/{id} {
+    allow create: if request.auth == null;
+  }
+}

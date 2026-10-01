@@ -511,7 +511,8 @@ interface EngineState {
 
 Status derivation: `syncing` while a pass is in flight; `offline` when the last pass failed with
 `network`/`quota` or the cache is memory-fallback or `linked === false`; `error` when the last pass
-failed with `conflict` (after retries) or `decrypt-failed`; `idle` otherwise. `onStatus` fires on
+failed with `conflict` (after retries), `decrypt-failed`, or a backend `unauthorized` (surfaced as
+code `backend`, items stay dirty, retried on the next trigger; §9.3); `idle` otherwise. `onStatus` fires on
 every transition with `lastError` (ERR-2).
 
 ### 7.2 Push (SYNC-5, SYNC-8, SYNC-9)
@@ -671,8 +672,16 @@ Keyslot document: `Envelope` at `slotId` with `ct = AES-GCM(kek, iv, utf8(JSON{v
 created}), aad = utf8(`${slotId}|slot`))`, chained with `tok(slotId, n)` under `slotMac`. The store
 cannot tell it from an item.
 
-`available()`: `typeof PublicKeyCredential !== "undefined"` && `isUserVerifyingPlatformAuthenticatorAvailable()`
+`available()`: `typeof PublicKeyCredential !== "undefined"` && `location.hostname !== ""`
+&& `isUserVerifyingPlatformAuthenticatorAvailable()`
 && (`getClientCapabilities` absent || `caps["extension:prf"] !== false`). Never prompts.
+
+The hostname check (D20) excludes `file://` and other opaque origins. There Chromium reports a
+platform authenticator and PRF support, yet `create()` throws `SecurityError` because `rp.id` would
+be `""` (WP-00). Without the check, `protect()` would pick the passkey and fail instead of falling
+through to the sync code (KP-7, NF-1). `caps["extension:prf"]` is a browser-level flag: it is `true`
+with no authenticator attached. It rules out browsers that do not know PRF, not authenticators
+without it, which is why `enrol()` still checks `prf.enabled` (C1). See `docs/platform-notes.md` §3.
 
 `enrol({ rootSecret, backend, label })` (user gesture required; rejects `backend` null with `no-provider`):
 
@@ -685,7 +694,10 @@ cannot tell it from an item.
 3. `ext = cred.getClientExtensionResults().prf`. If `!ext?.enabled` → reject `prf-unsupported`
    (the created credential is useless; the docs say so). If `ext.results?.first` is present, use it;
    else call `navigator.credentials.get()` as in `recover` with `allowCredentials: [cred.rawId]` to
-   obtain the PRF output (second prompt on platforms that do not evaluate at create).
+   obtain the PRF output (second prompt on platforms that do not evaluate at create). WP-00: Chromium
+   returns `results.first` at `create()`, and it equals the `get()` output for the same salt; real
+   devices are not yet measured (`docs/platform-notes.md` §3.2). A `NotAllowedError` from `create()`
+   is a cancel or a failed user verification, not `prf-unsupported`.
 4. Derive `kek`, `slotMac`, `slotId`; `remote = backend.get(slotId)`; write the keyslot envelope at
    `rev = remote ? remote.rev + 1 : 0`.
 5. Persist `meta.credential = { id: cred.rawId, userId }`.
@@ -736,27 +748,44 @@ Every request carries header `x-goog-api-key: ${apiKey}` and `Content-Type: appl
 
 | Operation | HTTP | Notes |
 |---|---|---|
-| `get(id)` | `GET {base}/{id}` | 404 → `null`; 200 → decode `fields` |
-| `put(id, env, null)` | `POST {base}?documentId={id}` body `{fields}` | 409 `ALREADY_EXISTS` → `conflict`; 403 → classify |
-| `put(id, env, n)` | `PATCH {base}/{id}?currentDocument.exists=true` body `{fields}` | 404 → `conflict`; 403 → classify |
+| `get(id)` | `GET {base}/{id}` | 404 → `null`; 200 → decode `fields`; 403 → `unauthorized` |
+| `put(id, env, null)` | `POST {base}?documentId={id}` body `{fields}` | 409 (`ALREADY_EXISTS` or `ABORTED`) → `conflict`; 403 → classify |
+| `put(id, env, n)` | `PATCH {base}/{id}?currentDocument.exists=true` body `{fields}`, **no `updateMask`** | 409 `ABORTED` → `conflict`; 403 → classify; 404 → `conflict` |
 
 Field encoding: `v`, `rev`, `ts` → `{ integerValue: String(n) }`; `iv`, `ct`, `tok`, `next` →
-`{ stringValue }`; `z` → `{ booleanValue: true }` only when set. Decoding is the inverse; a document
-with unexpected fields or types is `network` (treated as corrupt, retried later, logged in debug).
+`{ stringValue }`; `z` → `{ booleanValue: true }` only when set. A number sent as `doubleValue` fails
+`rev is int` (WP-00). Decoding is the inverse; a document with unexpected fields or types is `network`
+(treated as corrupt, retried later, logged in debug). `PATCH` carries no `updateMask`, so it replaces
+the whole document and a `z` from the previous revision cannot survive; with a mask it would merge.
 
-Classifying 403 (`PERMISSION_DENIED`): read the document; if it does not exist or `stored.rev !==
-expectedRev` → `conflict`; else → `unauthorized`. Cost: one read, only on rejection (Q2, D3).
+Classifying 403 (`PERMISSION_DENIED`): read the document. If that read is itself 403 → `unauthorized`.
+If the document does not exist or `stored.rev !== expectedRev` → `conflict`. Otherwise →
+`unauthorized`. Cost: one read, only on rejection (Q2, D3). Rules allow every `get`, so a 403 on a read
+is always a project- or key-level rejection: a wrong `projectId` (`CONSUMER_INVALID`), a disabled API,
+or a key whose restrictions exclude the page. Retrying cannot fix it, and without the first rule a
+misconfigured project would be reported as an endless `conflict`. The engine surfaces `unauthorized` as
+`status: "error"` with code `backend`.
+
+A `PATCH ?currentDocument.exists=true` on a missing document answers 403, not 404: rules run before
+the precondition, and `update` fails on `resource == null`. The classifying read then finds no
+document → `conflict`. The 404 row is kept defensively. `409 ABORTED` is Firestore reporting lost
+contention on the document (WP-00: under 10 concurrent `PATCH`es at one rev, the losers got a mix of
+403 and `ABORTED` every round). The write did not land, so `conflict` sends the engine down its
+re-read-and-retry path instead of `network` backoff. Decision D19.
 
 Error mapping: 429 or `RESOURCE_EXHAUSTED` → `quota`; 400 `INVALID_ARGUMENT` mentioning size, or
 `ct.length > maxEnvelopeBytes` before sending → `too-large`; network failure, 5xx, `UNAVAILABLE`,
-`DEADLINE_EXCEEDED` → `network`.
+`DEADLINE_EXCEEDED` → `network`. Never branch on `error.message`; it is a diagnostic, not a contract.
 
 Capabilities: `writeAuth: true`, `subscribe: false`, `keepalive: true`, `maxEnvelopeBytes: 1_000_000`.
 `put(..., { keepalive: true })` passes `keepalive: true` to `fetch`.
 
-Spikes before relying on this (issue WP-00): unauthenticated REST with an API key is accepted and
-rules see `request.auth == null`; CORS from `https` and `null` origins; `hashing.sha256(...).toHexString()`
-casing in the emulator and in production.
+WP-00 (`docs/platform-notes.md` §1–§2) verified on the emulator: the full request matrix above,
+`request.auth == null` for key-only requests, atomic single-document writes under contention, and a
+1 000 000-character `ct` fitting in one document. Against production it verified CORS from `https` and
+`null` origins for `GET`/`POST`/`PATCH` with `x-goog-api-key`, on error responses. One run against a
+real Spark project (`scripts/spikes`, `npm run prod`) is pending: the same matrix in production, plus
+whether an HTTP-referrer-restricted key blocks `file://` pages (FS-12 vs NF-1).
 
 ### 9.4 Firestore rules (FS-1..9)
 
@@ -785,6 +814,10 @@ service cloud.firestore {
   }
 }
 ```
+
+`hashing.sha256(s)` hashes the UTF-8 bytes of `s`, and `toHexString()` returns **uppercase** hex
+(WP-00, emulator). The `.lower()` is therefore required: clients store `next` as lowercase hex (§5.4),
+and without it every update would be rejected.
 
 The collection name is fixed in the rules file; `burrow-setup` rewrites it when the developer picks
 another. `firebase.json` declares the rules file and the emulator port for tests.
