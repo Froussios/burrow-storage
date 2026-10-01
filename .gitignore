@@ -9,3 +9,4 @@ firebase/tests/node_modules/
 burrow.firestore.json
 .firebase.emulator.json
 *-debug.log
+node_modules/.cache/

@@ -44,10 +44,11 @@
     "test:watch": "vitest",
     "test:rules": "node scripts/emulator.mjs \"node --test firebase/tests/rules.test.mjs\"",
     "test:firestore": "node scripts/emulator.mjs \"vitest run --config vitest.firestore.config.ts\"",
-    "test:e2e": "playwright test",
+    "test:e2e": "node scripts/emulator.mjs \"playwright test\"",
     "size": "node scripts/size.mjs",
     "check": "npm run typecheck && npm test && npm run build && npm run size",
-    "test:live": "vitest run --config vitest.live.config.ts"
+    "test:live": "vitest run --config vitest.live.config.ts",
+    "serve": "node scripts/serve.mjs"
   },
   "peerDependencies": {
     "firebase": ">=10"
