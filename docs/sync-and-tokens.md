@@ -7,7 +7,7 @@ what a site should show. Signatures are in [api.md](api.md).
 
 | Term | Meaning |
 | --- | --- |
-| **Storage token** (or just **token**) | The 32-byte secret that owns a user's data. Whoever holds it can read and write that data from any device. Shown to people as 56 characters in groups of four, `0400-20G3-…`. The API calls it `code`: `exportCode()`, `link({ code })`, `bad-code`. |
+| **Storage token** (or just **token**) | The 32-byte secret that owns a user's data. Whoever holds it can read and write that data from any device. Shown to people as 56 characters in groups of four, `07DV-1XKY-…`. The API calls it `code`: `exportCode()`, `link({ code })`, `bad-code`. |
 | **Passkey backup** | The token stored in a *keyslot* document in the shared store, wrapped under a key that only the passkey's PRF output can derive. One passkey, one keyslot. |
 | **Protection** | What this device knows could bring the token back elsewhere: `"passkey"`, `"code"` (the user has kept the token) or `"none"`. |
 | **Linking** | Making this device use an existing token instead of the one it generated. |
@@ -20,7 +20,9 @@ from then on syncs under that token within seconds, so the shared store already 
 what the token provides is the *address and the key* to it.
 
 Because the token is per origin, every Burrow app on the same origin shares it. A user who links
-one app has linked them all; each app still has its own documents.
+one app has linked them all; each app still has its own documents. An app that is not open when
+another app links picks up the new token on its next load, and drops any writes it had not
+synced under the old one.
 
 ## Second device, option 1: the storage token
 
@@ -45,8 +47,9 @@ try {
 - A link form: `https://your.site/#burrow=<token>`. A page that opens with that fragment adopts
   the token during `burrow()` and removes it from the address bar with `history.replaceState`.
   Treat such links like the token itself: anyone who gets one gets the data. Burrow never puts
-  the token in a URL on its own; the demo offers the link because the user asked for it.
-- Works everywhere, including from `file://` and in browsers without passkey support.
+  the token in a URL on its own; the demo builds such a link as a convenience.
+- It needs no WebAuthn, so it works in every supported browser, including those whose passkeys
+  lack the PRF extension.
 
 ## Second device, option 2: a passkey backup
 
@@ -72,9 +75,8 @@ platform) can each hold a keyslot for the same token.
 keyslot. If the chosen passkey has no keyslot, or the user cancels, the call rejects with
 `no-provider` and nothing changes.
 
-PRF support is uneven: Chromium on most platforms, Safari and Firefox in recent versions with
-platform authenticators, and not every hardware key. `passkey().available()` checks without
-prompting. Cross-ecosystem use (an Apple passkey on Windows) goes through the browser's QR/hybrid
+PRF support varies by browser, operating system and authenticator, and not every security key
+offers it. `passkey().available()` checks without prompting. Cross-ecosystem use (an Apple passkey on Windows) goes through the browser's QR/hybrid
 flow. **The storage token is the path that always works**; offer it alongside the passkey.
 
 ## What to show
@@ -95,7 +97,9 @@ cache in memory too. Each session starts with a fresh token until the user links
 
 Logging out: `unlink()` forgets the token on the device. The remote documents stay; the next
 `burrow()` generates a new token and clears the old token's cached items before use, so the next
-user of the device never sees the previous one's data.
+user of the device never sees the previous one's data in the site. Until then the old items remain
+in IndexedDB in plaintext; on a shared computer, `rememberDevice: false` keeps them off the disk
+altogether.
 
 ## How sync works
 
@@ -110,9 +114,11 @@ user of the device never sees the previous one's data.
 - **Deletes are tombstones.** A removed key stays in the manifest as deleted for 30 days, so a
   device that was offline does not resurrect it. The item document is overwritten with a deleted
   marker and is never removed from the store.
-- **Triggers.** Local writes, debounced 1.5 s. Page becomes visible. Every `syncIntervalMs`
-  (30 s) while visible. A change notification from the Firestore listener on the manifest.
-  `syncNow()`. Page hidden or unloaded (pending writes are flushed and pushed).
+- **Triggers.** Page load. Local writes, debounced 1.5 s. Page becomes visible. Every
+  `syncIntervalMs` (30 s) while visible. A change notification from the Firestore listener on the
+  manifest. `link()` and `syncNow()`. Page hidden or unloaded: pending writes are flushed to the
+  cache and a push starts; if the page closes before it finishes, the writes go out on the next
+  visit.
 - **Conflicts.** A write that collides with another device is retried up to three times with
   jittered backoff (200 ms, 800 ms, 3 s) after re-reading the document; the manifest is where two
   devices usually collide, and merging it is a union of the two key directories.
@@ -122,6 +128,6 @@ user of the device never sees the previous one's data.
   again; the cache is left as it was.
 - **Tabs.** Tabs of one app share the cache and tell each other about writes through a
   `BroadcastChannel`; each sync pass takes a `navigator.locks` lock so two tabs never push at once.
-  Linking or unlinking in one tab switches or closes the others.
+  Linking or unlinking in one tab switches or closes the other tabs of the same app.
 
 The data model and algorithms in detail: [architecture.md](architecture.md).

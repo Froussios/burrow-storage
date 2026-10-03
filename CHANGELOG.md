@@ -35,7 +35,7 @@ labels, and the storage-token encoding are public contract: changing them is a m
 - Static demo (theme, draft, storage token panel, passkey backup, export, debug panel) under a
   strict CSP; GitHub Pages workflow.
 - Script-tag build `burrow.min.js` (global `Burrow`) that loads the Firestore SDK as a
-  same-directory classic script (`burrow-firestore.js`), so it also works from `file://`.
+  same-directory classic script (`burrow-firestore.js`), so it also loads from `file://`.
 - SRI hashes and npm provenance in the release workflow.
 - Documentation set for external users: README, API reference, guides for tokens and sync,
   localStorage migration, the shared store, and extending; SECURITY.md; architecture and

@@ -1,9 +1,25 @@
 # Security
 
-Burrow keeps per-user data in a public store that nobody, including the store's operator and the
-site's developer, can read or attribute to a user. This document is the normative description of
-how, and the honest list of what it does not protect. Everything under *Derivation* and *Formats*
-is frozen public contract for v1: changing any of it is a major release with a migration path.
+Burrow keeps per-user data in a store that anyone may read by id, yet neither the store's operator
+nor the site's developer can read it, and nothing in it names a user. This document is the
+normative description of how, and the plain list of what it does not protect. Everything under
+*Derivation* and *Formats* is frozen public contract for v1: changing any of it is a major release
+with a migration path.
+
+**In brief.** Burrow aims to guarantee that:
+
+- the store, its operator and anyone with a copy of it learn no key names, no values and no user
+  identity, only opaque ids, ciphertext, sizes, timing and request IPs;
+- nobody without the user's secret can write a document the client will accept, and no client
+  without the secret can overwrite one at all, because the store's rules check a per-document
+  write-token chain;
+- the secret leaves the device only when the user carries it.
+
+It assumes the user's device and every script on the site's origin are trustworthy, exactly as
+`localStorage` does, and it runs only in a secure context (HTTPS or `localhost`), where WebCrypto
+is available. It does not protect against code running on your origin, a copied browser
+profile, an operator who deletes or rolls back documents, junk that fills a free project's
+storage, or the loss of every copy of the secret. Details follow.
 
 **Reporting a vulnerability:** open a private advisory at
 <https://github.com/Froussios/burrow-storage/security/advisories/new>. Please do not file a
@@ -87,8 +103,8 @@ interface Envelope {
 - **Item plaintext** (id `docId(key)`): `{ v: 1, key, value, ts, deleted? }`.
 - **Keyslot plaintext**: the 32 raw bytes of the root secret, encrypted under `kek`.
 
-Plaintext is UTF-8 JSON, compressed with deflate-raw when it is over 64 bytes and compression
-shrinks it. An item is capped at `maxItemBytes` (default 200 000 bytes; never above 749 000, so
+Manifest and item plaintext is UTF-8 JSON, compressed with deflate-raw when it is over 64 bytes
+and compression shrinks it. An item is capped at `maxItemBytes` (default 200 000 bytes; never above 749 000, so
 the ciphertext always fits the store's 1 000 000-character limit even when incompressible).
 
 Any decryption failure surfaces as `decrypt-failed`: sync pauses, the local cache is left
@@ -147,12 +163,12 @@ hostile.
 | Replay of an old document | `id`, `app` and `rev` are GCM additional data; the store rejects `rev ≤ current`. |
 | Brute force of a weak typed secret | Tokens are random 256-bit; a passphrase must go through PBKDF2 ≥ 600 000 (not shipped in v1). |
 | Malicious script on the site (XSS, bad CDN) | **Out of scope**, as for `localStorage`: a script on your origin can read the cache and call `exportCode()`. Use a strict CSP and SRI; Burrow runs without `eval`, inline scripts or third-party script hosts when self-hosted. |
-| Copied browser profile | The wrapped token is **an obstacle, not a guarantee**: browsers keep non-extractable key material in the profile. Chromium protects it with the OS keyring on some platforms; Firefox does not. An attacker with the whole profile directory may recover the token. `rememberDevice: false` plus a passkey keeps nothing on disk. |
+| Copied browser profile | The wrapped token is **an obstacle, not a guarantee**. "Non-extractable" stops a script from exporting the key; it does not stop someone who copies the browser's profile directory, where the key material is stored with the rest of IndexedDB. Treat a copied profile as a copied token. `rememberDevice: false` plus a passkey keeps nothing on disk. |
 | A `#burrow=` link is seen by someone else | It is the token. Burrow removes it from the address bar with `history.replaceState` as soon as it is read, but the link may persist in history, autocomplete, or wherever it was shared. Sites that offer links should say so. |
-| Junk writes to the shared project | Anyone who knows the project id can create documents. Daily read and write quotas reset, so traffic abuse only pauses sync and can never produce a bill on Spark. **Stored bytes (1 GiB) do not reset**: the rules forbid delete, so only the project owner can remove junk, from the console or with the Admin SDK. Accepted for prototypes; Firebase App Check is the available hardening. |
+| Junk writes to the shared project | Anyone who knows the project id can create documents. Daily read and write quotas reset, so traffic abuse only pauses sync and can never produce a bill on Spark. **Stored bytes (1 GiB) do not reset**: the rules forbid delete, so only the project owner can remove junk, from the console or with the Admin SDK. Accepted for prototypes. Burrow has no built-in defence: the Firestore adapter creates its own Firebase app instance, so a site cannot attach Firebase App Check to it today. |
 | Lost token | Not recoverable by design. Burrow offers the storage token, passkey keyslots, JSON export, and the `onUnprotected` event so sites can prompt users to keep a copy. |
 | Compression side channel | Ciphertext length reveals how compressible the plaintext was. Irrelevant for a user's own settings; there is no switch to disable compression in v1. |
-| Operator rollback | A store operator can restore an older document. Clients then write on top of it at the next revision. Freshness depends on the operator; confidentiality does not. |
+| Operator rollback or deletion | Rules bind clients, not the project's owner: through the console or the Admin SDK the owner (or Google) can delete a document, restore an older one, or write garbage. A restored document still decrypts, and clients write on top of it at the next revision. Garbage fails to decrypt (`decrypt-failed`, sync pauses). Availability and freshness depend on the operator; confidentiality does not. |
 
 **What the store still learns:** how many documents exist, their sizes, when and how often each
 is written, and the client IP of each request. One user's documents are not linkable to each

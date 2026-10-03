@@ -12,8 +12,16 @@ SHA-256, which is all the write chain needs.
 npx burrow-setup firestore
 ```
 
-prints the steps; `npx burrow-setup firestore --run` performs them with `gcloud` and the Firebase
-CLI (set `PROJECT`, `LOCATION`, optionally `REFERRERS` and `APP_NAME`). By hand:
+prints the steps. To have them performed with `gcloud` and the Firebase CLI (two browser sign-ins,
+bash, and a project id nobody else has taken):
+
+```sh
+PROJECT=my-burrow-store LOCATION=us-central1 REFERRERS="https://you.github.io/*,http://localhost:*" \
+  npx burrow-setup firestore --run
+```
+
+`REFERRERS` defaults to localhost only and `APP_NAME` to `burrow`. Before the first npm release,
+run the same commands from a clone as `node scripts/burrow-setup.mjs firestore`. By hand:
 
 1. **Create a Firebase project without a billing account**, Google Analytics off. Do not upgrade
    to Blaze.
@@ -32,7 +40,8 @@ CLI (set `PROJECT`, `LOCATION`, optionally `REFERRERS` and `APP_NAME`). By hand:
    "Browser key (auto created by Firebase)"): API restrictions to *Cloud Firestore API* only;
    application restrictions to your domains (`https://you.github.io/*`, `http://localhost:*`).
    The key is an identifier, not a secret, and will sit in page source; the restriction stops
-   other sites from spending your quota.
+   other sites from spending your quota. A page opened from `file://` has no web origin to match
+   a referrer restriction, so during development serve it from `http://localhost`.
 6. Leave Authentication, Storage, Functions and Blaze off. Burrow needs none of them.
 
 ## Put the config on the page
@@ -83,11 +92,17 @@ Spark, per day, shared by every app and user on the project: **50 000 reads, 20 
 
 | Operation | Reads | Writes |
 | --- | --- | --- |
-| Pull, nothing new | 1 (the manifest) | 0 |
-| Pull with changes | 1 + 1 per changed item | 0 |
-| Push | 1 per changed item (the write runs in a transaction that reads first) + 1 for the manifest | 1 per changed item + 1 for the manifest |
-| Live listener on the manifest | 1 per change seen | 0 |
-| Passkey backup: create / restore | 1–2 | 1 / 0 |
+| A sync pass with nothing new | 1 (the manifest) | 0 |
+| Pulling *k* changed items | 1 + *k* | 0 |
+| Pushing *n* changed items | *n* + 2, plus 1 for each key this device has not synced before | *n* + 1 |
+| Live listener on the manifest | 1 each time it attaches, then 1 per manifest change, this device's own pushes included | 0 |
+| Passkey backup: create | 2 | 1 |
+| Passkey backup: restore | 1, then a sync pass | 0 |
+
+Pushes cost more reads than writes because the adapter writes through Firestore transactions,
+which read the document before writing it. A push reads the manifest twice: once when the pass
+pulls, and again inside the transaction that writes it. The listener attaches when the page
+loads, and again when it becomes visible after more than five hidden minutes.
 
 Writes are debounced (`debounceMs`, 1.5 s) and coalesced, so a user typing into a draft field
 costs one write per pause, not per keystroke. Polling runs every `syncIntervalMs` (30 s) while a
@@ -106,8 +121,9 @@ that sync pauses for your users until midnight Pacific time. **Stored bytes do n
 determined party could fill the 1 GiB with junk documents, and because the rules forbid deletes,
 only the project owner can remove them (from the console, or with the Admin SDK, which bypasses
 the rules; delete documents whose `ts` is older than you care about). For prototypes this is an
-accepted risk. If a project is being targeted, Firebase App Check with reCAPTCHA is the available
-hardening; it adds a reCAPTCHA host to the page's connections.
+accepted risk. Burrow has no built-in defence against it today. Firebase App Check would be the
+natural hardening, but the adapter creates its own Firebase app instance and does not initialise
+App Check, so a site cannot turn it on yet.
 
 Removed keys leave their item documents behind forever, overwritten with a deleted marker and
 bounded by the size cap; the manifest forgets them after 30 days.

@@ -32,7 +32,7 @@ itself.
 Opens the store for one app. It resolves once the device's token and the whole local cache are
 loaded, with no network access and no user interaction, typically in under 20 ms. Calling it again
 with the same `app` on the same page returns the same promise; a second, different config is
-ignored.
+ignored. It needs a secure context (HTTPS or `localhost`), because WebCrypto does.
 
 ```ts
 interface BurrowConfig {
@@ -158,8 +158,9 @@ unlink(options?: { discardLocal?: boolean }): Promise<void>;
 ```
 
 **`exportCode()`** returns the storage token: 56 Crockford base32 characters in 14 groups of 4
-joined by hyphens, for example `0400-20G3-0G2G-C1R8-1450-P30D-1R7H-048J-2CA1-A5GQ-30CH-M6RW-3MF1-YJ8H`.
-It encodes a version byte, the 32-byte secret and a 16-bit checksum.
+joined by hyphens, such as `07DV-1XKY-2X98-DRCP-DJV6-FC2E-459V-AJTY-26K2-XJFQ-9BXZ-QRNF-X0F5-Z1XS`
+(a made-up example that fails its checksum). It encodes a version byte, the 32-byte secret and a
+16-bit checksum.
 
 **`protect(providerId?)`** enrols an unlock method for the current token. Without an id it uses
 the first configured provider that is available (with the defaults: the passkey, else the token);
@@ -182,13 +183,14 @@ conflicting). A failing store may also surface a raw `BackendError`.
 - Otherwise, if this app has writes that never reached the store, Burrow tries to push them under
   the old token first and rejects with `would-orphan` if any remain; pass `discardLocal: true` to
   drop them. Then the new token replaces the old one **for every app on the origin**, this app's
-  cache is cleared and refilled from the store, `onToken` fires, other tabs switch too, and
-  `onChanged` reports the before/after difference with `source: "remote"`.
+  cache is cleared and refilled from the store, `onToken` fires, and `onChanged` reports the
+  before/after difference with `source: "remote"`. Open tabs of this app switch at once; other
+  apps on the origin switch on their next load, and drop any writes they had not synced.
 - `link()` resolves even when the first sync afterwards fails; check `status`.
 
 **`unlink(options)`** forgets the token on this device, like logging out. It has the same
 `would-orphan` guard as `link()`. The remote documents are untouched, the instance is closed (every
-later call throws `BurrowError("no-provider")`), other tabs close their instances, and the next
+later call throws `BurrowError("no-provider")`), other tabs of this app close theirs, and the next
 `burrow()` on the device generates a fresh token and clears the old token's cached items before
 use.
 
@@ -210,8 +212,8 @@ export")` otherwise) and merges the items with `set()`; it does not check that `
 ### `storage`: the `Storage` facade
 
 `store.storage` implements the DOM `Storage` interface synchronously over the in-memory mirror.
-Reads are correct from the first call; writes are visible at once, persisted in the background,
-coalesced per task, and flushed when the page is hidden or unloaded.
+Reads are correct from the first call; writes are visible at once, persisted in the background
+(batched per microtask), and flushed when the page is hidden or unloaded.
 
 - `length`, `key(i)` (insertion order), `getItem`, `setItem`, `removeItem`, `clear`.
 - Property access as on `localStorage`: `s.theme`, `s["theme"] = "dark"`, `"theme" in s`,
@@ -289,6 +291,10 @@ checks for `PublicKeyCredential`, a user-verifying platform authenticator, and t
 
 **`syncCode()`**: id `"sync-code"`. Always available; `enrol()` is a no-op (the token is obtained
 with `exportCode()`); `recover({ input })` decodes a token. Its protection value is `"code"`.
+
+When the page runs local-only (no backend configured), `protect()` and `link()` still call custom
+providers, and pass `backend` as `null` despite its type. A provider that needs the store must
+check for that.
 
 ## Types
 

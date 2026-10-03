@@ -133,7 +133,7 @@ tokens are recomputable from `macKey` (D-10).
 | Ciphertext | `MAX_CT_CHARS = 1_000_000` base64url characters | `seal()`, both backends, the rules |
 | Manifest plaintext | 749 000 bytes, else `item-too-large` ("manifest is full") | `#pass` |
 | Tombstone retention | 30 days (`TOMBSTONE_TTL_MS`) | `merge.ts` |
-| Conflict retries | 3 retries, backoff 200 / 800 / 3000 ms, jitter ×0.75–1.25 | `CONFLICT_BACKOFF` |
+| Conflict retries | 3 per document. Manifest: after 200, 800 and 3000 ms. Item: at once, then after 200 and 800 ms. Jitter ×0.75–1.25 | `CONFLICT_BACKOFF` |
 | Network/quota backoff | 2 s doubling, cap `max(syncIntervalMs, 5 min)` | `#failed` |
 | Listener detach | after 5 hidden minutes | `HIDDEN_DETACH_MS` |
 
@@ -168,9 +168,10 @@ when the page is hidden.
 
 ### 6.1 Triggers and coalescing
 
-`#sync()` is called by: the debounce timer after a local write; the poll timer (visible only);
-`visibilitychange` → visible; the backend's manifest subscription when the revision changed;
-`syncNow()`; `link()`; and `#hide()` with `keepalive = true` when dirty items exist. Calls while a
+`#sync()` is called by: `#start()` at start-up; the debounce timer after a local write; the poll
+timer (visible only); `visibilitychange` → visible; the backend's manifest subscription when the
+revision changed; `syncNow()`; `link()` (including a `#burrow=` link read at start-up); `get(null,
+{ fresh: true })`; and `#hide()` with `keepalive = true` when dirty items exist. Calls while a
 pass is running set `#rerun` and share the running promise; the loop repeats until nothing
 requested another pass. A pass runs under the Web Lock `burrow:<ns>:<app>:sync`, so two tabs of
 the same app never push at once. `#sync()` never rejects; failures go to `#failed()`.
@@ -351,8 +352,8 @@ examples compile, member-signature listings must match `BurrowArea`, and interfa
 match the exported type of the same name. Multi-device tests build several `Env`s over
 one `MemoryBackend` store (`test/support/devices.ts`).
 
-CI (`.github/workflows/ci.yml`): typecheck, unit/property/conformance, build and size on Node 24
-and 26; rules and emulator conformance; browser tests on three engines. `pages.yml` deploys the
+CI (`.github/workflows/ci.yml`): typecheck, unit/property/conformance, build, size and
+`docs:check` on Node 24 and 26; rules and emulator conformance; browser tests on three engines. `pages.yml` deploys the
 demo (demo files plus the two bundles, same origin) to GitHub Pages on pushes to `main`;
 `release.yml` publishes on tags.
 
@@ -364,7 +365,9 @@ Playwright browsers for the e2e suite (`npx playwright install --with-deps`).
 Things the code does not do that a reader of the interfaces might expect:
 
 - `Backend.capabilities.keepalive` and `put(..., { keepalive })` are plumbed through but no shipped
-  backend honours them; the unload flush relies on the SDK's own pending-write handling.
+  backend honours them. The push started on `pagehide` is best-effort: the Firestore adapter
+  writes through transactions, which the SDK does not queue, so if the page closes first the
+  items stay dirty in the cache and go out on the next visit.
 - `Backend.capabilities.maxEnvelopeBytes` is not consulted; `seal()` uses the constant limit.
 - Polling is a fixed interval; there is no adaptive back-off for idle tabs, so a visible idle tab
   costs one read per `syncIntervalMs`.
@@ -372,6 +375,12 @@ Things the code does not do that a reader of the interfaces might expect:
   data written before `link()` creates throwaway documents in the store.
 - The token is per origin but the `would-orphan` guard in `link()` and `unlink()` looks only at
   the calling app; other apps' unsynced writes on the device are discarded on their next load.
+- Open tabs of *other* apps on the origin are not told about a `link()` or `unlink()` (the
+  channel is per app); they keep using the old token until they reload.
+- `EnrolContext.backend` and `RecoverContext.backend` are typed `Backend`, but a local-only page
+  passes `null` to custom providers.
+- The Firestore adapter initialises its own named Firebase app and has no hook for Firebase App
+  Check, so a site cannot protect Burrow's requests with App Check.
 - `passkey().available()` does not check for a secure origin, so from `file://` `protect()`
   chooses the passkey and rejects with `prf-unsupported` instead of falling through to the token.
 - A non-default `collection` needs a matching edit to `firestore.rules`; `burrow-setup` does not

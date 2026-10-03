@@ -1,8 +1,9 @@
 # Migrating from localStorage
 
-`store.storage` is a synchronous `Storage` object backed by Burrow's local cache. Swapping the
-identifier is the whole migration; the repository's acceptance test (`test/sample-app/`) does
-exactly that find-and-replace on a sample app and runs the app's own tests against both.
+`store.storage` is a synchronous `Storage` object backed by Burrow's local cache. For most sites,
+swapping the identifier is the whole migration; the repository's acceptance test
+(`test/sample-app/`) does exactly that find-and-replace on a sample app and runs the app's own
+tests against both. The differences that can matter are listed below.
 
 ## Steps
 
@@ -44,8 +45,13 @@ exactly that find-and-replace on a sample app and runs the app's own tests again
 ## Differences from localStorage
 
 - **Writes are write-behind.** `setItem` updates the in-memory mirror immediately and persists
-  to IndexedDB in the background, batched per task. Pending writes are flushed when the page is
-  hidden or unloaded. A storage failure is logged with `debug: true` rather than thrown.
+  to IndexedDB in the background, batched per microtask. Pending writes are flushed when the page
+  is hidden or unloaded. A storage failure is logged with `debug: true` rather than thrown.
+- **Other tabs see a write a moment later.** A tab learns of another tab's write once it reaches
+  the cache, usually within milliseconds, and reports it on `onChanged`. `localStorage` is
+  visible to every tab at once.
+- **One namespace per app.** `localStorage` is shared by the whole origin; each Burrow `app` has
+  its own keys, so two apps on one origin do not see each other's data.
 - **Size limit.** An item larger than `maxItemBytes` (default 200 000 bytes) throws
   `BurrowError("item-too-large")` synchronously instead of a `QuotaExceededError`.
 - **Values written through the async API** (`store.set({ n: 42 })`) come back from `getItem("n")`

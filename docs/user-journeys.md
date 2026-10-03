@@ -7,7 +7,7 @@ These five journeys define what a person must be able to do on the Burrow demo p
 
 - **Storage token** (or just **token**): the secret that owns a user's data. Whoever holds it can
   read and write that data from any device. It is 56 characters, shown in 14 groups of four
-  (`04G1-20G3-…`). The requirements brief calls it the *root secret*, and its typed form the *sync
+  (`07DV-1XKY-…`). The requirements brief calls it the *root secret*, and its typed form the *sync
   code* (KP-11); the API keeps those names (`exportCode()`, `link({ code })`), see
   [decisions.md](decisions.md) D-28.
 - **Backup**: the user's data in the shared store, encrypted under keys derived from the token.
@@ -61,8 +61,8 @@ a keyslot holding the token wrapped under the PRF output.
 **Notes:**
 - Data syncs within seconds of being written, before any passkey exists. The passkey is what
   makes the token recoverable after the browser forgets it.
-- Without PRF support, which Firefox and Safari often lack, the page says the browser cannot use
-  passkeys for this. The user should copy the token instead.
+- Where the browser or authenticator lacks the PRF extension (support varies), the page says the
+  browser cannot use passkeys for this. The user should copy the token instead.
 
 ## 2. Restore the token from a passkey
 

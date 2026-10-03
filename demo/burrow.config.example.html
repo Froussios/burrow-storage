@@ -1,23 +1,23 @@
 <!--
-  Three ways to give a page its Firestore config. The adapter reads the <meta> tag
-  first, then window.BURROW; bundler users can pass a backend explicitly. The values
-  below are the demo's own shared project. For your prototypes, create your own with
-  `npx burrow-setup firestore` (see docs/firestore-setup.md) and paste its three
-  values here. The apiKey is an identifier, not a secret; restrict it in the Google
-  Cloud console to the Cloud Firestore API and to the domains you deploy to.
+  Three ways to give a page its Firestore config. Burrow reads the <meta> tag first, then
+  window.BURROW; bundler users can pass a backend explicitly. Create your own project with
+  `npx burrow-setup firestore` (see docs/firestore-setup.md) and paste its three values below.
+  Do not reuse the values in demo/index.html: they belong to the maintainer's demo project.
+  The apiKey is an identifier, not a secret; restrict it in the Google Cloud console to the
+  Cloud Firestore API and to the domains you deploy to.
 -->
 
 <!-- Option A: meta tag, no JS needed -->
 <meta name="burrow-firestore"
-      content='{"apiKey":"AIzaSyAlBIGo0tVj_68_3JukpW-sQPNhJHhPJJk","projectId":"burrow-storage-shared","appId":"1:126236223407:web:6a19c0b9ddf3d9bbd3f15a"}'>
+      content='{"apiKey":"YOUR_API_KEY","projectId":"your-project-id","appId":"YOUR_APP_ID"}'>
 
 <!-- Option B: global, for sites that prefer config in script -->
 <script>
   window.BURROW = {
     firestore: {
-      apiKey: "AIzaSyAlBIGo0tVj_68_3JukpW-sQPNhJHhPJJk",
-      projectId: "burrow-storage-shared",
-      appId: "1:126236223407:web:6a19c0b9ddf3d9bbd3f15a",
+      apiKey: "YOUR_API_KEY",
+      projectId: "your-project-id",
+      appId: "YOUR_APP_ID",
     },
   };
 </script>
@@ -29,9 +29,9 @@
   const store = await burrow({
     app: "my-prototype",
     backend: new FirestoreBackend({
-      apiKey: "AIzaSyAlBIGo0tVj_68_3JukpW-sQPNhJHhPJJk",
-      projectId: "burrow-storage-shared",
-      appId: "1:126236223407:web:6a19c0b9ddf3d9bbd3f15a",
+      apiKey: "YOUR_API_KEY",
+      projectId: "your-project-id",
+      appId: "YOUR_APP_ID",
     }),
   });
 </script>

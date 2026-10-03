@@ -1,6 +1,6 @@
 # Decisions
 
-The judgement calls behind the code, in two parts. **Part A** (D-1 … D-27, with a hyphen) is the
+The judgement calls behind the code, in two parts. **Part A** (D-1 … D-28, with a hyphen) is the
 log kept while implementing; each entry names the requirement it touches in
 [history/requirements.md](history/requirements.md) ("the brief") and the choice made where the
 brief was silent or self-contradictory. **Part B** (D1 … D18, no hyphen) is the earlier planning
@@ -12,12 +12,12 @@ and labels, the storage-token encoding) is a major release with a migration.
 
 ## Part A: implementation decisions
 
-### D-1 Gates were used as checkpoints, not stops
+### D-1 The rules' SHA-256 was verified before the write chain relied on it
 
-The brief defined two acceptance gates (rules verified in the emulator; a live project round
-trip). Gate 1 passed first time, which also settled the open question whether Firestore's
-`hashing.sha256(string).toHexString()` matches Node and WebCrypto SHA-256 hex (it does, in
-lowercase). Work continued to Gate 2 and reported there.
+The brief left open whether Firestore's `hashing.sha256(string).toHexString()` matches the
+SHA-256 hex that Node and WebCrypto compute. It does, in lowercase. The rules tests
+(`firebase/tests/rules.test.mjs`) proved it in the emulator before the client depended on the
+chain, and a round trip against a live project (`npm run test:live`) confirmed it in production.
 
 ### D-2 Emulator port is configurable (FS-13)
 
@@ -168,8 +168,8 @@ lock.
 
 ### D-23 Live project configuration (FS-10, FS-12)
 
-The demo's shared project was created with Firestore's default deny-all rules, so the live gate
-first failed; `firebase/firestore.rules` was then deployed and the browser API key restricted to
+The demo's shared project was created with Firestore's default deny-all rules, so the first live
+check failed; `firebase/firestore.rules` was then deployed and the browser API key restricted to
 the Cloud Firestore API. Setup (`scripts/setup.sh`) requires `PROJECT` and `LOCATION`, applies the
 API restriction, and restricts referrers to `REFERRERS` (default: localhost only). A referrer
 restriction also blocks the Node-based live checks (`npm run test:live`), which send no `Referer`.

@@ -41,7 +41,8 @@ interface Backend {
   `env.rev !== 0` or a malformed envelope. The envelope shape is: only the fields
   `v, iv, ct, rev, ts, tok, next, z`; `v === 1`; integer `rev` and `ts`; `iv` of 16 characters;
   `tok` of at most 64; `next` of exactly 64; `z` absent or `true`; the id 43 characters.
-  `MemoryBackend` exports `wellFormed(id, env)` that implements this check.
+  `wellFormed(id, env)` in `src/backends/memory.ts` implements this check; it is not exported
+  from the package, so copy it if you need it.
 - A store that cannot verify the chain declares `writeAuth: false`. Burrow warns once in the
   console, because anyone who learns an id can then overwrite that document.
 - Map every failure to a `BackendError` with one of `conflict`, `unauthorized`, `too-large`,
@@ -72,8 +73,9 @@ adapter passes it against the emulator (`npm run test:firestore`); `MemoryBacken
 `npm test`.
 
 For a store with a REST interface, the natural shape is `GET /{id}`, `PUT /{id}` with
-`If-Match: <rev>` (or `If-None-Match: *` for a create), and the chain check in the server.
-A Cloudflare Worker with KV or D1 fits in a few dozen lines.
+`If-Match: <rev>` (or `If-None-Match: *` for a create), and the chain check in the server. The
+store underneath must offer an atomic compare-and-set: a Cloudflare Worker in front of D1 or a
+Durable Object can provide one, while Workers KV alone cannot.
 
 ## An unlock method
 
@@ -104,6 +106,8 @@ interface ProviderStore {               // a small per-device string store (e.g.
 - `recover()` is called by `link()` with `interactive: true`. Return the token, or `null` if the
   user declined or nothing was found; throw a `BurrowError` for real failures. Burrow skips a
   provider that throws and continues with the next one.
+- When the page runs local-only (no backend configured), both calls receive `backend: null`
+  despite its type. A provider that stores something in the backend must check for that.
 - A token derived from something the user types (a passphrase) must go through PBKDF2-SHA-256
   with at least 600 000 iterations before it is used, and such tokens are tagged with version
   byte `0x02` in the storage-token encoding (reserved; v1 ships only random tokens, `0x01`).
