@@ -15,9 +15,15 @@ what a site should show. Signatures are in [api.md](api.md).
 ## First device: nothing to do
 
 `burrow()` generates a token the first time an app runs on a device and remembers it in IndexedDB,
-wrapped under a non-extractable key, like a session cookie. The user sees no prompt. Data written
-from then on syncs under that token within seconds, so the shared store already holds everything;
-what the token provides is the *address and the key* to it.
+wrapped under a non-extractable key, the way a browser remembers a login. The user sees no prompt.
+Data written from then on syncs under that token within seconds, so the store already holds
+everything; what the token provides is the *address and the key* to it.
+
+Remembering is only as durable as the browser's storage. Safari deletes a site's IndexedDB after
+seven days of Safari use without the user interacting with the site, and other browsers may evict
+storage when the disk runs low. The device then starts over with a new, empty token, while the
+data waits in the store for the old one. That is why a kept token or a passkey backup matters even
+to users with a single device.
 
 Because the token is per origin, every Burrow app on the same origin shares it. A user who links
 one app has linked them all; each app still has its own documents. An app that is not open when
@@ -44,12 +50,31 @@ try {
   and nothing changes. A random well-formed string passes the checksum about once in 65 536
   attempts and is then adopted as a new, empty token. The demo therefore always shows the token
   in use, so the user can compare it with the one they meant to enter.
-- A link form: `https://your.site/#burrow=<token>`. A page that opens with that fragment adopts
-  the token during `burrow()` and removes it from the address bar with `history.replaceState`.
-  Treat such links like the token itself: anyone who gets one gets the data. Burrow never puts
-  the token in a URL on its own; the demo builds such a link as a convenience.
 - It needs no WebAuthn, so it works in every supported browser, including those whose passkeys
   lack the PRF extension.
+
+## Links
+
+The token can travel as a link, `https://your.site/#burrow=<token>`. A page that opens with that
+fragment adopts the token during `burrow()` and removes it from the address bar with
+`history.replaceState`. Burrow never puts the token in a URL on its own; the demo builds such a
+link as a convenience. Two cautions:
+
+- **A link is the token.** Anyone who gets it gets the data, and it may linger in browser history,
+  autocomplete, or wherever it was shared.
+- **Burrow adopts any link, on every page load, without asking.** Someone who gets a user to open a
+  link carrying *their own* token switches that device, and every Burrow app on its origin, to
+  that token. They can then read what the user writes there, and the user's own token is forgotten
+  on that device unless they kept a copy. Showing the token in use, as the demo does, makes a
+  switch visible.
+
+A site that does not hand out links should drop the fragment before Burrow can read it:
+
+```js
+// Before burrow(): ignore #burrow= links on a site that never offers them.
+if (/[#&]burrow=/.test(location.hash)) history.replaceState(null, "", location.pathname + location.search);
+const store = await burrow({ app: "my-app" });
+```
 
 ## Second device, option 2: a passkey backup
 
@@ -85,8 +110,11 @@ The demo (`demo/`, [user-journeys.md](user-journeys.md)) is the reference UI. It
 
 1. **Always show the token in use** and where it came from (`store.token`): generated here,
    pasted, opened from a link, restored from a passkey, remembered from an earlier visit.
-2. **Nudge once.** `onUnprotected` fires once per device when there is data and no protection.
-   Use it for a low-key banner, not a modal on first load.
+2. **Nudge once.** `onUnprotected` fires once per device when there is data and no protection,
+   usually soon after the first write. Register the listener right after `burrow()` resolves: the
+   event is not repeated for listeners added later. Use it for a low-key banner, not a modal on
+   first load. When the user confirms they saved the token, call `protect("sync-code")`, which
+   records the copy (`protection` becomes `"code"`); `exportCode()` alone does not.
 3. **Confirm before discarding.** `link()` and `unlink()` reject with `would-orphan` when this
    device has writes that never synced. Ask, then retry with `discardLocal: true`.
 4. **Say it plainly:** "Burrow cannot reset your data. Keep your storage token."

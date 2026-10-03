@@ -39,9 +39,10 @@ run the same commands from a clone as `node scripts/burrow-setup.mjs firestore`.
 5. **Restrict the browser API key** in the Google Cloud console (APIs & Services → Credentials →
    "Browser key (auto created by Firebase)"): API restrictions to *Cloud Firestore API* only;
    application restrictions to your domains (`https://you.github.io/*`, `http://localhost:*`).
-   The key is an identifier, not a secret, and will sit in page source; the restriction stops
-   other sites from spending your quota. A page opened from `file://` has no web origin to match
-   a referrer restriction, so during development serve it from `http://localhost`.
+   The key is an identifier, not a secret, and will sit in page source. The referrer restriction
+   stops other websites from using it in their pages; it does not stop a script outside a browser,
+   which can send any referrer it likes. A page opened from `file://` has no web origin to match a
+   referrer restriction, so during development serve it from `http://localhost`.
 6. Leave Authentication, Storage, Functions and Blaze off. Burrow needs none of them.
 
 ## Put the config on the page
@@ -106,8 +107,10 @@ loads, and again when it becomes visible after more than five hidden minutes.
 
 Writes are debounced (`debounceMs`, 1.5 s) and coalesced, so a user typing into a draft field
 costs one write per pause, not per keystroke. Polling runs every `syncIntervalMs` (30 s) while a
-tab is visible: an always-visible tab costs about 2 900 reads a day. Raise the interval, or set it
-to 0 and rely on the listener plus visibility triggers, for sites with long-lived tabs.
+tab is visible: about 120 reads an hour, or 2 900 a day for an always-visible tab. The daily
+50 000 reads therefore cover roughly 400 hours of open, visible tabs across all your sites. Raise
+the interval, or set it to 0 and rely on the listener plus visibility triggers, for sites with
+long-lived tabs.
 
 When a ceiling is hit the store answers `resource-exhausted`; Burrow sets `status` to `"offline"`
 with `error.code === "quota"`, keeps unsynced writes, and retries with backoff until the daily
@@ -116,7 +119,7 @@ reset. Nothing can convert that into a charge while the project stays on Spark.
 ## Abuse, honestly
 
 Anyone who learns your project id can write to the collection, because a first write at an unused
-id is allowed by design. Daily quotas bound the *traffic* they can cause, and the worst outcome is
+id is allowed by design. Junk documents look exactly like users' documents. Daily quotas bound the *traffic* they can cause, and the worst outcome is
 that sync pauses for your users until midnight Pacific time. **Stored bytes do not reset.** A
 determined party could fill the 1 GiB with junk documents, and because the rules forbid deletes,
 only the project owner can remove them (from the console, or with the Admin SDK, which bypasses

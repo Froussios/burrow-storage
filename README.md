@@ -1,9 +1,10 @@
 # Burrow
 
 **Per-user data for static sites that survives a browser reset and follows the user to their other
-devices. No login. No backend of your own. Nothing readable in the store.**
+devices. No login. No server to write or run. Nothing readable in the store.**
 
 ```js
+// In an ES module. With no store configured, the data simply stays on this device.
 import { burrow } from "burrow-storage";
 
 const store = await burrow({ app: "my-prototype" });
@@ -11,13 +12,16 @@ await store.set({ theme: "dark" });
 const { theme } = await store.get("theme");
 ```
 
-The user never signs up, and you never run a server. Burrow encrypts every value on the device
-and syncs it through one free Firestore project that you create once and reuse for every site you
-build. Whoever operates that project, you included, sees only random-looking ids and ciphertext.
+The user never signs up, and you never write or run a server. Burrow encrypts every value on the
+device and syncs it through one free Firestore project that you create once and reuse for every
+site you build. That project holds opaque ids and ciphertext: no accounts, no key names, no values.
+The data belongs to a random **storage token** that the device generates and remembers. To reach
+the data from another device, or after clearing the browser, the user enters that token or
+unlocks a **passkey backup** of it.
 
 - **Status:** pre-release. Everything below is implemented and tested in Chromium, Firefox and
-  WebKit, but nothing is on npm yet. Until the first release, follow
-  [Installing before the first release](#installing-before-the-first-release).
+  WebKit (passkeys in Chromium only, with a virtual authenticator), but nothing is on npm yet.
+  Until the first release, follow [Installing before the first release](#installing-before-the-first-release).
 - **Demo:** [`demo/`](demo/) is a page whose theme and text draft follow you across devices. Run
   it with `npm run build && npm run serve` and open <http://localhost:4173/demo/>. It syncs through
   the maintainer's demo project; to use your own, replace its `<meta name="burrow-firestore">`.
@@ -43,19 +47,19 @@ device. The usual fix is an account system and a hosted database. That asks a lo
 a sign-up form for the user, a backend for you, and a table of personal data you then have to
 protect.
 
-Burrow replaces the account with a **capability**: a random 256-bit secret that the device
-generates the first time your site runs and keeps like a session cookie. Everything follows from
-that secret. It derives the ids under which the user's documents are stored, the key that
-encrypts them, and the key that authorises writes to them. The store never learns who the user
-is, because the ids are unguessable and the content is opaque. To use the same data on another
-device, the user carries the secret across as a 56-character **storage token** or through a
-**passkey backup**, and that device derives the same ids and keys.
+Burrow replaces the account with a **capability**: the storage token, 256 random bits that the
+device generates the first time your site runs and remembers, the way a browser remembers a login.
+Everything follows from the token. It derives the ids under which the user's documents are stored,
+the key that encrypts them, and the key that authorises writes to them. The store holds no
+identity, because the ids are unguessable and the content is opaque. To use the same data on
+another device, the user carries the token across (typed, pasted or as a link) or unlocks a
+passkey backup of it, and that device derives the same ids and keys.
 
 ### How it compares
 
 | | `localStorage` | Accounts and a hosted database | Burrow |
 | --- | --- | --- | --- |
-| Survives clearing site data | No | Yes | Yes, given the storage token or a passkey backup |
+| Survives clearing site data | No | Yes | Yes, if the user kept the storage token or a passkey backup |
 | Same data on the user's other devices | No | Yes | Yes |
 | What the user has to do | Nothing | Sign up, sign in, reset passwords | Nothing at first; keep the token or make a passkey backup to add a device |
 | What you have to run | Nothing | Authentication, a database, access rules | One free Firestore project for all your sites, set up once |
@@ -70,33 +74,40 @@ device, the user carries the secret across as a 56-character **storage token** o
   network. Sync runs in the background and never blocks the UI.
 - **A familiar API.** The async API mirrors `chrome.storage`; `store.storage` is a synchronous
   drop-in for `localStorage`.
-- **No bill.** On Firebase's free Spark plan the quotas are hard limits. Heavy traffic, yours or
-  an abuser's, can pause sync until the daily reset; it cannot run up a charge.
+- **No bill.** On Firebase's free Spark plan the quotas are hard limits, so no amount of traffic
+  can run up a charge. What heavy use or abuse can cost you is availability: sync pauses until the
+  daily reset, and junk that fills the free storage stops writes until you clean it up (see
+  [limits](#limits-costs-and-browser-support)).
 - **A swappable store.** Firestore is one adapter behind a small `Backend` interface, and a
   conformance suite tells you when another adapter is right.
 
 **What Burrow is not:** multi-user or shared data, real-time collaboration, a file store, or an
-identity system. **Burrow cannot reset a user's data.** If the secret is gone from every device and
-the user kept neither the token nor a passkey backup, the data is unreachable. Burrow gives you an
-event to remind the user at a good moment.
+identity system. Two devices that change the same key are not merged: the later write wins.
+**Burrow cannot reset a user's data.** If the token is gone from every device and the user kept
+neither a copy nor a passkey backup, the data is unreachable. Burrow gives you an event to remind
+the user at a good moment.
 
 ## Privacy: who can see what
 
-A user's data is readable only on a device that holds their token. Everyone else in the chain
-handles ciphertext.
+A user's data is readable only on a device that holds their storage token, by the code your site
+runs there. Everyone else in the chain handles ciphertext.
 
 | Who | Can see | Can do |
 | --- | --- | --- |
 | The user, on a device that holds the token | Everything | Read and write |
 | Scripts running on your page | Everything, exactly as with `localStorage` | Read and write |
-| You, as owner of the Firestore project | Random-looking ids, ciphertext, sizes and write times. No key names, values or user identities | Delete documents from the console, but not read or forge them |
+| You, as owner of the Firestore project | Opaque ids, ciphertext, sizes and write times; request IP addresses too if you turn on data-access audit logs. No key names, values or user identities | Delete documents from the console, but not read or forge them |
 | Google, which hosts Firestore | The same, plus each request's IP address | The same |
 | Anyone with a copy of the database | Ciphertext they can neither decrypt nor attribute to a user | Nothing |
-| Anyone who learns one document id | That document's ciphertext | Nothing: each write needs a one-time token derived from the user's secret |
-| Anyone who reads your page's Firebase config | Nothing more | Create junk documents at unused ids, spending your free quota (see [limits](#limits-costs-and-browser-support)) |
+| Anyone who learns one document id | That document's ciphertext | Nothing: each write needs a one-time write token derived from the storage token |
+| Anyone who reads your page's Firebase config | Nothing more | Create junk documents at unused ids, spending your free quota and storage |
+| Anyone who gets the user to open a `#burrow=` link they made | What the user writes afterwards | Switch the user's device to a token they hold, without a prompt ([details](#reaching-the-data-from-another-device)) |
 
-For a developer this means there is no account data to secure: no emails, no passwords, no user
-table. A breach of the store, or a request to hand its contents over, yields ciphertext.
+This protects users from the store and whoever runs it. It does not protect them from the site
+itself: your page's code holds the token, so users trust the code you serve, as they do with any
+web app. For you as a developer, it means there is no account data to secure: no emails, no
+passwords, no user table. A breach of the store, or a request to hand its contents over, yields
+ciphertext.
 
 ### What a stored document looks like
 
@@ -117,20 +128,20 @@ o6zmGhLyv-ZWpnmyzMvJohTlfWQuqedYgW7d-e_xhZc
 ```
 
 - The first line is the document id: an HMAC-SHA-256 of the key name `theme`, under a key derived
-  from the user's secret and your app id.
+  from the user's storage token and your app id.
 - `ct` is the AES-256-GCM encryption of `{"v":1,"key":"theme","value":"dark","ts":…}`. It is bound
   to the id, the app and the revision, so it fails to decrypt if it is moved to another document
   or relabelled with another revision.
-- `tok` is the one-time token that authorised this write. `next` commits to the token the next
-  revision must present, and the store's rules check that chain with SHA-256.
+- `tok` is the one-time write token that authorised this write. `next` commits to the write token
+  the next revision must present, and the store's rules check that chain with SHA-256.
+- `rev` and `ts` are in the clear: the store sees how often and when a document changes.
 
 The same write updates one more document of the same shape: the user's encrypted key directory
 for this app, called the *manifest*, which tells another device which keys exist. Nothing in
-either document names the user or links it to their other documents. Listing the collection is
-denied, so an id is the only way in, and ids cannot be guessed.
+either document names the user. Only timing links them: a user's documents are written moments
+apart. Listing the collection is denied, so an id is the only way in, and ids cannot be guessed.
 
-What the store does learn: how many documents exist, their sizes, when they are written, and the
-IP address of each request. [SECURITY.md](SECURITY.md) has the full threat model.
+[SECURITY.md](SECURITY.md) has the full threat model.
 
 ## Quick start
 
@@ -146,16 +157,18 @@ npx burrow-setup firestore
 
 It prints the console steps: create the project, create Firestore, deploy the security rules that
 ship with Burrow, and restrict the API key. To have it run those steps with `gcloud` and the
-Firebase CLI instead:
+Firebase CLI instead, list the sites that will use the store in `REFERRERS`:
 
 ```sh
-PROJECT=my-burrow-store LOCATION=us-central1 npx burrow-setup firestore --run
+PROJECT=my-burrow-store LOCATION=us-central1 REFERRERS="https://you.github.io/*,http://localhost:*" \
+  npx burrow-setup firestore --run
 ```
 
 Either way you end up with three values: `apiKey`, `projectId` and `appId`. **They are public by
-design.** The `apiKey` identifies your project and will sit in your page source; restrict it to the
-Cloud Firestore API and to your own domains so other sites cannot spend your quota. Details,
-costs and quotas: [docs/firestore-setup.md](docs/firestore-setup.md).
+design.** The `apiKey` identifies your project and sits in your page source. Restrict it to the
+Cloud Firestore API and to your own domains: that stops other websites from using it in their
+pages, though not a script running outside a browser. Details, costs and quotas:
+[docs/firestore-setup.md](docs/firestore-setup.md).
 
 ### 2a. Script tag, no bundler
 
@@ -239,9 +252,9 @@ Full reference with every signature and error: [docs/api.md](docs/api.md).
 
 | Member | What it does |
 | --- | --- |
-| `burrow(config)` | Opens the store for one `app`. Resolves from the local cache, usually within a few milliseconds, with no user interaction. Calling it again with the same `app` on the same page returns the same instance. |
+| `burrow(config)` | Opens the store for one `app`. Resolves from the local cache, usually within a few milliseconds, with no user interaction; a `#burrow=` link in the URL makes it wait for that link to be adopted and synced. Calling it again with the same `app` on the same page returns the same instance. |
 | `get(keys?, { fresh? })` | `chrome.storage` shapes: nothing (all keys), `"key"`, `["a","b"]`, or `{ key: default }`. `fresh: true` fetches from the store first. |
-| `set(items)` | Any JSON values. Resolves once written locally. Non-JSON values (`Date`, `Map`, functions, `undefined`, `NaN`) throw `TypeError`. |
+| `set(items)` | Any JSON values. Resolves once written locally. Non-JSON values (`Date`, `Map`, functions, `undefined`, `NaN`) are rejected with a `TypeError`. |
 | `remove(keys)`, `clear()` | Delete keys everywhere; a tombstone carries the delete to other devices. |
 | `getBytesInUse(keys?)` | Size of the keys and their JSON values, counted as `chrome.storage` counts it. |
 | `onChanged` | `{ changes: { key: { oldValue?, newValue? } }, source }`. Use `addListener(fn)`, or `addEventListener("changed", e => e.detail)`. |
@@ -250,16 +263,19 @@ Full reference with every signature and error: [docs/api.md](docs/api.md).
 | `protection`, `onUnprotected` | Whether an unlock method is recorded for the token on this device. `onUnprotected` fires once per device when there is data and nothing protects it. |
 | `exportCode()` | The storage token: 56 characters in groups of four. |
 | `link({ code })`, `link({ provider })`, `link()` | Adopt an existing token on this device: typed in, or recovered with a passkey. |
-| `protect("passkey")` | Create a passkey backup of the token. |
-| `unlink()` | Forget the token on this device, like logging out, and close this instance. |
+| `protect("passkey")`, `protect("sync-code")` | Create a passkey backup of the token, or record that the user kept a copy. |
+| `unlink()` | Forget the token on this device, like logging out, and close this instance. The cached data stays, in plaintext, until the next `burrow()` clears it. |
 | `syncNow()` | Run one sync pass now; rejects if it failed. |
 | `exportJSON()`, `importJSON(json)` | A plaintext export of the app's data, and its inverse. |
 | `inspect()` | A plain object for a debug panel. |
 | `storage` | The synchronous `Storage` facade. |
 
-Every rejection is a `BurrowError` with a stable `code`: `bad-code`, `item-too-large`,
-`would-orphan`, `no-provider`, `prf-unsupported`, `decrypt-failed`, `conflict`, `quota` or
-`backend`. Invalid arguments throw `TypeError`.
+Failures that Burrow detects reject with a `BurrowError` that carries a stable `code`:
+`bad-code`, `item-too-large`, `would-orphan`, `no-provider`, `prf-unsupported`, `decrypt-failed`,
+`conflict`, `quota` or `backend`. Invalid arguments reject with a `TypeError`, or throw one from
+the synchronous facade. Two calls can also pass on an error from below: `set()` when the browser
+refuses the local write (for example, its storage is full), and `protect("passkey")` when the store
+fails.
 
 ## Reaching the data from another device
 
@@ -271,18 +287,25 @@ second, call `store.link({ code })` with what the user typed or pasted. A token 
 `07DV-1XKY-2X98-DRCP-DJV6-FC2E-459V-AJTY-26K2-XJFQ-9BXZ-QRNF-X0F5-Z1XS` (this one is made up and
 fails its checksum). Case, spaces and hyphens do not matter, and `O`/`0` and `I`/`L`/`1` are read
 as the same. A mistyped token fails the checksum and rejects with `bad-code` before any network
-call. A page may also offer the token as a link, `https://your.site/#burrow=<token>`: a device that
-opens it adopts the token, and Burrow removes it from the address bar at once.
+call.
+
+The token can also travel as a link, `https://your.site/#burrow=<token>`. Burrow adopts such a link
+on **every** page load, without asking, and removes it from the address bar at once. That is
+convenient, and it can be abused: someone who gets a user to open a link carrying *their own*
+token switches that device to it, and can then read whatever the user writes there. If your site
+does not offer links, drop the fragment before calling `burrow()`
+([how](docs/sync-and-tokens.md#links)).
 
 **A passkey backup.** `store.protect("passkey")` creates a passkey and stores the token in a
-*keyslot* document, encrypted under a key that only that passkey can derive (through the WebAuthn
-PRF extension). The passkey never becomes the secret. On another device,
-`store.link({ provider: "passkey" })` takes one passkey prompt. Passkeys need HTTPS or `localhost`,
-and PRF support still varies across browsers and authenticators; where it is missing,
-`protect("passkey")` rejects with `prf-unsupported`. Offer the storage token alongside.
+*keyslot* document, encrypted under a key that only that passkey can produce. It uses the WebAuthn
+PRF extension, which lets a passkey derive a secret key on request. The passkey never becomes the
+token. On another device, `store.link({ provider: "passkey" })` takes one passkey prompt. Passkeys
+need HTTPS or `localhost`, and PRF support still varies across browsers and authenticators; where it
+is missing, `protect("passkey")` rejects with `prf-unsupported`. Offer the storage token alongside.
 
 ```js
-// A calm moment to nudge the user, once per device, when there is data worth keeping.
+// Register right after burrow(): it fires once per device, soon after the first write,
+// and is not repeated for listeners added later.
 store.onUnprotected.addListener(() => {
   showBanner("Keep a copy of your storage token, or back it up with a passkey.");
 });
@@ -292,12 +315,14 @@ try {
   await store.link({ code: input.value });
 } catch (e) {
   if (e.code === "bad-code") say("That token is not right.");
-  if (e.code === "would-orphan") {
-    // this device has writes that never synced; confirm with the user, then
+  if (e.code === "would-orphan" && confirm("Discard the changes on this device that never synced?")) {
     await store.link({ code: input.value, discardLocal: true });
   }
 }
 ```
+
+When the user confirms that they saved the token, call `store.protect("sync-code")`. It records
+that a copy exists, so `protection` stops reading `"none"`.
 
 Linking replaces the device's token for every Burrow app on the origin, pulls the data, and fires
 `onToken` and `onChanged`. Another app on the same origin picks up the new token on its next load
@@ -316,14 +341,19 @@ storage.setItem("draft", text);     // visible at once, persisted and synced in 
 storage.getItem("draft");
 ```
 
-Swapping the identifier `localStorage` for `store.storage` is usually the only change. `getItem`,
+Swapping the identifier `localStorage` for `store.storage` is the main change. `getItem`,
 `setItem`, `removeItem`, `clear`, `key(i)`, `length`, `storage.foo = "x"`, `"foo" in storage` and
 `Object.keys(storage)` all behave as before, and pending writes are flushed when the page is
 hidden or closed. The repository's tests make exactly that swap in a sample app and run the app's
-own tests against both. The differences: Burrow does not fire the window `storage` event (use
-`onChanged`), each `app` has its own namespace, and values written through the async API come back
-from `getItem` as their JSON text. Migration guide:
-[docs/localstorage-migration.md](docs/localstorage-migration.md).
+own tests against both. The differences:
+
+- `store.storage` exists only once `burrow()` has resolved, so code that reads storage during
+  start-up (for example, to apply a theme before first paint) has to wait for it.
+- Burrow does not fire the window `storage` event; use `onChanged`.
+- Each `app` has its own namespace, where `localStorage` is shared by the whole origin.
+- Values written through the async API come back from `getItem` as their JSON text.
+
+Migration guide: [docs/localstorage-migration.md](docs/localstorage-migration.md).
 
 ## Limits, costs and browser support
 
@@ -335,36 +365,42 @@ from `getItem` as their JSON text. Migration guide:
 | Pulling changes | 1 read, plus 1 per changed item |
 | Pushing *n* changed items | *n* + 1 writes and about *n* + 2 reads, because Firestore writes run in a transaction that reads first |
 | Polling | Every 30 s while the page is visible (configurable). A Firestore listener on the manifest also delivers changes as they happen. |
+| Capacity | At the default interval, a visible tab costs about 120 reads an hour, so the daily reads cover roughly 400 hours of open, visible tabs across all your sites |
+| Conflicts | Per key, the later write wins, by device clock corrected for skew. Values are never merged. |
+| Eviction | Safari deletes a site's IndexedDB, and with it the remembered token, after seven days of Safari use without the user interacting with the site. Other browsers may evict storage when the disk runs low; Burrow does not request persistent storage. The data stays in the store, reachable with the storage token or a passkey backup. |
 | Browsers | Tested on Chromium, Firefox and WebKit; aimed at the last two versions of Chrome, Edge, Firefox and Safari, iOS Safari and Android Chrome. Needs a secure context (HTTPS or `localhost`), because WebCrypto does. Without IndexedDB the cache is in memory and the token is not remembered. |
 | Bundle | `burrow.min.js` about 14 KB min+gzip (core 11.4 KB, held under a 12 KB budget in CI); `burrow-firestore.js` about 135 KB, loaded only when Firestore is used |
 
-Writes are debounced (1.5 s) and coalesced. An always-visible tab polls about 2 900 times a day,
-so sites with long-lived tabs should raise `syncIntervalMs`. When a daily quota runs out, sync
-pauses until it resets and then resumes on its own. Stored bytes do not reset: anyone who reads
-your page's config can fill the 1 GiB with junk, and only you can delete it.
-[docs/firestore-setup.md](docs/firestore-setup.md) has the full cost table and the abuse story.
+Writes are debounced (1.5 s) and coalesced. Raise `syncIntervalMs` for sites with long-lived tabs.
+When a daily quota runs out, sync pauses until it resets and then resumes on its own. Stored bytes
+do not reset: anyone who reads your page's config can fill the 1 GiB with junk documents, which
+look like users' documents. Writes for every site on the project then fail until you clean up by
+hand. [docs/firestore-setup.md](docs/firestore-setup.md) has the full cost table and the abuse
+story.
 
 ## Security in brief
 
-Everything the store holds is derived from the user's secret through one-way functions, or is
-ciphertext under a key derived from it:
+Everything the store holds is derived from the user's storage token through one-way functions, or
+is ciphertext under a key derived from it:
 
 - **Ids:** `base64url(HMAC-SHA-256(pathKey, "item" ‖ key))`, with one key set per user and app,
   derived with HKDF.
 - **Content:** AES-256-GCM with a fresh IV per write; the id, the app and the revision are bound
   as additional authenticated data.
-- **Writes:** a per-document hash chain of one-time HMAC tokens, checked by the store's rules with
-  SHA-256.
-- **On the device:** the secret is wrapped with AES-KW under a non-extractable WebCrypto key in
-  IndexedDB.
-- **Leaving the device:** the secret leaves only when the user carries it, as the storage token
-  or inside a passkey keyslot.
+- **Writes:** a per-document hash chain of one-time HMAC write tokens, checked by the store's rules
+  with SHA-256.
+- **On the device:** the token is wrapped with AES-KW under a non-extractable WebCrypto key that is
+  stored beside it in IndexedDB. That stops a script from exporting the token, but not someone
+  who copies the browser profile. Cached items are plaintext, as with `localStorage`.
+- **Leaving the device:** the token leaves only when the user carries it, as text, as a link, or
+  inside a passkey keyslot.
 
-Out of scope, as for `localStorage`: a malicious script on your own origin. Ship a strict CSP and
-use SRI for the script tag. Burrow needs no `eval`, no inline script and no third-party host, and
-the demo runs under `default-src 'none'`. [SECURITY.md](SECURITY.md) has the derivation, the formats,
-the threat table, and the plain list of what Burrow does *not* protect against: copied browser
-profiles, junk filling the store, and timing metadata.
+Out of scope, as for `localStorage`: a malicious script on your own origin, and the code your site
+serves. Ship a strict CSP and use SRI for the script tag. Burrow needs no `eval`, no inline script
+and no third-party host, and the demo runs under `default-src 'none'`. [SECURITY.md](SECURITY.md)
+has the derivation, the formats, the threat table, and the plain list of what Burrow does *not*
+protect against: copied browser profiles, links from strangers, junk filling the store, and
+timing metadata.
 
 ## Documentation
 

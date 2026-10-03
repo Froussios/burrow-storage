@@ -15,11 +15,12 @@ with a migration path.
   write-token chain;
 - the secret leaves the device only when the user carries it.
 
-It assumes the user's device and every script on the site's origin are trustworthy, exactly as
-`localStorage` does, and it runs only in a secure context (HTTPS or `localhost`), where WebCrypto
-is available. It does not protect against code running on your origin, a copied browser
-profile, an operator who deletes or rolls back documents, junk that fills a free project's
-storage, or the loss of every copy of the secret. Details follow.
+It assumes the user's device, every script on the site's origin, and the code the site serves
+are trustworthy, exactly as `localStorage` does, and it runs only in a secure context (HTTPS or
+`localhost`), where WebCrypto is available. It does not protect against code running on your
+origin, a copied browser profile, a `#burrow=` link from someone else, an operator who deletes or
+rolls back documents, junk that fills a free project's storage, or the loss of every copy of the
+secret, whether by the user or by the browser evicting storage. Details follow.
 
 **Reporting a vulnerability:** open a private advisory at
 <https://github.com/Froussios/burrow-storage/security/advisories/new>. Please do not file a
@@ -143,7 +144,8 @@ must declare `capabilities.writeAuth = false`, and Burrow warns once in the cons
 ## Local cache at rest
 
 The cache stands in for `localStorage`, so items are stored in IndexedDB in plaintext, in one
-object store per app. The token is stored only wrapped (see above). The cache is stamped with a
+object store per app. The token is stored only wrapped (see above), with its wrapping key beside
+it. The cache is stamped with a
 fingerprint of the token that owns it; after `unlink()`, or when another app on the origin links
 a different token, the next `burrow()` finds the stamp wrong and clears the app's cache before use,
 so one identity's data never shows under another. Use `rememberDevice: false` on shared computers;
@@ -151,8 +153,9 @@ the cache then defaults to memory.
 
 ## Threat model
 
-The store is public, the developer is honest but not trusted with data, and the network is
-hostile.
+The store is public, the network is hostile, and the developer is trusted to serve honest code
+but not trusted with the data: neither the developer's store nor its operator should be able to
+read it.
 
 | Threat | Mitigation |
 | --- | --- |
@@ -163,10 +166,11 @@ hostile.
 | Replay of an old document | `id`, `app` and `rev` are GCM additional data; the store rejects `rev ≤ current`. |
 | Brute force of a weak typed secret | Tokens are random 256-bit; a passphrase must go through PBKDF2 ≥ 600 000 (not shipped in v1). |
 | Malicious script on the site (XSS, bad CDN) | **Out of scope**, as for `localStorage`: a script on your origin can read the cache and call `exportCode()`. Use a strict CSP and SRI; Burrow runs without `eval`, inline scripts or third-party script hosts when self-hosted. |
-| Copied browser profile | The wrapped token is **an obstacle, not a guarantee**. "Non-extractable" stops a script from exporting the key; it does not stop someone who copies the browser's profile directory, where the key material is stored with the rest of IndexedDB. Treat a copied profile as a copied token. `rememberDevice: false` plus a passkey keeps nothing on disk. |
+| Copied browser profile | The wrapped token is **an obstacle, not a guarantee**. The AES-KW key that wraps it is stored beside it in IndexedDB. "Non-extractable" stops a script from exporting that key; it does not stop someone who copies the browser's profile directory, where the key material lives with the rest of IndexedDB. Treat a copied profile as a copied token. `rememberDevice: false` plus a passkey keeps nothing on disk. |
 | A `#burrow=` link is seen by someone else | It is the token. Burrow removes it from the address bar with `history.replaceState` as soon as it is read, but the link may persist in history, autocomplete, or wherever it was shared. Sites that offer links should say so. |
+| A `#burrow=` link made by someone else (token fixation) | **Not mitigated by the library.** Burrow adopts a link on every page load without asking, so an attacker who gets a user to open a link carrying the attacker's token switches that device, and every Burrow app on the origin, to it. The attacker can then read what the user writes there; the user's own token is forgotten on that device unless they kept a copy. Sites that do not offer links should drop the fragment before calling `burrow()` ([docs/sync-and-tokens.md](docs/sync-and-tokens.md#links)); sites that do should show the token in use, as the demo does. |
 | Junk writes to the shared project | Anyone who knows the project id can create documents. Daily read and write quotas reset, so traffic abuse only pauses sync and can never produce a bill on Spark. **Stored bytes (1 GiB) do not reset**: the rules forbid delete, so only the project owner can remove junk, from the console or with the Admin SDK. Accepted for prototypes. Burrow has no built-in defence: the Firestore adapter creates its own Firebase app instance, so a site cannot attach Firebase App Check to it today. |
-| Lost token | Not recoverable by design. Burrow offers the storage token, passkey keyslots, JSON export, and the `onUnprotected` event so sites can prompt users to keep a copy. |
+| Lost token | Not recoverable by design. A browser can also lose it: Safari deletes a site's IndexedDB after seven days of Safari use without the user interacting with the site, and other browsers may evict storage under disk pressure (Burrow does not request persistent storage). Burrow offers the storage token, passkey keyslots, JSON export, and the `onUnprotected` event so sites can prompt users to keep a copy. |
 | Compression side channel | Ciphertext length reveals how compressible the plaintext was. Irrelevant for a user's own settings; there is no switch to disable compression in v1. |
 | Operator rollback or deletion | Rules bind clients, not the project's owner: through the console or the Admin SDK the owner (or Google) can delete a document, restore an older one, or write garbage. A restored document still decrypts, and clients write on top of it at the next revision. Garbage fails to decrypt (`decrypt-failed`, sync pauses). Availability and freshness depend on the operator; confidentiality does not. |
 

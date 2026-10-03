@@ -62,7 +62,9 @@ interface BurrowConfig {
 
 If the page URL carries `#burrow=<token>` when `burrow()` runs, the device adopts that token
 first (see [`link()`](#tokens-and-devices)), the fragment is removed with `history.replaceState`, and the promise
-resolves after the first sync attempt.
+resolves after the first sync attempt. This happens without asking, for any link; a site that
+does not hand out links should drop the fragment before calling `burrow()`
+([sync-and-tokens.md](sync-and-tokens.md#links)).
 
 ## `BurrowArea`
 
@@ -115,7 +117,7 @@ store.onChanged.addEventListener("changed", (e) => {
 | `onChanged` | `"changed"` | `{ changes: { [key]: { oldValue?, newValue? } }, source: "local" \| "remote" }` | After a local write is stored (`"local"`), per batch of facade writes (`"local"`), once per sync pass for changes pulled from the store (`"remote"`), and for writes made in another tab (their own source). Changes that net to nothing are dropped. |
 | `onStatus` | `"status"` | `{ status, error?: BurrowError }` | Whenever the (status, error) pair changes. Every sync pass goes `"syncing"` then `"idle"`. |
 | `onToken` | `"token"` | `TokenInfo` | When this device's token changes: after `link()` here or in another tab. Not at start-up. |
-| `onUnprotected` | `"unprotected"` | `undefined` | Once per device and app, when at least one key exists and `protection` is `"none"`. Checked at start-up and after local writes. |
+| `onUnprotected` | `"unprotected"` | `undefined` | Once per device and app, when at least one key exists and `protection` is `"none"`. Checked at start-up and after local writes. Register the listener right after `burrow()` resolves: the event is not repeated for listeners added later. |
 
 ### State
 
@@ -227,8 +229,12 @@ Reads are correct from the first call; writes are visible at once, persisted in 
 
 ## Errors
 
-Every rejection from Burrow is a `BurrowError` with a stable `code`; argument mistakes throw
-`TypeError`. `cause`, when present, is scrubbed of anything that looks like an id or token.
+Failures that Burrow detects reject with a `BurrowError` that carries a stable `code`. Argument
+mistakes reject with a `TypeError` (the synchronous facade throws it). Two errors from below can
+also pass through: `set()`, `remove()` and `clear()` reject with the browser's own error when the
+local IndexedDB write fails (for example, when its storage is full), and `protect("passkey")` can
+reject with a raw `BackendError` when the store fails. `cause`, when present, is scrubbed of
+anything that looks like an id or token.
 
 | `code` | Raised by | Meaning |
 | --- | --- | --- |

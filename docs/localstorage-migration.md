@@ -44,6 +44,9 @@ tests against both. The differences that can matter are listed below.
 
 ## Differences from localStorage
 
+- **It exists only after `burrow()` resolves.** `localStorage` is there before your first line of
+  code runs; `store.storage` is not. Code that reads storage during start-up, for example to apply
+  a theme before first paint, has to wait for `burrow()` (a few milliseconds from a warm cache).
 - **Writes are write-behind.** `setItem` updates the in-memory mirror immediately and persists
   to IndexedDB in the background, batched per microtask. Pending writes are flushed when the page
   is hidden or unloaded. A storage failure is logged with `debug: true` rather than thrown.

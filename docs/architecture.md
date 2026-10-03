@@ -388,3 +388,10 @@ Things the code does not do that a reader of the interfaces might expect:
 - There is no tool to reap abandoned documents from a project; removal is manual.
 - `link({ code })` adopts a well-formed token that has no data as a new, empty identity (the demo
   shows the token in use so a typo is visible).
+- `#readFragment()` adopts any `#burrow=` link on every start-up without asking, which allows token
+  fixation by whoever crafts the link (SECURITY.md). There is no option to turn links off; a site
+  can only drop the fragment before calling `burrow()`.
+- Nothing calls `navigator.storage.persist()`, so a browser may evict the cache and the remembered
+  token (Safari after seven days of use without interaction).
+- `set()`, `remove()` and `clear()` reject with the raw IndexedDB error when the local write fails,
+  not with a `BurrowError`.
