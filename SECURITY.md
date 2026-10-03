@@ -139,6 +139,14 @@ hostile.
 | Copied IndexedDB from a device | The secret is wrapped under a non-extractable key; `rememberDevice: false` for shared machines. |
 | Abuse of the shared store | Size cap per document, Spark's hard daily quotas, no delete, no list. The worst case is that sync pauses until the daily reset, never a bill. |
 | Lost secret | Not recoverable by design. Burrow offers the sync code, passkey keyslots, JSON export, and the `onUnprotected` event so sites can prompt users to keep a copy. |
+| Copied browser profile | The wrapped secret is **an obstacle, not a guarantee**: browsers keep non-extractable key material in the profile. Chromium protects it with the OS keyring on some platforms; Firefox does not. An attacker with the whole profile directory may recover the secret. `rememberDevice: false` plus a passkey keeps nothing on disk. |
+| Junk writes filling the shared store | Daily read/write quotas reset, so traffic abuse only pauses sync. **Stored bytes (1 GiB on Spark) do not reset**: anyone who knows the project id can create junk documents, and the rules forbid delete, so only the project owner can remove them with admin credentials. Accepted for prototypes; Firebase App Check is optional hardening. |
+| Compression side channel | Ciphertext length reveals how compressible the plaintext was. This is irrelevant for a user's own settings. v1 compresses whenever that shrinks the plaintext, and has no switch to turn it off. |
+| Operator rollback | A store operator can restore an older document. Clients then write on top of it at the next revision. Freshness depends on the operator; confidentiality does not. |
+
+**What the store still learns:** how many documents exist, their sizes, when and how often each
+is written, and the client IP of each request. One user's documents are not linkable to each
+other except by timing. Key names and values are never visible.
 
 ## What Burrow does not do
 

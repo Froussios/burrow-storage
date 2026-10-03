@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "description": "Persistent, cross-device, per-user storage for static sites. No login, no backend.",
   "license": "MIT",
-  "author": "Froussios",
+  "author": "Christos Froussios",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Froussios/burrow-storage.git"

@@ -10,3 +10,8 @@ burrow.firestore.json
 .firebase.emulator.json
 *-debug.log
 node_modules/.cache/
+firebase-debug.log
+firestore-debug.log
+.DS_Store
+.env
+.env.*
