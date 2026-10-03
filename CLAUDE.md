@@ -1,104 +1,126 @@
 # CLAUDE.md — working in the Burrow repository
 
-Burrow (`burrow-storage` on npm) is a browser library giving static sites encrypted, cross-device
-key/value storage with no login and no site-owned backend. This file tells an agent how to work here.
+Burrow (`burrow-storage` on npm) is a browser library that gives static sites encrypted,
+cross-device per-user key/value storage with no login and no site-owned backend. This file tells
+an agent or contributor how to work here.
 
 ## State of the project
 
-Planning is complete; implementation has not started. Everything an implementer needs is in the
-repository:
+The library is implemented and tested but **not yet released** (version 0.0.0, no npm publish, no
+tags). The repository is about to be public. The documentation set is current with the code:
 
-1. `docs/requirements.md` — what to build, with requirement ids (`API-3`, `ENC-7`, `SYNC-10`, …).
-2. `docs/design-review.md` — the spec's known contradictions and gaps, each with the resolution adopted.
-3. `docs/architecture.md` — **the implementation spec.** Exact encodings, schemas, algorithms, module
-   layout, public types. When it disagrees with the requirements text, architecture.md wins.
-4. `docs/decisions.md` — decision records (D1…). Binding until superseded.
-5. `docs/implementation-plan.md` — milestones and work packages WP-00…WP-16 with definitions of done.
-6. GitHub issues — one per work package (#2–#18, map in the plan); the issue is the live status, the plan is the map. Issue #1 holds the design-review decisions awaiting owner confirmation.
+| Read | For |
+| --- | --- |
+| `README.md` | What Burrow is, why, quick start, the API in one page |
+| `docs/api.md` | The public contract, member by member; `src/types.ts` is the source of truth |
+| `docs/sync-and-tokens.md`, `docs/localstorage-migration.md`, `docs/firestore-setup.md`, `docs/extending.md` | User guides |
+| `SECURITY.md` | The cryptographic design (normative) and threat model |
+| `docs/architecture.md` | How the code is put together, module by module, with the sync algorithm |
+| `docs/decisions.md` | Decision log: D-1… (implementation) and D1… (planning, with status) |
+| `docs/user-journeys.md` | The five user journeys the demo and its browser tests implement |
+| `CHANGELOG.md` | Keep-a-Changelog, unreleased section |
+| `docs/history/` | The pre-implementation requirements brief, design review and plan. The brief's requirement ids (`API-3`, `ENC-7`, …) are cited by tests and code comments. Historical otherwise. |
 
-Read them in that order the first time. Afterwards, for a given WP: the issue → the architecture
-sections it cites → the requirement ids it cites.
-
-## How to pick up work
-
-- Take the lowest-numbered open WP issue whose dependencies (listed in the issue and in the plan's
-  dependency graph) are merged. M2 (Firestore, WP-13) and M3 (passkeys, WP-12) can run in parallel.
-- Branch per WP: `wp-NN-short-name`. One PR per WP, referencing the issue (`Closes #N`).
-- Name tests after requirement ids: `it("API-7 link rejects would-orphan when dirty items exist")`.
-- If you must deviate from `docs/architecture.md`, change that document in the same PR and add a row
-  to `docs/decisions.md`. Do not leave the spec and the code disagreeing.
-- Do not change requirement ids or renumber anything; add new ids with a suffix (`SYNC-10a`) if needed.
-- Update the WP issue with progress and the DoD checklist; close it from the PR.
-- Decisions D1–D8 change MUST requirements and await owner confirmation in issue #1. Build to the adopted defaults; if the owner overrules one, the issue will say so.
+GitHub issues #1–#18 and PR #19 are from the planning phase and do not reflect the code; treat
+them as history unless the owner says otherwise.
 
 ## Hard rules (from the requirements; not negotiable without the owner)
 
-- **No runtime dependencies** in core. Adapters may depend on their store's SDK only; the reference
-  Firestore adapter uses REST and has none (D1).
-- **WebCrypto only.** No third-party crypto. Every imported `CryptoKey` is non-extractable (SEC-2).
-- **Never** send, log, or persist outside the cache: the root secret, `pathKey`, `encKey`, `macKey`,
-  document ids, write tokens, or user values. Debug logging reports counts, revs, bytes and durations
-  only (SEC-1, SEC-8, ERR-3). Error `cause` goes through `scrub()`.
-- No `eval`, `new Function`, inline scripts, remote script loading, service workers, global patching
-  (SEC-5, NF-2). The library must run under `default-src 'self'` plus the store host.
+- **No runtime dependencies** in the core. The Firestore adapter uses the Firebase modular SDK as
+  an optional peer dependency, loaded lazily (`firebase/app`, `firebase/firestore` only; no auth).
+- **WebCrypto only.** No third-party crypto. Every key derived from the token is imported
+  non-extractable; the only extractable key object is the short-lived HMAC vehicle in
+  `src/secret.ts` that carries the raw token through AES-KW.
+- **Never** send, log, or persist outside the cache: the root secret, `pathKey`, `encKey`,
+  `macKey`, document ids, write tokens, or user values. `debug` logging reports codes, counts,
+  revisions, bytes and durations only. Error `cause`s go through `scrub()` in `src/errors.ts`.
+- No `eval`, `new Function`, inline scripts, third-party script hosts, service workers, or global
+  patching. The demo runs under `default-src 'none'; script-src 'self'; connect-src 'self'
+  https://firestore.googleapis.com`.
 - Local reads and writes never reject for remote reasons (API-3, API-6). Remote failure is status.
-- Dirty items are never dropped (SYNC-9).
-- Vault format `v`, HKDF salt `burrow/v1`, labels, and the sync-code version byte are public contract;
-  changing them is a major version with a migration (D18).
-- Size budgets (min+gzip): core entry ≤ 12 KB, passkey provider ≤ 2 KB inside it, firestore entry ≤ 3 KB.
+- Unsynced writes are never dropped by the engine (SYNC-9).
+- **Public contract**, major version to change: the `Envelope` format, HKDF salts `burrow/v1`,
+  `burrow/slot/v1`, PRF salt `burrow/prf/v1`, the info labels, the AAD and token formats, the
+  storage-token encoding (`SECURITY.md`).
+- Size budgets (min+gzip, `npm run size`): core + memory backend ≤ 12 KB; passkey provider ≤ 2 KB.
+- Terminology: user-facing text says **storage token** for the sync code and **passkey backup**
+  for a keyslot; the API names stay (`exportCode`, `link({ code })`, `bad-code`, `"code"`), see D-28.
 
-## Toolchain (decided in D10; WP-01 sets it up)
+## Toolchain
 
-TypeScript 5 `strict`, ES2022, `lib` DOM. Node 20+, npm. Builds with tsup (ESM `dist/index.js`,
-`dist/firestore.js`; IIFE `dist/burrow.min.js`, global `Burrow`). Tests: vitest with
-`fake-indexeddb` (unit, property via fast-check, backend conformance), Playwright (Chromium, Firefox,
-WebKit; CDP virtual authenticator for passkeys), firebase-tools emulator with
-`@firebase/rules-unit-testing` (rules). size-limit, eslint, prettier. GitHub Actions.
-
-Expected scripts once WP-01 lands (keep this list current):
+TypeScript 5.9 `strict`, ES2022, browser `lib`. **Node 22 or newer** for development (`npm test`
+uses Node's `--localstorage-file`); `engines` says `>=18` because that is enough to run the
+`burrow-setup` CLI. npm. Builds with tsup (`tsup.config.ts`). Tests with vitest (unit, property
+via fast-check, backend conformance), Playwright (`test/e2e`, three engines, a CDP virtual
+authenticator for passkeys), `node --test` for the rules under the Firestore emulator
+(firebase-tools, Java 21). No linter is configured. GitHub Actions: `ci.yml`, `pages.yml`
+(demo to GitHub Pages on `main`), `release.yml` (npm publish with provenance on `v*` tags).
 
 ```
-npm run build          # tsup → dist/
+npm ci
 npm run typecheck      # tsc --noEmit
-npm run lint           # eslint + prettier --check
-npm run test:unit      # vitest (node + fake-indexeddb)
-npm run test:rules     # firebase emulators:exec "vitest run test/rules"
-npm run test:browser   # playwright test
-npm run size           # size-limit
-npm run vectors        # python3 scripts/gen-vectors.py → test/vectors/
-npm test               # unit + size
+npm test               # vitest: test/unit, test/property, test/conformance/memory.test.ts
+npm run test:watch
+npm run build          # tsup → dist/index.js, dist/firestore.js, dist/burrow.min.js, dist/burrow-firestore.js
+npm run size           # scripts/size.mjs budgets
+npm run docs:check     # typecheck every README/guide code block against dist/*.d.ts (after a build)
+npm run check          # typecheck + test + build + size + docs:check
+npm run test:rules     # firebase emulator: node --test firebase/tests/rules.test.mjs  (cd firebase/tests && npm ci first)
+npm run test:firestore # conformance suite against the emulator
+npm run test:e2e       # playwright under the emulator (npm run build first)
+npm run test:live      # conformance against a real project from BURROW_FIRESTORE or the demo page; writes throwaway docs; never in CI
+npm run serve          # static server for demo/ and test pages at http://localhost:4173 (after a build)
+npm run sri            # SRI hashes for the bundles → dist/sri.json
+node scripts/gen-vectors.mjs   # regenerate test/vectors.json (output must not change within v1)
 ```
 
-A pre-installed Chromium is available in Claude Code web sessions at `/opt/pw-browsers`; do not run
-`playwright install`. The Firestore emulator needs Java; if it is missing, say so in the PR and run
-the rules tests locally.
+`BURROW_EMULATOR_PORT` overrides port 8080. In Claude Code web sessions Chromium is preinstalled
+under `/opt/pw-browsers`; do not run `playwright install`. If Java is missing, say so and skip the
+emulator suites.
 
-## Layout (target; see architecture §1 for the full tree)
+## Layout
 
 ```
-src/            library source — api/, crypto/, cache/, sync/, providers/, backends/, util/, types.ts
-test/           vectors/, unit/, conformance/, rules/, browser/
-firestore/      firestore.rules, firebase.json, reaper.mjs
-bin/            burrow-setup.mjs
-demo/           static demo site (strict CSP)
-docs/           requirements, design review, architecture, decisions, plan, backend and provider guides
-scripts/        gen-vectors.py and other dev scripts
+src/
+  index.ts              public entry: burrow(), re-exports, default backend discovery, per-page Env
+  iife.ts               script-tag entry (global Burrow) and the burrow-firestore.js loader
+  types.ts              every public interface (single source of truth)
+  errors.ts  events.ts  BurrowError/BackendError/scrub(); BurrowEvent
+  core.ts               Core: mirror, cache, local writes, sync engine, tabs, link/unlink/protect
+  facade.ts             synchronous Storage facade (Proxy)
+  secret.ts             SecretHolder: AES-KW wrapped token
+  bytes.ts              utf8/base64url/hex/sha256/random/zeroise
+  codec/                derive.ts (HKDF, ids, tokens), envelope.ts (seal/open), synccode.ts
+  cache/                types.ts, indexeddb.ts, memory.ts
+  sync/merge.ts         pure LWW merge
+  providers/            passkey.ts, synccode.ts
+  backends/             memory.ts, firestore.ts, firestore-sdk.ts
+test/                   unit/, property/, conformance/, e2e/, sample-app/, support/, vectors.json, setup.ts
+firebase/               firestore.rules, firebase.json, README.md, tests/ (rules tests, own package.json)
+scripts/                burrow-setup.mjs (bin), setup.sh, emulator.mjs, serve.mjs, size.mjs, sri.mjs, gen-vectors.mjs
+demo/                   index.html, demo.js, demo.css, burrow.config.example.html
+docs/                   guides, api, architecture, decisions, user-journeys, history/
 ```
 
 ## Conventions
 
-- `src/types.ts` is the single public surface; README snippets must compile against it.
-- Pure logic (merge, derivation, codecs) lives in modules with no I/O so it can be property-tested.
-- Inject clocks and timers (`util/timers.ts`); never call `Date.now()` or `setTimeout` directly in
-  core logic.
-- Prefer small files with one responsibility; the module layout in architecture §1 is the map.
-- Commit messages: imperative subject ≤ 72 chars, body says *why*; reference the WP (`WP-07`) and
-  requirement ids touched.
-- Keep docs honest: when a capability turns out to be unavailable on a platform, write it in
-  `docs/platform-notes.md` and amend the architecture, do not paper over it.
+- Name tests after the requirement ids they verify:
+  `it("API-7 link rejects would-orphan when dirty items exist")`.
+- Pure logic (merge, derivation, codecs) stays in modules with no I/O so it can be property-tested
+  and checked against vectors.
+- `src/types.ts` is the single public surface; README and `docs/api.md` snippets must compile
+  against it; `npm run docs:check` (`scripts/check-docs.mjs`) enforces that.
+- Any behaviour change that departs from `SECURITY.md` or `docs/architecture.md` updates that
+  document in the same PR and adds a `D-n` entry to `docs/decisions.md`. Do not leave the docs
+  and the code disagreeing.
+- Do not renumber requirement ids or decisions; add new ones at the end.
+- Commit messages: imperative subject ≤ 72 chars, body says *why*; cite requirement or decision
+  ids touched.
+- Keep docs honest: when a platform lacks a capability, document it (architecture §13 lists the
+  known gaps) rather than papering over it.
 
 ## Upstream source of the requirements
 
-The requirements originate in a Claude doc ("Burrow — Requirements") owned by the repo owner.
-`docs/requirements.md` is a snapshot at rev 79 (2026-10-01). If the owner updates the doc, re-snapshot
-it and re-run the design review for the changed sections rather than editing the snapshot by hand.
+The requirements brief (`docs/history/requirements.md`) is a snapshot taken on 2026-10-01 of a
+document the owner maintains elsewhere. If the owner updates it, re-snapshot it and reconcile the
+changed sections against the code and `docs/decisions.md` rather than editing the snapshot by hand.

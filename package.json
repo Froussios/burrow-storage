@@ -46,7 +46,8 @@
     "test:firestore": "node scripts/emulator.mjs \"vitest run --config vitest.firestore.config.ts\"",
     "test:e2e": "node scripts/emulator.mjs \"playwright test\"",
     "size": "node scripts/size.mjs",
-    "check": "npm run typecheck && npm test && npm run build && npm run size",
+    "docs:check": "node scripts/check-docs.mjs",
+    "check": "npm run typecheck && npm test && npm run build && npm run size && npm run docs:check",
     "test:live": "vitest run --config vitest.live.config.ts",
     "serve": "node scripts/serve.mjs",
     "sri": "node scripts/sri.mjs"

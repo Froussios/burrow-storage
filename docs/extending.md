@@ -1,0 +1,119 @@
+# Extending Burrow: backends and unlock methods
+
+Two seams are pluggable: the **backend** (where encrypted documents live) and the **unlock
+methods** (how a token reaches another device). Both are plain interfaces from `burrow-storage`;
+nothing in the core special-cases the built-ins.
+
+## A backend for another store
+
+A backend stores opaque envelopes at opaque ids and enforces one rule: a write must present the
+expected revision. It knows nothing about users, apps, keys or encryption; a manifest, an item
+and a keyslot look identical to it.
+
+The interface, as exported by `burrow-storage` (`import type { Backend, Envelope } from
+"burrow-storage"`; throw `BackendError`, also exported):
+
+```ts
+interface Backend {
+  readonly id: string;
+  readonly capabilities: {
+    writeAuth: boolean;        // true if the store verifies the tok/next chain itself
+    subscribe: boolean;        // true if subscribe() is implemented
+    keepalive: boolean;        // true if put() can complete during page unload
+    maxEnvelopeBytes: number;  // informational
+  };
+  get(id: string): Promise<Envelope | null>;                     // null = not found
+  getMany?(ids: string[]): Promise<(Envelope | null)[]>;         // default: parallel get()
+  put(id: string, env: Envelope, expectedRev: number | null, opts?: { keepalive?: boolean }): Promise<void>;
+  subscribe?(id: string, onChange: (env: Envelope) => void): () => void;
+}
+```
+
+### Contract
+
+- `put(id, env, null)` creates; it must reject with `BackendError("conflict")` if a document
+  exists. `put(id, env, n)` must reject with `conflict` unless the stored revision is exactly `n`.
+  Two concurrent writers at the same `expectedRev` must see exactly one success. This is the
+  optimistic-concurrency check the sync engine relies on.
+- A store that can verify the write chain (`writeAuth: true`) also rejects, with `unauthorized`,
+  any update whose `env.rev` is not `stored.rev + 1` or whose `SHA-256(env.tok)` (hex, lowercase,
+  over the UTF-8 text of the base64url token) is not the stored `next`, and any create with
+  `env.rev !== 0` or a malformed envelope. The envelope shape is: only the fields
+  `v, iv, ct, rev, ts, tok, next, z`; `v === 1`; integer `rev` and `ts`; `iv` of 16 characters;
+  `tok` of at most 64; `next` of exactly 64; `z` absent or `true`; the id 43 characters.
+  `MemoryBackend` exports `wellFormed(id, env)` that implements this check.
+- A store that cannot verify the chain declares `writeAuth: false`. Burrow warns once in the
+  console, because anyone who learns an id can then overwrite that document.
+- Map every failure to a `BackendError` with one of `conflict`, `unauthorized`, `too-large`,
+  `quota`, `network`. Unknown errors are `network` and are retried with backoff.
+- Never log, index or retain ids beyond what the store itself needs. Ids are capabilities.
+- `subscribe(id, onChange)` is called with the user's manifest id only; call `onChange` with the
+  new envelope when it changes and return an unsubscribe function. Burrow falls back to polling
+  when it is absent.
+- `keepalive` and `opts.keepalive` are declared for adapters that can honour them (a `fetch` with
+  `keepalive: true`); the shipped backends do not use them yet.
+
+### Verifying it
+
+The conformance suite every adapter must pass unchanged is `test/conformance/suite.ts` in the
+repository. It runs under vitest:
+
+```ts
+// test/conformance/my-store.test.ts
+import { backendConformance } from "./suite.js";
+import { MyBackend } from "../../src/backends/my-store.js";
+
+backendConformance("MyBackend", () => new MyBackend({ /* … */ }));
+```
+
+It covers creates, chained updates, wrong tokens, skipped revisions, stale `expectedRev`,
+concurrent writers, oversize documents, `getMany` parity and `subscribe` delivery. The Firestore
+adapter passes it against the emulator (`npm run test:firestore`); `MemoryBackend` passes it in
+`npm test`.
+
+For a store with a REST interface, the natural shape is `GET /{id}`, `PUT /{id}` with
+`If-Match: <rev>` (or `If-None-Match: *` for a create), and the chain check in the server.
+A Cloudflare Worker with KV or D1 fits in a few dozen lines.
+
+## An unlock method
+
+An unlock method (`KeyProvider`) carries the raw 32-byte token off the device and back: to a
+passkey keyslot, a hardware key, a QR handshake, a passphrase.
+
+The interface, as exported by `burrow-storage`:
+
+```ts
+interface KeyProvider {
+  readonly id: string;                    // becomes `protection` and `token.source`
+  available(): Promise<boolean>;          // feature-detect; must not prompt
+  enrol(ctx: { app: string; rootSecret: Uint8Array; backend: Backend; store?: ProviderStore }): Promise<void>;
+  recover(ctx: { app: string; interactive: boolean; input?: string; backend: Backend; store?: ProviderStore }): Promise<Uint8Array | null>;
+}
+interface ProviderStore {               // a small per-device string store (e.g. a credential id)
+  get(name: string): Promise<string | undefined>;
+  set(name: string, value: string): Promise<void>;
+}
+```
+
+### Contract
+
+- `enrol()` is called by `protect(id)` with the current token. Store it somewhere only the user
+  can get it back from. Do not keep a copy; the buffer is zeroised after the call. If you write to
+  the backend, use an envelope chained under a key derived from your own material, as the passkey
+  provider does, so the store treats it like any other document.
+- `recover()` is called by `link()` with `interactive: true`. Return the token, or `null` if the
+  user declined or nothing was found; throw a `BurrowError` for real failures. Burrow skips a
+  provider that throws and continues with the next one.
+- A token derived from something the user types (a passphrase) must go through PBKDF2-SHA-256
+  with at least 600 000 iterations before it is used, and such tokens are tagged with version
+  byte `0x02` in the storage-token encoding (reserved; v1 ships only random tokens, `0x01`).
+- Pass the provider in `keyProvider`. Passing your own replaces the defaults, so include
+  `passkey()` and `syncCode()` if you still want them:
+
+```js
+import { burrow, passkey, syncCode } from "burrow-storage";
+const store = await burrow({ app: "my-app", keyProvider: [myHardwareKey(), passkey(), syncCode()] });
+await store.protect("my-hardware-key");
+```
+
+The built-in providers are `src/providers/passkey.ts` and `src/providers/synccode.ts`.

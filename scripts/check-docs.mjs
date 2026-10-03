@@ -1,0 +1,125 @@
+#!/usr/bin/env node
+// Typechecks the code examples in the user-facing docs against the built declarations (dist/*.d.ts),
+// so README and guide snippets cannot drift from src/types.ts. Run after `npm run build`.
+//
+// Each ```ts / ```js block in the files below is classified:
+//   - usage example            → compiled as a module (js blocks with JS-level strictness)
+//   - member signature listing → must match the same members of BurrowArea exactly
+//   - interface/type listing   → each declared name must match the exported type of that name
+import { spawnSync } from "node:child_process";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const out = join(root, "node_modules/.cache/doc-snippets");
+const DOCS = ["README.md", "docs/api.md", "docs/sync-and-tokens.md", "docs/localstorage-migration.md",
+  "docs/firestore-setup.md", "docs/extending.md"];
+
+// Type names exported by burrow-storage that listings may reference without declaring.
+const EXPORTED = ["Envelope", "Manifest", "ManifestEntry", "Item", "BackendCapabilities", "Backend", "ProviderStore",
+  "EnrolContext", "RecoverContext", "KeyProvider", "BurrowConfig", "Status", "TokenSource", "TokenInfo", "Protection",
+  "StorageChanges", "ChangedEvent", "StatusEvent", "Inspection", "GetKeys", "BurrowArea", "BurrowError", "BackendError"];
+
+// Free names the usage examples treat as page context.
+const CONTEXT = `
+declare const applyTheme: (t: unknown) => void;
+declare const badge: HTMLElement;
+declare const say: (s: string) => void;
+declare const showBanner: (s: string) => void;
+declare const input: HTMLInputElement;
+declare const tokenEl: HTMLElement;
+declare const text: string;
+declare const myHardwareKey: () => import("burrow-storage").KeyProvider;
+`;
+
+const firstLine = (body) => body.split("\n").find((l) => l.trim() && !l.trim().startsWith("//")) ?? "";
+
+function usage(body) {
+  let pre = "";
+  if (!/^\s*import /m.test(body)) {
+    pre += 'import { burrow, MemoryBackend, BurrowError, passkey, syncCode } from "burrow-storage";\n';
+    pre += 'import { FirestoreBackend } from "burrow-storage/firestore";\n';
+  }
+  if (!/\b(const|let)\s+store\b/.test(body)) pre += 'declare const store: import("burrow-storage").BurrowArea;\n';
+  if (!/\b(const|let)\s+storage\b/.test(body)) pre += "declare const storage: Storage;\n";
+  return `${pre}${CONTEXT}\nexport {};\n${body}`;
+}
+
+function members(body) {
+  return `import type { BurrowArea, GetKeys, TokenInfo, Inspection } from "burrow-storage";
+interface Doc {
+${body}}
+type Missing = Exclude<keyof Doc, keyof BurrowArea>;
+const none: Missing[] = [];
+type K = keyof Doc & keyof BurrowArea;
+const a: Pick<BurrowArea, K> = null! as Doc;
+const b: Doc = null! as Pick<BurrowArea, K>;
+export { none, a, b };
+`;
+}
+
+function declarations(body) {
+  const declared = [...body.matchAll(/^(?:export\s+)?(?:interface|type)\s+(\w+)/gm)].map((m) => m[1]);
+  const aliases = EXPORTED.filter((n) => !declared.includes(n)).map((n) => `  type ${n} = R.${n};`).join("\n");
+  const checks = declared.filter((n) => EXPORTED.includes(n)).map((n) =>
+    `const a_${n}: R.${n} = null! as unknown as D.${n};\nconst b_${n}: D.${n} = null! as unknown as R.${n};\nexport { a_${n}, b_${n} };`);
+  // Interfaces with methods are compared structurally in both directions.
+  return `import type * as R from "burrow-storage";
+namespace D {
+${aliases}
+${body.replace(/^(interface|type)\s/gm, "export $1 ")}
+}
+${checks.join("\n")}
+export {};
+`;
+}
+
+rmSync(out, { recursive: true, force: true });
+mkdirSync(join(out, "ts"), { recursive: true });
+mkdirSync(join(out, "js"), { recursive: true });
+const where = {};
+let n = 0;
+for (const file of DOCS) {
+  const text = readFileSync(join(root, file), "utf8");
+  for (const m of text.matchAll(/```(ts|js)\n([\s\S]*?)```/g)) {
+    const [, lang, body] = m;
+    const line = text.slice(0, m.index).split("\n").length;
+    const head = firstLine(body).trim();
+    // Examples that import from the repository itself (e.g. the conformance suite) are repo-internal.
+    if (/from\s+["']\.\.?\//.test(body)) continue;
+    let kind, code;
+    if (/^(interface|type)\s/.test(head)) { kind = "ts"; code = declarations(body); }
+    else if (/^(readonly\s|\w+\??\(.*\):)/.test(head) && !/=/.test(head.split(":")[0])) { kind = "ts"; code = members(body); }
+    else { kind = lang; code = usage(body); }
+    const name = `s${String(++n).padStart(2, "0")}.ts`;
+    writeFileSync(join(out, kind, name), code);
+    where[`${kind}/${name}`] = `${file}:${line}`;
+  }
+}
+
+const paths = {
+  "burrow-storage": [join(root, "dist/index.d.ts")],
+  "burrow-storage/firestore": [join(root, "dist/firestore.d.ts")],
+};
+const base = { target: "ES2022", module: "ESNext", moduleResolution: "Bundler", lib: ["ES2022", "DOM", "DOM.Iterable"],
+  noEmit: true, skipLibCheck: true, strict: true, noImplicitAny: false, paths };
+writeFileSync(join(out, "tsconfig.ts.json"), JSON.stringify({ compilerOptions: base, include: ["ts/*.ts"] }));
+// ```js examples are JavaScript: no strict null checks, catch variables are `any`.
+writeFileSync(join(out, "tsconfig.js.json"), JSON.stringify({
+  compilerOptions: { ...base, strictNullChecks: false, useUnknownInCatchVariables: false }, include: ["js/*.ts"] }));
+
+const tsc = join(root, "node_modules/typescript/bin/tsc");
+let failed = false;
+for (const cfg of ["tsconfig.ts.json", "tsconfig.js.json"]) {
+  const r = spawnSync(process.execPath, [tsc, "-p", join(out, cfg)], { encoding: "utf8" });
+  if (r.status !== 0) {
+    failed = true;
+    for (const l of r.stdout.split("\n").filter(Boolean)) {
+      const m = l.match(/(ts|js)[/\\](s\d+\.ts)\((\d+),/);
+      console.error(m ? `${where[`${m[1]}/${m[2]}`]} → ${l}` : l);
+    }
+  }
+}
+if (failed) { console.error("doc snippets: FAILED"); process.exit(1); }
+console.log(`doc snippets: ${n} blocks typecheck against dist/*.d.ts`);

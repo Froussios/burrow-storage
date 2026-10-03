@@ -1,3 +1,10 @@
+> **Historical document.** This was the pre-implementation work plan. The implementation did not
+> follow it package by package: it landed on one branch in milestones M0–M7 of its own, with a
+> different module layout (`src/core.ts`, `src/codec/`, `firebase/`, `scripts/`) and different
+> tooling (vitest only, a custom size script, `node --test` for the rules). The GitHub issues it
+> maps to (#1–#18) predate the code. Kept for the record; see [`../architecture.md`](../architecture.md)
+> for what exists.
+
 # Implementation plan
 
 Work is cut into work packages (WP). Each WP is one GitHub issue, one branch, one PR. The issue

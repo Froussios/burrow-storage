@@ -1,304 +1,355 @@
 # Burrow
 
-Persistent, cross-device, per-user storage for static sites. No login, no backend of your own.
+**Per-user data for static sites that survives a browser reset and follows the user to their other
+devices. No login. No backend of your own. Nothing readable in the store.**
 
-A burrow is dug by its owner, hidden from everyone else, and found only by one who knows the
-entrance. The user's device holds a random key. The key derives unguessable document ids and
-encryption keys. The data sits encrypted at those ids in one shared, free store that every
-prototype can reuse. The site holds nothing, and the store sees only hashes and ciphertext.
+```js
+import { burrow } from "burrow-storage";
+
+const store = await burrow({ app: "my-prototype" });
+await store.set({ theme: "dark" });
+const { theme } = await store.get("theme");
+```
+
+That is the whole integration. The user is never asked to sign up, and you never run a server.
+The data is encrypted on the device and kept in one shared, free Firestore project that every
+prototype can reuse. The project's operator, you, and anyone holding a dump of the database see
+only random-looking ids and ciphertext.
+
+- **Demo:** [`demo/`](demo/) is a page whose theme and text draft follow you across devices. Run it
+  with `npm run build && npm run serve` and open <http://localhost:4173/demo/>; a hosted copy is
+  published to GitHub Pages from `main`.
+- **Status:** pre-release. The API below is implemented and tested; the first npm release is
+  pending, so until then build from source (see [Development](#development)).
+
+## Contents
+
+- [Why Burrow](#why-burrow)
+- [What the store sees](#what-the-store-sees)
+- [Quick start](#quick-start)
+- [The API in one page](#the-api-in-one-page)
+- [Reaching the data from another device](#reaching-the-data-from-another-device)
+- [Replacing localStorage](#replacing-localstorage)
+- [Setting up the shared store](#setting-up-the-shared-store)
+- [Limits, costs and browser support](#limits-costs-and-browser-support)
+- [Security in brief](#security-in-brief)
+- [Documentation](#documentation)
+- [Development](#development)
+
+## Why Burrow
+
+Small sites and prototypes keep per-user state: a theme, a draft, a score, a list. `localStorage`
+loses it the moment the user clears site data or opens another device. Every hosted alternative
+asks for something a prototype should not need: an account for the user to create, a backend for
+you to run, or a paid tier per project.
+
+Burrow replaces the account with a **capability**: a random 256-bit secret, generated on the device
+the first time your site runs, kept like a session cookie. Everything else follows from that
+secret. It derives the ids under which the user's documents are stored, the key that encrypts them,
+and the key that authorises writes. The store needs no idea who the user is, because the ids are
+unguessable and the content is opaque. A user who wants the same data on a second device carries
+the secret across, as a passkey or as a 56-character **storage token**, and the second device
+derives the same ids and keys.
+
+What you get:
+
+| | |
+| --- | --- |
+| **No login** | No account, email, OAuth popup or consent screen. First use is silent. |
+| **No backend** | Static files only. One Firestore project on the free Spark plan serves all your prototypes, and it has hard daily quotas, so the worst case under abuse is "sync pauses", never a bill. |
+| **Local-first** | Reads and writes complete against the local cache immediately and work offline. Sync is a background process that never blocks the UI. |
+| **Private by construction** | The store holds keyed-hash ids and AES-256-GCM ciphertext. Writes are gated by a hash chain only the secret's holder can extend, so even someone who learns an id can read nothing and write nothing. |
+| **Familiar shape** | The async API mirrors `chrome.storage`. `store.storage` is a synchronous drop-in for `localStorage`. |
+| **Swappable store** | Firestore is one adapter behind a small `Backend` interface; a conformance suite tells you when yours is right. |
+
+What it is not: multi-user or shared data, real-time collaboration, a file store, or an identity
+system. **Burrow cannot reset a user's data.** If the secret is gone from every device and there is
+no passkey backup or saved token, the data is unreachable. Burrow gives you the hooks to tell the
+user so at a good moment.
+
+## What the store sees
+
+This is a real document, produced by `store.set({ theme: "dark" })` against the in-memory backend,
+exactly as the operator of the shared Firestore collection would see it:
+
+```
+a7tkB2hrkzrgP1Xcuc6mdBIn7k-Znuoddrm7Ij7F6eQ
+{
+  "v": 1,
+  "iv": "_7JMHgHRuX6Jcc3d",
+  "ct": "CcAWNBvevgwBL68y7TTwHAYH1FW9vW3FjZneDHKyL2VBCVjEzDnusnm8LsuzH_7CuExNcppP5WOfaFvAAvWa2Fw0HnrqeKm7c5u1li1GJjHT0w",
+  "rev": 0,
+  "ts": 1791007923822,
+  "tok": "2y6ROEfHowJEIvdMOBPYORzAZKfDlUA8d7uwHNqD4VE",
+  "next": "f604b4a4e4bdbf329a6a70c567fd6a481bade773ad1df44ff1a1d01bd46be9ee",
+  "z": true
+}
+```
+
+The id (first line) is 43 characters derived from the user's secret and the key name by HMAC. `ct`
+is the AES-256-GCM ciphertext of `{ key: "theme", value: "dark" }`, bound to the id, your app id
+and the revision. `tok` is the one-time token that authorised this write; `next` commits to the
+token the next revision must present, and the store's rules verify that chain with SHA-256. There
+is no user id, no key name, no plaintext, nothing that links two documents of the same user.
+Listing the collection is denied, so an id is the only way in, and 256 random bits are not
+guessable.
+
+What the store does learn: how many documents exist, their sizes, when they are written, and the
+IP each request comes from. What a script running on your own origin learns: everything, exactly
+as with `localStorage`. [SECURITY.md](SECURITY.md) has the full threat model.
+
+## Quick start
+
+### 1. Pick a store
+
+Burrow works with no store at all: data then stays on the device, and `burrow()` warns once in the
+console. To sync across devices you need the shared Firestore project, created once and reused by
+every site you build:
+
+```sh
+npx burrow-setup firestore
+```
+
+It prints the console steps (create a Spark project, create Firestore, deploy the bundled rules,
+restrict the API key) and gives you three public values: `apiKey`, `projectId`, `appId`. Details,
+costs and quotas are in [docs/firestore-setup.md](docs/firestore-setup.md).
+
+### 2a. Script tag, no bundler
 
 ```html
 <meta name="burrow-firestore" content='{"apiKey":"…","projectId":"…","appId":"…"}'>
 <script src="burrow.min.js"></script>
-<script type="module">
-  const store = await Burrow.burrow({ app: "my-prototype" });
-  await store.set({ theme: "dark" });
-  const { theme } = await store.get("theme");
+<script>
+  Burrow.burrow({ app: "my-prototype" }).then(async (store) => {
+    await store.set({ theme: "dark" });
+    const { theme } = await store.get("theme");
+  });
 </script>
 ```
 
-Or with a bundler:
+`burrow.min.js` exposes the global `Burrow`. The Firestore SDK is not inlined: on first use the
+adapter loads `burrow-firestore.js` from the same directory as `burrow.min.js`. Self-host the two
+files together and the page contacts no third-party script host, works under `script-src 'self'`,
+and works from `file://`. (If you load `burrow.min.js` from a CDN instead, the SDK file comes from
+that CDN too, and that second request carries no SRI hash.) Both files are in the package's `dist/`
+folder and attached to every GitHub release with their SRI hashes.
+
+### 2b. Bundler or ESM
+
+```sh
+npm install burrow-storage firebase
+```
+
+`firebase` is an optional peer dependency; it is needed only when you use the Firestore backend.
 
 ```js
 import { burrow } from "burrow-storage";
-const store = await burrow({ app: "my-prototype" });
-```
+import { FirestoreBackend } from "burrow-storage/firestore";
 
-- **No login.** Nobody creates an account, types an email or sees a consent screen. A secret is
-  generated silently on first use and kept on the device, like a session cookie.
-- **Local-first.** Reads and writes complete against IndexedDB immediately; sync runs in the
-  background and never blocks the UI. Works offline.
-- **Zero trust in the store.** Ids are keyed hashes, contents are AES-256-GCM ciphertext, and
-  writes need a hash-chained token only the key holder can compute.
-- **Familiar shape.** The async API mirrors `chrome.storage`; `store.storage` is a drop-in
-  `localStorage`.
-- **Swappable store.** Firestore on the free Spark plan is the reference backend. Another store
-  needs one small interface.
-
-> **Burrow cannot reset your users' data.** If a user loses every device and has no sync code or
-> passkey, their data is gone. Offer the sync code, and use `onUnprotected` to remind them.
-
-## Contents
-
-- [How it works](#how-it-works)
-- [API](#api)
-- [Sync to another device](#sync-to-another-device)
-- [Migrating from localStorage](#migrating-from-localstorage)
-- [Setting up the shared store](#setting-up-the-shared-store)
-- [Security, CSP and SRI](#security-csp-and-sri)
-- [Configuration](#configuration)
-- [Custom backends and unlock methods](#custom-backends-and-unlock-methods)
-- [Browser support and size](#browser-support-and-size)
-- [Development](#development)
-
-## How it works
-
-```
-your site ──► store.storage (sync, localStorage-shaped)   store (async, chrome.storage-shaped)
-                         └──────────────┬─────────────────────┘
-                               Burrow core: IndexedDB cache · codec · sync engine
-                     unlock methods ┘                         └ backend (the only swappable seam)
-               passkey keyslot · sync code                      Firestore · memory · your own
-```
-
-1. On first use the device generates a 256-bit root secret. It is stored in IndexedDB, wrapped
-   under a non-extractable WebCrypto key.
-2. From the secret and your `app` id, HKDF derives a path key, an encryption key and a write
-   key. Every document id is a keyed hash: one *manifest* (the user's key directory), one
-   document per item key, one *keyslot* per passkey.
-3. Each document is an envelope: `{ v, iv, ct, rev, ts, tok, next }`. The ciphertext binds its
-   id, app and revision as AES-GCM additional data. `tok` proves the writer knows the secret;
-   `next` commits to the token the next revision must present. Firestore rules check that
-   chain with SHA-256, so knowing an id lets you read ciphertext but never write.
-4. Sync is per item, last-writer-wins per key, with tombstones. A pull with nothing new costs
-   one read. A push costs one write per changed item plus one for the manifest.
-
-The full design is in [SECURITY.md](SECURITY.md); judgement calls are in
-[DECISIONS.md](DECISIONS.md).
-
-## API
-
-### `burrow(config): Promise<BurrowArea>`
-
-Resolves from the local cache with no user interaction, usually in a few milliseconds. Calling it
-again with the same `app` on the same page returns the same instance.
-
-### `BurrowArea`
-
-| Member | What it does |
-| --- | --- |
-| `get(keys?, { fresh? })` | `chrome.storage` shapes: `null` (everything), `"key"`, `["a", "b"]`, or `{ key: default }`. Answers from the cache. `fresh: true` also fetches those items from the store first. |
-| `set(items)` | Writes any JSON values. Resolves once the write is durable locally, never waits on the network. A non-JSON value (`Date`, `Map`, a function, `undefined`) throws `TypeError`. |
-| `remove(keys)`, `clear()` | Delete keys everywhere (a tombstone syncs to other devices). |
-| `getBytesInUse(keys?)` | Approximate size, as in `chrome.storage`. |
-| `onChanged` | `{ changes: { key: { oldValue?, newValue? } }, source: "local" \| "remote" }`, batched per sync pass. `addListener(fn)` or `addEventListener("changed", e => e.detail)`. |
-| `status`, `onStatus` | `"idle"`, `"syncing"`, `"offline"` or `"error"`; the event carries the last `BurrowError`. |
-| `token`, `onToken` | `{ source, remembered, since }`: whether the token in use was `generated` here, entered as a `code`, opened from a `link`, restored from a `passkey` (or a custom provider), and whether it was `remembered` by this browser from an earlier visit. |
-| `protection`, `onUnprotected` | Which unlock method protects this device's secret. `onUnprotected` fires once per device when data exists and none does. |
-| `protect(providerId?)` | Enrol an unlock method (`"passkey"`, `"sync-code"`). Call from a user gesture. |
-| `exportCode()` | The sync code for another device, e.g. `04G1-…` (56 characters). |
-| `link({ code } \| { provider } \| {})` | Bring an existing secret onto this device: from a code, or from the configured providers in order. |
-| `unlink()` | Forget the secret on this device, like logging out. The data stays in the store. |
-| `syncNow()` | Push and pull now. Rejects with the error if the pass failed. |
-| `exportJSON()`, `importJSON(json)` | A plaintext backup the user can keep. |
-| `inspect()` | `{ status, protection, manifestRev, dirtyKeys, lastSyncAt, backend, provider }` for a debug panel. |
-| `storage` | A synchronous `Storage` (`getItem`, `setItem`, `key`, `length`, property access…). |
-
-### Errors
-
-Every rejection is a `BurrowError` with a stable `code`:
-
-| `code` | When |
-| --- | --- |
-| `item-too-large` | `set()` / `setItem()` over `maxItemBytes` (thrown before anything is written). |
-| `bad-code` | `link({ code })` with a mistyped code. Checked before any network call. |
-| `no-provider` | `link()` found no way to recover a secret, or `protect()` had nothing to enrol. |
-| `prf-unsupported` | The browser or authenticator cannot do passkey PRF. Offer the sync code. |
-| `would-orphan` | `link()`/`unlink()` would abandon writes that never synced. Pass `{ discardLocal: true }` to proceed. |
-| `decrypt-failed` | A document does not decrypt with this secret. Sync pauses; the cache is untouched; re-link. |
-| `conflict`, `backend`, `quota` | Sync trouble. These arrive through `onStatus`, never from `set()`. |
-
-Write failures never reject `set()`. If the store is unreachable, `status` turns `"offline"`, dirty
-items wait, and sync retries with backoff. If the daily quota is exhausted, sync pauses until the
-quota resets.
-
-## Sync to another device
-
-Nothing is needed to start; the first device just works. To bring the data elsewhere, the user
-needs one of:
-
-- **Sync code**: always available. Show `await store.exportCode()`, and on the other device call
-  `store.link({ code })`. The code is case-insensitive and forgives `O/0` and `I/L/1`. You can
-  also share it as a link: `https://your.site/#burrow=<code>` links the device on load, and
-  Burrow removes the code from the address bar.
-- **Passkey**: `store.protect("passkey")` creates a passkey and stores the secret in a keyslot
-  wrapped by the passkey's PRF output. On a new device, `store.link({ provider: "passkey" })`
-  needs one passkey prompt. PRF support is uneven across browsers and authenticators, and
-  cross-ecosystem use goes through the QR/hybrid flow. **The sync code is the guaranteed path.**
-
-A typical site has one button, "Sync to another device", that calls `protect()` and then shows
-the code. It also listens once for `onUnprotected` to nudge the user at a calm moment:
-
-```js
-store.onUnprotected.addListener(() => showBanner("Keep a copy: show your sync code"));
-```
-
-On shared computers, use `burrow({ app, rememberDevice: false })`: nothing is persisted, and
-the user links with their passkey or code each session.
-
-## Migrating from localStorage
-
-1. Load Burrow once, before your code runs:
-   ```js
-   const store = await burrow({ app: "my-app" });
-   ```
-2. Replace `localStorage` with `store.storage`. Nothing else changes. `getItem`, `setItem`,
-   `removeItem`, `clear`, `key(i)`, `length`, `storage.foo = "x"`, `"foo" in storage` and
-   `Object.keys(storage)` all behave as before. Writes are visible immediately and persisted in
-   the background, and are flushed when the page is hidden or closed.
-3. Optionally import what the user already has:
-   ```js
-   if (!store.storage.length) {
-     for (let i = 0; i < localStorage.length; i++) {
-       const k = localStorage.key(i);
-       store.storage.setItem(k, localStorage.getItem(k));
-     }
-   }
-   ```
-4. To react to changes from other devices, use `store.onChanged`. Burrow does not fire the
-   window `storage` event.
-
-The repo's acceptance test does exactly this to a sample app (`test/sample-app/app.js`): a
-literal find-and-replace of the identifier, then the app's own tests run against both.
-
-## Setting up the shared store
-
-Do this once; every prototype then reuses the same project.
-
-```sh
-npx burrow-setup firestore          # prints the exact console steps
-npx burrow-setup firestore --run    # or does them with gcloud + the Firebase CLI
-```
-
-In short: create a Firebase project **without** billing (the Spark plan), create Firestore in
-production mode, deploy [`firebase/firestore.rules`](firebase/firestore.rules), and restrict the
-browser API key. Then give pages the three public config fields:
-
-```html
-<meta name="burrow-firestore" content='{"apiKey":"…","projectId":"…","appId":"…"}'>
-<!-- or: window.BURROW = { firestore: { apiKey, projectId, appId } } -->
-<!-- or: burrow({ app, backend: new FirestoreBackend({ apiKey, projectId, appId }) }) -->
-```
-
-**The `apiKey` is an identifier, not a secret.** It is safe in page source. Restrict it in the
-Google Cloud console to the Cloud Firestore API and to your own domains, so other sites cannot
-spend your quota.
-
-**Costs and ceilings.** Spark gives 1 GiB stored, plus 50,000 reads, 20,000 writes and 20,000
-deletes per day, shared by every prototype on the project. Each sync costs:
-
-| Operation | Cost |
-| --- | --- |
-| Pull with nothing new | 1 read |
-| Pull | 1 read + 1 read per changed item |
-| Push | 1 write per changed item + 1 manifest write (+ 1 manifest read) |
-| Passkey enrol / recover | 1–2 reads/writes |
-
-Writes are debounced (1.5 s by default) and coalesced. When a ceiling is hit, sync pauses until
-the daily reset. On Spark there is no way to be billed.
-
-The rules deny `list` (so ids stay capabilities) and `delete` (removal is a tombstone plus an
-overwrite). They accept a first write at an unused id, and an update only with the right token
-at exactly the next revision.
-
-## Security, CSP and SRI
-
-The store, its operator, your site's developer and anyone with a database dump cannot read user
-data or tell users apart. Ids are 43-character keyed hashes, every field is ciphertext or
-envelope metadata, and no user identifier exists anywhere. The threat model, derivation and
-formats are in [SECURITY.md](SECURITY.md).
-
-As with `localStorage`, a malicious script running on your origin can use the data, so protect
-the page itself:
-
-- **CSP.** Burrow needs no `eval`, inline script or third-party script host. A policy like
-  `default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self' https://firestore.googleapis.com`
-  works; see [`demo/index.html`](demo/index.html). The script-tag build loads the Firestore SDK
-  on first use from `burrow-firestore.js`, next to `burrow.min.js` on your own origin.
-- **SRI.** If you load from a CDN, pin the file. Every release lists its hashes:
-  ```html
-  <script src="https://cdn.jsdelivr.net/npm/burrow-storage@VERSION/dist/burrow.min.js"
-          integrity="sha384-…" crossorigin="anonymous"></script>
-  ```
-  Releases are published with npm provenance. For a `'self'`-only CSP, self-host
-  `burrow.min.js` and `burrow-firestore.js` together.
-
-## Configuration
-
-```ts
-burrow({
-  app: "my-app",            // required, /^[a-z0-9-]{1,64}$/
-  backend,                  // default: Firestore from <meta name="burrow-firestore"> or window.BURROW
-  keyProvider,              // default: [passkey(), syncCode()]
-  cache: "indexeddb",       // or "memory"
-  rememberDevice: true,     // false: secret in memory only (shared computers)
-  syncIntervalMs: 30_000,   // polling while visible; 0 disables (live updates still arrive)
-  debounceMs: 1_500,        // coalesce writes before upload
-  maxItemBytes: 200_000,    // per item, plaintext; hard ceiling 749,000
-  debug: false,             // one console line per sync event; never ids, keys or values
+const store = await burrow({
+  app: "my-prototype",
+  backend: new FirestoreBackend({ apiKey: "…", projectId: "…", appId: "…" }),
 });
 ```
 
-With no backend configured, Burrow still works and keeps everything on the device.
+With the `<meta name="burrow-firestore">` tag (or `window.BURROW = { firestore: {…} }`) on the
+page you can omit `backend`; Burrow finds the config and loads the adapter itself.
 
-## Custom backends and unlock methods
+### 3. Use it
 
-A backend stores opaque envelopes at opaque ids and enforces the revision chain:
+```js
+await store.set({ theme: "dark", draft: "Dear diary" });   // durable locally before it resolves
+const { theme } = await store.get("theme");                 // from the cache, no network
+const all = await store.get();                              // every key
+await store.remove("draft");
 
-```ts
-interface Backend {
-  id: string;
-  capabilities: { writeAuth: boolean; subscribe: boolean; keepalive: boolean; maxEnvelopeBytes: number };
-  get(id): Promise<Envelope | null>;
-  put(id, envelope, expectedRev /* null = create */): Promise<void>;  // rejects BackendError(code)
-  getMany?(ids): Promise<(Envelope | null)[]>;
-  subscribe?(id, onChange): () => void;
+store.onChanged.addListener(({ changes, source }) => {
+  // source: "local" (this device) or "remote" (another device or tab)
+  if (changes.theme) applyTheme(changes.theme.newValue);
+});
+
+store.onStatus.addListener(({ status, error }) => {
+  badge.textContent = status;                               // "idle" | "syncing" | "offline" | "error"
+});
+```
+
+Writes never fail because the network did. If the store is unreachable, `status` becomes
+`"offline"`, the writes wait, and sync resumes with backoff.
+
+## The API in one page
+
+Full reference with every signature and error: [docs/api.md](docs/api.md).
+
+| Member | What it does |
+| --- | --- |
+| `burrow(config)` | Opens the store for one `app`. Resolves from the local cache, usually in a few milliseconds, with no user interaction. Same `app` on the same page returns the same instance. |
+| `get(keys?, { fresh? })` | `chrome.storage` shapes: nothing (all keys), `"key"`, `["a","b"]`, or `{ key: default }`. `fresh: true` fetches from the store first. |
+| `set(items)` | Any JSON values. Resolves once written locally. Non-JSON values (`Date`, `Map`, functions, `undefined`, `NaN`) throw `TypeError`. |
+| `remove(keys)`, `clear()` | Delete keys everywhere; a tombstone reaches other devices. |
+| `getBytesInUse(keys?)` | Size of the plaintext JSON, as `chrome.storage` counts it. |
+| `onChanged` | `{ changes: { key: { oldValue?, newValue? } }, source }`. `addListener(fn)` or `addEventListener("changed", e => e.detail)`. |
+| `status`, `onStatus` | `"idle"`, `"syncing"`, `"offline"`, `"error"`; the event carries the last `BurrowError`. |
+| `token`, `onToken` | Where this device's storage token came from: `{ source, remembered, since }`. |
+| `protection`, `onUnprotected` | Whether a passkey or a saved token can bring the data back; `onUnprotected` fires once per device when there is data and nothing protects it. |
+| `exportCode()` | The storage token, 56 characters in groups of four. |
+| `link({ code })`, `link({ provider })`, `link()` | Adopt an existing token on this device: typed in, or recovered by a passkey. |
+| `protect("passkey")` | Create a passkey backup of the token. |
+| `unlink()` | Forget the token on this device, like logging out. |
+| `syncNow()` | Run one sync pass now; rejects if it failed. |
+| `exportJSON()`, `importJSON(json)` | Plaintext export of the app's data, and its inverse. |
+| `inspect()` | A plain object for a debug panel. |
+| `storage` | The synchronous `Storage` facade. |
+
+Every rejection is a `BurrowError` with a stable `code`: `bad-code`, `item-too-large`,
+`would-orphan`, `no-provider`, `prf-unsupported`, `decrypt-failed`, `conflict`, `quota`, `backend`.
+Invalid arguments throw `TypeError`.
+
+## Reaching the data from another device
+
+Nothing is needed on the first device: the token is generated and remembered there. To use the
+same data elsewhere, the user carries the token across in one of two ways.
+
+**The storage token.** Always available, including from `file://`. Show
+`await store.exportCode()` on the first device; on the second, call `store.link({ code })` with
+what the user typed or pasted. The token looks like
+`0400-20G3-0G2G-C1R8-1450-P30D-1R7H-048J-2CA1-A5GQ-30CH-M6RW-3MF1-YJ8H`. Case, spaces and hyphens
+do not matter, and `O`/`0` and `I`/`L`/`1` are read as the same. A mistyped token fails the
+checksum and rejects with `bad-code` before any network call. The page may also offer it as a link,
+`https://your.site/#burrow=<token>`: a device that opens the link adopts the token and Burrow
+removes it from the address bar at once.
+
+**A passkey backup.** `store.protect("passkey")` creates a passkey and stores the token in a
+*keyslot* document wrapped under the passkey's PRF output; the passkey never becomes the secret.
+On another device, `store.link({ provider: "passkey" })` needs one passkey prompt. Passkeys need
+a secure origin (`https:` or `localhost`), and PRF support is uneven across browsers and
+authenticators; where it is missing `protect("passkey")` rejects with `prf-unsupported`. The
+storage token is the path that always works.
+
+```js
+// A calm moment to nudge the user, once per device, when there is data worth keeping.
+store.onUnprotected.addListener(() => {
+  showBanner("Keep a copy of your storage token, or back it up with a passkey.");
+});
+
+// Second device
+try {
+  await store.link({ code: input.value });
+} catch (e) {
+  if (e.code === "bad-code") say("That token is not right.");
+  if (e.code === "would-orphan") {
+    // this device has writes that never synced; confirm, then
+    await store.link({ code: input.value, discardLocal: true });
+  }
 }
 ```
 
-Run the conformance suite in `test/conformance/suite.ts` against yours. A store that cannot check
-the token chain must declare `writeAuth: false`, and Burrow will warn.
+Linking replaces the device's token for every Burrow app on the origin, pulls the data, and fires
+`onToken` and `onChanged`; another app on the same origin picks the new token up on its next load
+and drops what it cached under the old one, including anything it never managed to sync. On
+shared computers use `burrow({ app, rememberDevice: false })`: the token lives in memory only,
+the cache defaults to memory, and the user links each session. Have them link before they write,
+because anything written first belongs to a throwaway token.
 
-An unlock method implements `{ id, available(), enrol(ctx), recover(ctx) }`; see `KeyProvider`
-in the types. Pass it as `keyProvider`.
+## Replacing localStorage
 
-## Browser support and size
+```js
+const store = await burrow({ app: "my-app" });
+const storage = store.storage;      // implements the DOM Storage interface, synchronously
+storage.setItem("draft", text);     // visible at once, persisted and synced in the background
+storage.getItem("draft");
+```
 
-The last two versions of Chrome, Edge, Firefox and Safari, plus iOS Safari and Android Chrome.
-Burrow needs WebCrypto, IndexedDB and BroadcastChannel; passkey PRF is optional and
-feature-detected. It works from `file://` for prototyping, except passkeys, which need a secure
-origin; use the sync code there.
+Swapping the identifier `localStorage` for `store.storage` is the only change: `getItem`,
+`setItem`, `removeItem`, `clear`, `key(i)`, `length`, `storage.foo = "x"`, `"foo" in storage` and
+`Object.keys(storage)` all behave as before, pending writes are flushed when the page is hidden or
+closed, and the repository's acceptance test does exactly that find-and-replace on a sample app.
+Two differences: Burrow does not fire the window `storage` event (use `onChanged`), and values
+written through the async API come back from `getItem` as their JSON text. Migration recipe:
+[docs/localstorage-migration.md](docs/localstorage-migration.md).
 
-| Bundle | min + gzip |
+## Setting up the shared store
+
+One Firebase project on the Spark plan, created once:
+
+```sh
+npx burrow-setup firestore          # prints the exact console steps
+npx burrow-setup firestore --run    # or performs them with gcloud and the Firebase CLI
+```
+
+The project needs no billing account, no Authentication product, no Functions. The bundled
+[`firebase/firestore.rules`](firebase/firestore.rules) let anyone read a document by id, nobody
+list or delete, and allow an update only at the next revision with the right token. Then put the
+three public config values on each page as the `<meta name="burrow-firestore">` tag shown above.
+
+**The `apiKey` is an identifier, not a secret.** Restrict it in the Google Cloud console to the
+Cloud Firestore API and to your own domains so other sites cannot spend your quota. The guide:
+[docs/firestore-setup.md](docs/firestore-setup.md).
+
+## Limits, costs and browser support
+
+| | |
 | --- | --- |
-| Core + memory backend | 11.2 KB (budget 12 KB, checked in CI) |
-| Passkey provider | +1.0 KB (budget 2 KB) |
-| Firestore adapter | +0.9 KB; the Firebase SDK (≈ 135 KB) loads only when used |
+| Item size | `maxItemBytes`, default 200 000 bytes of JSON per item, hard ceiling 749 000 |
+| Spark quotas | 1 GiB stored; 50 000 reads, 20 000 writes, 20 000 deletes per day, shared by all your prototypes |
+| Pull with nothing new | 1 read |
+| Pull | 1 read, plus 1 per changed item |
+| Push | about 1 read and 1 write per changed item (Firestore writes go through a transaction), plus 1 read and 1 write for the manifest |
+| Polling | every 30 s while the page is visible (configurable); live updates also arrive through a Firestore listener |
+| Browsers | last two versions of Chrome, Edge, Firefox and Safari, iOS Safari, Android Chrome. Requires WebCrypto. Without IndexedDB the cache is in memory and the token is not remembered; without `BroadcastChannel` tabs are not coordinated. |
+| Bundle | `burrow.min.js` 14 KB min+gzip (core 11.4 KB, checked in CI against a 12 KB budget); `burrow-firestore.js` 140 KB, loaded only when Firestore is used |
+
+Writes are debounced (1.5 s) and coalesced. When a daily ceiling is hit, sync pauses until the
+quota resets and resumes on its own.
+
+## Security in brief
+
+Everything the store holds is derived from the user's secret through one-way functions or is
+ciphertext under a key derived from it:
+
+- ids: `base64url(HMAC-SHA-256(pathKey, "item" ‖ key))`, one key per app per user via HKDF;
+- content: AES-256-GCM with a fresh IV per write, id, app and revision bound as additional data;
+- writes: a per-document hash chain of one-time HMAC tokens, checked by the rules with SHA-256;
+- on the device: the secret is wrapped (AES-KW) under a non-extractable WebCrypto key in IndexedDB;
+- in transit: the secret leaves the device only inside a passkey keyslot or as the storage token.
+
+Out of scope, as for `localStorage`: a malicious script on your own origin. Ship a strict CSP and
+use SRI for the script tag; Burrow needs no `eval`, no inline script and no third-party host, and
+the demo runs under `default-src 'none'`. [SECURITY.md](SECURITY.md) has the derivation, formats,
+threat table and the honest list of what is *not* protected (copied browser profiles, storage
+exhaustion of the shared project, timing metadata).
+
+## Documentation
+
+| | |
+| --- | --- |
+| [docs/api.md](docs/api.md) | Full API reference: config, methods, events, errors, types |
+| [docs/sync-and-tokens.md](docs/sync-and-tokens.md) | Storage tokens, passkey backups, links, `rememberDevice`, UX advice |
+| [docs/localstorage-migration.md](docs/localstorage-migration.md) | The facade and how to migrate an existing site |
+| [docs/firestore-setup.md](docs/firestore-setup.md) | Creating and operating the shared store; costs, quotas, abuse |
+| [docs/extending.md](docs/extending.md) | Writing a backend for another store, or a custom unlock method |
+| [SECURITY.md](SECURITY.md) | Cryptographic design and threat model |
+| [docs/architecture.md](docs/architecture.md) | How the implementation is put together (for contributors) |
+| [docs/decisions.md](docs/decisions.md) | Decision log |
+| [CHANGELOG.md](CHANGELOG.md) | Changes per release |
 
 ## Development
 
 ```sh
 npm ci
-npm test               # unit, property and conformance tests (Node, fake IndexedDB)
+npm test               # unit, property and backend-conformance tests (Node, fake IndexedDB)
+npm run typecheck
+npm run build          # dist/: ESM entries, burrow.min.js, burrow-firestore.js
+npm run size           # bundle budgets
 npm run test:rules     # Firestore rules in the emulator (needs Java 21)
 npm run test:firestore # backend conformance against the emulator
 npm run test:e2e       # Chromium, Firefox, WebKit via Playwright, against the emulator
-npm run test:live      # the conformance suite against the demo's store, or BURROW_FIRESTORE (writes throwaway docs)
-npm run build && npm run size
-npm run serve          # demo at http://localhost:4173/demo/
+npm run serve          # demo at http://localhost:4173/demo/ (after npm run build)
 ```
 
-Set `BURROW_EMULATOR_PORT` if port 8080 is taken.
+`npm run check` runs typecheck, tests, build, size and `docs:check` (which typechecks every code
+example in this README and the guides) together. Development needs
+Node 22 or newer; the emulator suites need Java 21. Set `BURROW_EMULATOR_PORT` if port 8080 is
+taken. Contributor notes are in [CLAUDE.md](CLAUDE.md).
 
 ## License
 

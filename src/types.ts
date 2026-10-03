@@ -29,7 +29,7 @@ export interface Manifest {
 export interface ManifestEntry {
   ts: number;
   deleted?: true;
-  /** Merge tie-break: hash of the serialised value (DECISIONS.md D-5). */
+  /** Merge tie-break: hash of the serialised value (docs/decisions.md D-5). */
   h?: string;
 }
 
@@ -77,7 +77,7 @@ export interface ProviderStore {
 export interface EnrolContext {
   app: string;
   rootSecret: Uint8Array;
-  /** The configured backend, for providers that store a keyslot (DECISIONS.md D-7). */
+  /** The configured backend, for providers that store a keyslot (docs/decisions.md D-7). */
   backend: Backend;
   store?: ProviderStore;
 }

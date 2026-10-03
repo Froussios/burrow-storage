@@ -6,9 +6,10 @@ These five journeys define what a person must be able to do on the Burrow demo p
 ## Terms
 
 - **Storage token** (or just **token**): the secret that owns a user's data. Whoever holds it can
-  read and write that data from any device. It is 56 characters, shown in groups of four
-  (`04G1-20G3-…`). The requirements call it the *root secret*, and its typed form the *sync code*
-  (KP-11).
+  read and write that data from any device. It is 56 characters, shown in 14 groups of four
+  (`04G1-20G3-…`). The requirements brief calls it the *root secret*, and its typed form the *sync
+  code* (KP-11); the API keeps those names (`exportCode()`, `link({ code })`), see
+  [decisions.md](decisions.md) D-28.
 - **Backup**: the user's data in the shared store, encrypted under keys derived from the token.
 - **Passkey backup**: the token stored in a passkey's keyslot, so that passkey can bring it back
   on any device (KP-5, KP-6).

@@ -6,7 +6,7 @@ import { commitment, token } from "./derive.js";
 
 /** Rules cap `ct` at 1,000,000 base64url chars (= 750,000 ciphertext bytes, incl. the 16-byte tag). */
 export const MAX_CT_CHARS = 1_000_000;
-/** Largest plaintext that always fits under MAX_CT_CHARS, even incompressible (DECISIONS.md D-4). */
+/** Largest plaintext that always fits under MAX_CT_CHARS, even incompressible (docs/decisions.md D-4). */
 export const HARD_MAX_PLAINTEXT = 749_000;
 
 export interface DocCipher {

@@ -11,7 +11,7 @@ export interface Versioned {
 export const TOMBSTONE_H = "~";
 export const TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
-/** Tie-break hash of a value: hex SHA-256 of its JSON serialisation, first 16 chars (DECISIONS.md D-5). */
+/** Tie-break hash of a value: hex SHA-256 of its JSON serialisation, first 16 chars (docs/decisions.md D-5). */
 export async function valueHash(value: unknown): Promise<string> {
   return hex(await sha256(utf8(JSON.stringify(value)))).slice(0, 16);
 }

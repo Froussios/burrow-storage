@@ -1,8 +1,10 @@
 <!--
-  Drop one of these into any prototype's <head>. The adapter (FS-3) reads the
-  <meta> tag first, then window.BURROW. Only apiKey, projectId and appId are
-  used; the key is an identifier, not a secret, and should be referrer-restricted
-  in the Google Cloud console to the domains you deploy to.
+  Three ways to give a page its Firestore config. The adapter reads the <meta> tag
+  first, then window.BURROW; bundler users can pass a backend explicitly. The values
+  below are the demo's own shared project. For your prototypes, create your own with
+  `npx burrow-setup firestore` (see docs/firestore-setup.md) and paste its three
+  values here. The apiKey is an identifier, not a secret; restrict it in the Google
+  Cloud console to the Cloud Firestore API and to the domains you deploy to.
 -->
 
 <!-- Option A: meta tag, no JS needed -->
