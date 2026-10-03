@@ -1,0 +1,12 @@
+export function loadTodos(): { text: string; done: boolean }[];
+export function addTodo(text: string): number;
+export function toggleTodo(index: number): void;
+export function setTheme(theme: string): void;
+export function getTheme(): string;
+export function countVisit(): string | null;
+export function saveDraft(text: string): void;
+export function hasDraft(): boolean;
+export function listKeys(): string[];
+export function ownKeys(): string[];
+export function forget(key: string): void;
+export function reset(): void;

@@ -1,59 +1,161 @@
 # Security
 
-This file is the SEC-9 deliverable: the cryptographic design in one place, the threat model, and what
-Burrow does **not** protect against. It is written for reviewers; the README has the user-facing
-version. Status: pre-implementation draft, to be finalised in WP-15 and reviewed externally before 1.0.
+Burrow keeps per-user data in a public store that nobody, including the store's operator and
+the site's developer, can read or attribute to a user. This document describes how. Everything
+in "Derivation" and "Formats" is frozen public contract for v1. Changing any of it is a major
+release with a migration path.
+
+**Reporting a vulnerability:** open a private advisory at
+<https://github.com/Froussios/burrow-storage/security/advisories/new>. Please do not file a
+public issue.
 
 ## The one asset
 
-A user holds a 32-byte random **root secret**. Everything else the store ever sees is derived from it
-through one-way functions or is ciphertext under a key derived from it. Losing the secret loses the
-data; Burrow has no reset. Sites must tell users: *"Burrow cannot reset your data. Keep your sync code."*
+A user's identity is a **root secret**: 32 bytes from `crypto.getRandomValues`, generated
+silently the first time an app runs on a device. One secret serves every app on the origin;
+each app gets its own derived keys. The secret never leaves the device except:
 
-## Cryptographic design (normative text in `docs/architecture.md` §5 and §8)
+- as a **sync code**, which the user carries to another device by hand, or
+- wrapped inside a **passkey keyslot**, which only that passkey's PRF output can unwrap.
 
-| Purpose | Construction |
-|---|---|
-| Per-app keys | `HKDF-SHA-256(ikm = root, salt = "burrow/v1", info = label ‖ app)` for `pathKey`, `encKey`, `macKey` |
-| Document ids | manifest `base = base64url(SHA-256(pathKey))`; item `docId(k) = base64url(HMAC-SHA-256(pathKey, "item" ‖ k))`; 43 chars each |
-| Confidentiality and integrity | AES-256-GCM under `encKey`, fresh 96-bit IV per write, AAD `id|app|rev` |
-| Write authorisation | Per-document hash chain: document at rev `n` stores `next = SHA-256(tok(id, n+1))`; writer of rev `n+1` presents `tok(id, n+1) = base64url(HMAC-SHA-256(macKey, id:n+1))`. Store checks `SHA-256(tok) == next` and `rev == stored + 1` |
-| Compression | deflate-raw before encryption, optional (`compress: false`) |
-| Device persistence | root wrapped with AES-256-GCM under a non-extractable `CryptoKey` kept in IndexedDB; `rememberDevice: false` keeps it in memory only |
-| Passkey unlock | WebAuthn PRF output → `HKDF(salt "burrow/slot/v1")` → `kek`, `slotMac`, `slotId`; a **keyslot** document holds the root wrapped under `kek`, chained under `slotMac` |
-| Sync code | `0x01 ‖ root ‖ SHA-256(0x01 ‖ root)[0:2]` in Crockford base32, 56 chars |
+On the device the secret is stored in IndexedDB, wrapped (AES-KW) under a non-extractable
+`CryptoKey`. A copy of the database files without the browser's key store is not enough to
+recover it. A script running on the origin can use it, exactly as it could read a session
+cookie. With `rememberDevice: false`, nothing is persisted.
 
-All primitives are WebCrypto. Derived keys are imported non-extractable. The only raw key material
-held in JavaScript memory is one copy of the root secret, needed for `exportCode()` and `protect()`.
+Burrow never sends the root secret or any derived key over the network, never writes them to
+`localStorage`, `sessionStorage`, cookies or the URL (except a sync-code link the user chooses
+to open), and zeroises byte copies after use. Every derived WebCrypto key is non-extractable.
+
+## Derivation (v1)
+
+```
+ikm      = root secret (32 bytes)
+prk      = HKDF-Extract(SHA-256, salt = "burrow/v1", ikm)
+pathKey  = HKDF-Expand(prk, "path" || app, 32)
+encKey   = HKDF-Expand(prk, "enc"  || app, 32)        AES-256-GCM, every document of the app
+macKey   = HKDF-Expand(prk, "auth" || app, 32)        HMAC-SHA-256, write tokens
+base     = base64url(SHA-256(pathKey))[0:43]                    manifest id
+docId(k) = base64url(HMAC-SHA-256(pathKey, "item" || k))[0:43]  item id for key k
+
+Passkey keyslot (PRF evaluated with salt "burrow/prf/v1"):
+sprk     = HKDF-Extract(SHA-256, salt = "burrow/slot/v1", prfOutput)
+kek      = HKDF-Expand(sprk, "kek", 32)               wraps the root secret
+slotMac  = HKDF-Expand(sprk, "auth", 32)              write tokens for the keyslot
+slotId   = base64url(SHA-256(HKDF-Expand(sprk, "slot", 32)))[0:43]
+```
+
+`||` is concatenation of UTF-8 bytes. `app` matches `/^[a-z0-9-]{1,64}$/`. Test vectors
+produced by an independent implementation (`node:crypto`) are committed in
+`test/vectors.json`, and the unit tests check the WebCrypto code against them.
+
+A secret derived from a typed passphrase must first pass through PBKDF2-SHA-256 with at least
+600,000 iterations. v1 ships only random secrets, so this path is implemented but not exported.
+
+## Formats
+
+Every stored document, whether manifest, item or keyslot, is an envelope. The store cannot tell
+the three apart.
+
+```ts
+interface Envelope {
+  v: 1;
+  iv: string;    // 12 random bytes, base64url, fresh per write
+  ct: string;    // base64url AES-256-GCM(key, iv, plaintext, aad)
+  rev: number;   // 0, 1, 2, … per document
+  ts: number;    // writer's clock, ms
+  tok: string;   // write token for this rev
+  next: string;  // hex SHA-256 of the token the next rev must present
+  z?: true;      // plaintext was deflate-raw compressed
+}
+```
+
+- **AAD** binds each ciphertext to where and when it may live: `id || app || String(rev)` for
+  manifests and items, `slotId || "slot" || String(rev)` for keyslots. A document copied to
+  another id, another app or another revision fails to decrypt.
+- **Manifest plaintext** (id `base`): `{ v: 1, items: { [key]: { ts, h?, deleted? } } }`, the
+  user's key directory. Key names exist only here, encrypted.
+- **Item plaintext** (id `docId(key)`): `{ v: 1, key, value, ts, deleted? }`.
+- **Keyslot plaintext**: the 32-byte root secret, encrypted under `kek`.
+
+Plaintext is UTF-8 JSON, compressed when that helps. An item is capped at `maxItemBytes`
+(default 200,000; never above 749,000 bytes, so the ciphertext always fits the store's 1,000,000
+character limit).
+
+Any decryption failure surfaces as `decrypt-failed`. Sync then pauses, and the local cache is
+left untouched.
+
+## Write authorisation without accounts
+
+Each document carries its own hash chain:
+
+```
+tok(id, n)  = base64url(HMAC-SHA-256(macKey, id || String(n)))
+document at rev n stores  next = hex(SHA-256(tok(id, n + 1)))
+```
+
+To write revision `n + 1`, a writer presents `tok(id, n + 1)` and commits to
+`hex(SHA-256(tok(id, n + 2)))`. The store accepts the write only if
+`SHA-256(tok) == stored next` **and** `rev == stored rev + 1`. A token is useless once it is
+stored, and only the secret's holder can compute the next one. Readers need nothing but the
+id. The `rev` check also gives optimistic concurrency: a stale writer gets `conflict`, re-reads
+and merges.
+
+The reference Firestore rules ([`firebase/firestore.rules`](firebase/firestore.rules)) enforce
+this. They:
+
+- allow `get` to anyone, because the content is ciphertext;
+- deny `list`, because enumeration would turn ids into a directory;
+- deny `delete`; removal is a tombstone plus an overwrite;
+- allow `create` only at `rev == 0`, with exactly the envelope fields and 43-character ids;
+- allow `update` only at `rev == stored + 1`, and only if
+  `hashing.sha256(tok).toHexString().lower() == stored next`.
+
+The emulator tests (`firebase/tests/rules.test.mjs`) cover each case, including an `in` query on
+ids and a partial update that tries to skip the chain. A backend that cannot enforce the chain
+must declare `capabilities.writeAuth = false`, and Burrow warns in the console.
+
+## Local cache at rest
+
+The cache stands in for `localStorage`, so items are stored in IndexedDB in plaintext, in one
+object store per app. The root secret is stored only wrapped (see above). After `unlink()` the
+cache stays until a different secret takes the device over, and is cleared then. Use
+`rememberDevice: false` on shared computers; the cache then defaults to memory.
 
 ## Threat model
 
-The store is public (anyone can read any document they can name), the developer is honest but not
-trusted with data, the network is hostile, and the user's device is trusted while the user is using it.
+The store is public, the developer is honest but not trusted with data, and the network is
+hostile.
 
-| Threat | Mitigation | Status |
-|---|---|---|
-| Store dump by operator, breach or subpoena | Ids are keyed hashes; contents are AES-GCM ciphertext; no identifiers stored | Mitigated |
-| Enumeration of vaults | `list` denied in rules; 256-bit id space | Mitigated |
-| Attacker learns an id (logs, leaked URL) | Read yields ciphertext; writes need the token chain | Mitigated |
-| Overwrite or vandalism of a known id | Hash-chain tokens; rev must advance by exactly one; rules verify | Mitigated |
-| Replay of an old document to an id or revision | `id` and `rev` are GCM AAD; store rejects `rev ≤ current` | Mitigated |
-| Cross-document swap (manifest ↔ item, app A ↔ app B) | `id` and `app` in AAD | Mitigated |
-| Offline brute force of the secret | 256-bit random; sync codes carry it verbatim (no low-entropy input in v1) | Mitigated |
-| Copied IndexedDB from a device | Root is wrapped under a non-extractable key. **This is an obstacle, not a guarantee**: browsers persist key material in the profile; Chromium protects it with OS keyring on some platforms, Firefox does not. A determined attacker with the profile directory may recover the secret. `rememberDevice: false` plus a passkey removes the stored secret entirely | Partially mitigated, documented |
-| Malicious script on the site (XSS, compromised CDN) | Out of scope, same as `localStorage`: a script on the origin can read the cache and call `exportCode()`. Use SRI and a strict CSP; Burrow runs under `default-src 'self'` plus the store host | Out of scope |
-| Junk writes exhausting the shared store | Per-document size cap; Spark daily read/write caps reset daily so the worst case for *traffic* is "sync pauses". **Storage (1 GiB) does not reset**: anyone who knows the project id can fill it with ~1 000 junk documents, and rules forbid delete, so only the owner can reap (`firestore/reaper.mjs`). Optional hardening: Firebase App Check | Accepted for prototypes, documented |
-| Lost secret | Not recoverable by design; sync code, passkey keyslots and JSON export are the user's responsibility | By design |
-| Compression side channel | Ciphertext length reveals plaintext compressibility. Irrelevant for a single user's own settings; `compress: false` exists for sites that store attacker-influenced strings | Documented |
-| Operator rollback | A store operator can restore an older document version; the client sees a lower `rev` and overwrites. Availability and freshness depend on the operator; confidentiality does not | Out of scope |
+| Threat | Mitigation |
+| --- | --- |
+| Store dump (operator, breach, subpoena) | Ids are keyed hashes; contents are AES-GCM ciphertext; no user identifier is stored anywhere. |
+| Enumeration | `list` denied; 256-bit id space. |
+| An id leaks (URL, logs) | Reading it yields ciphertext only; writing needs the token chain. Burrow never logs ids, and errors are scrubbed of them. |
+| Overwrite or vandalism of a known id | Hash-chained tokens; `rev` must advance by exactly one. |
+| Replay of an old document | `id`, `app` and `rev` are GCM AAD; the store rejects `rev ≤ current`. |
+| Brute force of a weak typed secret | Secrets are random 256-bit by default; a passphrase must go through PBKDF2 ≥ 600,000. |
+| Malicious script on the site (XSS, bad CDN) | Out of scope, as for `localStorage`. Use a strict CSP and SRI (see the README). Burrow runs without `eval`, inline scripts or third-party script hosts. |
+| Copied IndexedDB from a device | The secret is wrapped under a non-extractable key; `rememberDevice: false` for shared machines. |
+| Abuse of the shared store | Size cap per document, Spark's hard daily quotas, no delete, no list. The worst case is that sync pauses until the daily reset, never a bill. |
+| Lost secret | Not recoverable by design. Burrow offers the sync code, passkey keyslots, JSON export, and the `onUnprotected` event so sites can prompt users to keep a copy. |
+| Copied browser profile | The wrapped secret is **an obstacle, not a guarantee**: browsers keep non-extractable key material in the profile. Chromium protects it with the OS keyring on some platforms; Firefox does not. An attacker with the whole profile directory may recover the secret. `rememberDevice: false` plus a passkey keeps nothing on disk. |
+| Junk writes filling the shared store | Daily read/write quotas reset, so traffic abuse only pauses sync. **Stored bytes (1 GiB on Spark) do not reset**: anyone who knows the project id can create junk documents, and the rules forbid delete, so only the project owner can remove them with admin credentials. Accepted for prototypes; Firebase App Check is optional hardening. |
+| Compression side channel | Ciphertext length reveals how compressible the plaintext was. This is irrelevant for a user's own settings. v1 compresses whenever that shrinks the plaintext, and has no switch to turn it off. |
+| Operator rollback | A store operator can restore an older document. Clients then write on top of it at the next revision. Freshness depends on the operator; confidentiality does not. |
 
-## What the store learns
+**What the store still learns:** how many documents exist, their sizes, when and how often each
+is written, and the client IP of each request. One user's documents are not linkable to each
+other except by timing. Key names and values are never visible.
 
-Even with everything working as designed the store sees: the number of documents, their sizes, when
-each was written and how often, and the client IP of each request. Documents of one user are not
-linkable to each other except by timing correlation. Item key names and values are never visible.
+## What Burrow does not do
 
-## Reporting
-
-Open a private security advisory on the GitHub repository. Please do not file public issues for
-vulnerabilities.
+- It contacts no host other than the configured backend, collects no telemetry, and loads no
+  remote scripts. The script-tag build loads the Firestore SDK from `burrow-firestore.js` on
+  the page's own origin.
+- It does not register service workers or patch globals.
+- `debug: true` logs sync events with revisions, counts, byte sizes and timings only. It never
+  logs ids, tokens, keys or values.
+- Passkeys use `residentKey: "required"`, `userVerification: "required"` and no attestation. The
+  passkey's `user.name` is the app id (or a label the site chooses), never an email unless the
+  site supplies one.

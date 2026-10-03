@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- SEC-5: strict CSP. Scripts and styles come from this origin only; the network is the backend. -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://firestore.googleapis.com; base-uri 'none'; form-action 'none'">
+  <!-- FS-3: the shared Firestore project. The apiKey is an identifier, not a secret (FS-12). -->
+  <meta name="burrow-firestore"
+        content='{"apiKey":"AIzaSyAlBIGo0tVj_68_3JukpW-sQPNhJHhPJJk","projectId":"burrow-storage-shared","appId":"1:126236223407:web:6a19c0b9ddf3d9bbd3f15a"}'>
+  <title>Burrow demo</title>
+  <link rel="stylesheet" href="demo.css">
+  <script src="burrow.min.js" defer></script>
+  <script src="demo.js" defer></script>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Burrow</h1>
+      <p class="lede">Your notes and theme follow you to other devices. No account, no login, no server of ours.</p>
+      <span id="status" class="badge" data-status="idle">starting…</span>
+    </header>
+
+    <section aria-labelledby="h-draft">
+      <div class="row">
+        <h2 id="h-draft">Draft</h2>
+        <button id="theme" type="button" aria-pressed="false">Dark theme</button>
+      </div>
+      <textarea id="draft" rows="8" placeholder="Type something. It saves as you go." aria-label="Draft"></textarea>
+    </section>
+
+    <section aria-labelledby="h-token">
+      <h2 id="h-token">Storage token</h2>
+      <p class="warn">Burrow cannot reset your data. Keep your storage token.</p>
+      <code id="code">…</code>
+      <dl class="facts">
+        <dt>Source</dt><dd id="token-source">…</dd>
+        <dt>Passkey backup</dt><dd id="token-backup">…</dd>
+      </dl>
+      <div class="row wrap">
+        <button id="copy-token" type="button">Copy token</button>
+        <a id="code-link" href="#">Link for your other device</a>
+      </div>
+    </section>
+
+    <section aria-labelledby="h-backup">
+      <h2 id="h-backup">Backup</h2>
+      <div class="row wrap">
+        <button id="passkey" type="button">Create new backup with key</button>
+        <button id="export" type="button">Export JSON</button>
+      </div>
+      <form id="link-form" class="row wrap">
+        <label for="link-code">Link to existing backup</label>
+        <input id="link-code" autocomplete="off" spellcheck="false" placeholder="XXXX-XXXX-…">
+        <button type="submit">Link this device</button>
+        <button id="link-passkey" type="button">Use my passkey</button>
+      </form>
+      <p id="message" role="status"></p>
+    </section>
+
+    <details>
+      <summary>Debug</summary>
+      <pre id="debug"></pre>
+    </details>
+  </main>
+</body>
+</html>

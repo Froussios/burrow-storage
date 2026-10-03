@@ -3,10 +3,16 @@ dist/
 coverage/
 test-results/
 playwright-report/
+*.log
+firebase/tests/node_modules/
 .firebase/
+.firebaserc
+burrow.firestore.json
+.firebase.emulator.json
+*-debug.log
+node_modules/.cache/
 firebase-debug.log
 firestore-debug.log
-*.log
 .DS_Store
 .env
 .env.*
