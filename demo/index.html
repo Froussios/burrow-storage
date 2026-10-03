@@ -35,7 +35,7 @@
       <p class="warn">Burrow cannot reset your data. Keep your sync code.</p>
       <div class="row wrap">
         <button id="show-code" type="button">Show sync code</button>
-        <button id="passkey" type="button">Back up with a passkey</button>
+        <button id="passkey" type="button">Create new backup with key</button>
         <button id="export" type="button">Export JSON</button>
       </div>
       <div id="code-box" hidden>
@@ -44,7 +44,7 @@
         <p><a id="code-link" href="#">Link for your other device</a></p>
       </div>
       <form id="link-form" class="row wrap">
-        <label for="link-code">Have a code from another device?</label>
+        <label for="link-code">Link to existing backup</label>
         <input id="link-code" autocomplete="off" spellcheck="false" placeholder="XXXX-XXXX-…">
         <button type="submit">Link this device</button>
         <button id="link-passkey" type="button">Use my passkey</button>

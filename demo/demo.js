@@ -61,7 +61,7 @@
   $("passkey").addEventListener("click", async () => {
     try {
       await store.protect("passkey");
-      say("Passkey added. On a new device, use “Use my passkey”.");
+      say("Backup created. On another device, go to “Link to existing backup” and choose “Use my passkey”.");
     } catch (e) {
       say(e.code === "prf-unsupported" ? "This browser cannot use passkeys for this. Use the sync code instead." : `Passkey not added (${e.code ?? e.name}).`);
     }
