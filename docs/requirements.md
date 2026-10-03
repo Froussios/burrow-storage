@@ -1,6 +1,5 @@
 <!--
-Snapshot of the Claude doc "Burrow — Requirements" (tab "Locket — Requirements"),
-https://claude.ai/artifact/E56diUYBnb1ADVPcH4yCZc#15d320c5-6cb2, taken 2026-10-01 at doc rev 79.
+Snapshot of the requirements doc "Burrow — Requirements", taken 2026-10-01 at doc rev 79.
 The doc is the upstream source; this file is the copy implementers work from.
 Known inconsistencies in this text are catalogued in docs/design-review.md and the
 resolutions that the implementation follows are in docs/architecture.md and docs/decisions.md.

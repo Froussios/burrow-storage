@@ -32,8 +32,7 @@
     "scripts/burrow-setup.mjs",
     "scripts/setup.sh",
     "firebase/firestore.rules",
-    "firebase/firebase.json",
-    "firebase/.firebaserc"
+    "firebase/firebase.json"
   ],
   "engines": {
     "node": ">=18"

@@ -6,6 +6,7 @@ playwright-report/
 *.log
 firebase/tests/node_modules/
 .firebase/
+.firebaserc
 burrow.firestore.json
 .firebase.emulator.json
 *-debug.log

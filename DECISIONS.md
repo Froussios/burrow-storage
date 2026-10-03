@@ -174,7 +174,7 @@ inside that lock.
 
 ## D-23 Live project configuration (FS-10, FS-12)
 
-The shared project `burrow-storage-shared` was created with Firestore's default deny-all rules,
+The demo's store, project `burrow-storage-shared`, was created with Firestore's default deny-all rules,
 so Gate 2 first failed. With the owner's go-ahead, `firebase/firestore.rules` was deployed through
 the Firebase Rules API (ruleset `06220eed-…`). The browser API key was restricted to the Cloud
 Firestore API only. **A referrer restriction was not applied:** it depends on where the demo is
@@ -190,9 +190,9 @@ there and under `script-src 'self'`.
 
 ## D-25 Local browser runs: Chromium and Firefox only
 
-This development machine has no root access and lacks the browsers' system libraries. Chromium
-and Firefox ran with user-local copies of those libraries. WebKit's launcher replaces
-`LD_LIBRARY_PATH`, so it did not run locally. The CI workflow installs system dependencies
+Without root access, a machine may lack the browsers' system libraries. Chromium and Firefox
+run with user-local copies of those libraries. WebKit's launcher replaces `LD_LIBRARY_PATH`, so
+it does not run that way. The CI workflow installs system dependencies
 (`playwright install --with-deps`) and runs all three engines.
 
 ## D-26 Setting an unchanged value is still a write (SYNC-10, API-5)

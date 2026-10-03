@@ -1,6 +1,7 @@
-// Gate 2 (M5): the conformance suite and the brief's three checks against the LIVE shared
-// project. Writes go to ids derived from throwaway secrets; documents cannot be deleted (FS-6).
-// Run deliberately: `npm run test:live`.
+// Gate 2 (M5): the conformance suite and the brief's three checks against a LIVE store: the one
+// in BURROW_FIRESTORE (`{"apiKey","projectId","appId"}`), else the demo's. Writes go to ids derived
+// from throwaway secrets; documents cannot be deleted (FS-6). Run deliberately: `npm run test:live`.
+import { readFileSync } from "node:fs";
 import { initializeApp, deleteApp } from "firebase/app";
 import { collection, doc, getDoc, getDocs, getFirestore, query, setDoc, where, documentId } from "firebase/firestore";
 import { afterAll, describe, expect, it } from "vitest";
@@ -11,7 +12,13 @@ import { seal } from "../../src/codec/envelope.js";
 import { World } from "../support/devices.js";
 import { backendConformance } from "./suite.js";
 
-const config = { apiKey: "AIzaSyAlBIGo0tVj_68_3JukpW-sQPNhJHhPJJk", projectId: "burrow-storage-shared", appId: "1:126236223407:web:6a19c0b9ddf3d9bbd3f15a" };
+const demoConfig = () => {
+  const page = readFileSync(new URL("../../demo/index.html", import.meta.url), "utf8");
+  const m = /name="burrow-firestore"\s+content='([^']+)'/.exec(page)?.[1];
+  if (!m) throw new Error("demo/index.html has no burrow-firestore meta; set BURROW_FIRESTORE");
+  return m;
+};
+const config = JSON.parse(process.env.BURROW_FIRESTORE ?? demoConfig()) as { apiKey: string; projectId: string; appId: string };
 const opened: FirestoreBackend[] = [];
 const make = () => { const b = new FirestoreBackend(config); opened.push(b); return b; };
 const raw = initializeApp(config, "gate2-raw");
@@ -43,7 +50,7 @@ describe("Gate 2: live checks", () => {
   });
 });
 
-backendConformance("FirestoreBackend (LIVE burrow-storage-shared)", make);
+backendConformance(`FirestoreBackend (LIVE ${config.projectId})`, make);
 
 describe("Burrow over the live store", () => {
   it("two devices sync with no account", async () => {

@@ -293,7 +293,7 @@ npm test               # unit, property and conformance tests (Node, fake Indexe
 npm run test:rules     # Firestore rules in the emulator (needs Java 21)
 npm run test:firestore # backend conformance against the emulator
 npm run test:e2e       # Chromium, Firefox, WebKit via Playwright, against the emulator
-npm run test:live      # the conformance suite against the live shared project (writes throwaway docs)
+npm run test:live      # the conformance suite against the demo's store, or BURROW_FIRESTORE (writes throwaway docs)
 npm run build && npm run size
 npm run serve          # demo at http://localhost:4173/demo/
 ```

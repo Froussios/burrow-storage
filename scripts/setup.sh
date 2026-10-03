@@ -6,11 +6,11 @@
 # does this for you).
 set -euo pipefail
 
-PROJECT="${PROJECT:-burrow-storage-shared}"      # project id (also the display name)
-LOCATION="${LOCATION:-australia-southeast1}"     # Firestore location; cannot be changed later
+: "${PROJECT:?set PROJECT to your new Firebase project id (globally unique; also the display name)}"
+: "${LOCATION:?set LOCATION to a Firestore location, e.g. us-central1 (cannot be changed later)}"
 APP_NAME="${APP_NAME:-burrow}"
 # Referrers allowed to use the web API key. Add every domain you deploy prototypes to.
-REFERRERS="${REFERRERS:-https://froussios.github.io/*,http://localhost:*,http://127.0.0.1:*}"
+REFERRERS="${REFERRERS:-http://localhost:*,http://127.0.0.1:*}"
 
 npm ls -g firebase-tools >/dev/null 2>&1 || npm i -g firebase-tools
 
