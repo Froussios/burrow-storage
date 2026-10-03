@@ -44,17 +44,41 @@
   setInterval(debug, 5000);
 
   // KP-14: a low-key nudge once there is something worth keeping.
-  store.onUnprotected.addListener(() => say("Tip: show your storage token or create a backup with a key so you can get this back on another device."));
+  store.onUnprotected.addListener(() => say("Tip: create a backup with a key, or keep your storage token, so you can get this back on another device."));
 
-  // Storage token (the sync code of KP-11, KP-13)
-  $("show-code").addEventListener("click", async () => {
+  // The storage token in use, always on screen, with where it came from.
+  const SOURCES = {
+    generated: "generated on this device",
+    code: "pasted or typed in",
+    link: "opened from a link",
+    passkey: "restored from your passkey",
+  };
+  const when = (ms) => (ms ? ` · ${new Date(ms).toLocaleString()}` : "");
+  const describeToken = ({ source, remembered, since }) => {
+    const how = SOURCES[source] ?? (source === "unknown" ? "" : `restored by “${source}”`);
+    if (!remembered) return how.charAt(0).toUpperCase() + how.slice(1) + (source === "generated" ? " (new)" : "") + when(since);
+    return (how ? `Remembered by this browser; originally ${how}` : "Remembered by this browser") + when(since);
+  };
+  const showToken = async () => {
     const code = await store.exportCode();
     $("code").textContent = code;
     const link = new URL(location.href);
     link.hash = "burrow=" + code;
     $("code-link").href = link.href;
-    $("code-box").hidden = false;
+    $("token-source").textContent = describeToken(store.token);
+    $("token-backup").textContent = store.protection === "passkey"
+      ? "Yes, in a passkey"
+      : "None yet. Create one below, or keep the token yourself.";
     debug();
+  };
+  store.onToken.addListener(showToken);
+  $("copy-token").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText($("code").textContent);
+      say("Token copied.");
+    } catch {
+      say("Could not copy. Select the token and copy it by hand.");
+    }
   });
 
   // Passkey (KP-5)
@@ -62,6 +86,7 @@
     try {
       await store.protect("passkey");
       say("Backup created. On another device, go to “Link to existing backup” and choose “Use my passkey”.");
+      await showToken();
     } catch (e) {
       say(e.code === "prf-unsupported" ? "This browser cannot use passkeys for this. Keep your storage token instead." : `Passkey not added (${e.code ?? e.name}).`);
     }
@@ -81,7 +106,7 @@
     }
     draft.value = s.getItem("draft") ?? "";
     applyTheme(s.getItem("theme"));
-    debug();
+    await showToken();
   };
   $("link-form").addEventListener("submit", (e) => { e.preventDefault(); link({ code: $("link-code").value }); });
   $("link-passkey").addEventListener("click", () => link({ provider: "passkey" }));
@@ -94,5 +119,6 @@
     URL.revokeObjectURL(a.href);
   });
 
+  await showToken();
   document.body.dataset.ready = "true";
 })();

@@ -12,7 +12,7 @@ import { SecretHolder } from "./secret.js";
 import { type Versioned, compare, entryOf, mergeDirectories, nextTs, valueHash } from "./sync/merge.js";
 import type {
   Backend, BurrowArea, BurrowConfig, ChangedEvent, Envelope, GetKeys, Inspection, Item, KeyProvider,
-  Manifest, Protection, ProviderStore, Status, StatusEvent, StorageChanges,
+  Manifest, Protection, ProviderStore, Status, TokenInfo, TokenSource, StatusEvent, StorageChanges,
 } from "./types.js";
 
 /** Host services, injectable so tests can simulate several devices in one process. */
@@ -61,6 +61,7 @@ export class Core implements BurrowArea {
   readonly onChanged = new BurrowEvent<ChangedEvent>("changed");
   readonly onStatus = new BurrowEvent<StatusEvent>("status");
   readonly onUnprotected = new BurrowEvent<void>("unprotected");
+  readonly onToken = new BurrowEvent<TokenInfo>("token");
   readonly storage: Storage;
 
   readonly #env: Env;
@@ -79,6 +80,7 @@ export class Core implements BurrowArea {
   #mirror = new Map<string, Entry>();
   #meta: AppMeta = {};
   #protection: Protection = "none";
+  #token: TokenInfo = { source: "generated", remembered: false, since: null };
   #status: Status = "idle";
   #error: BurrowError | undefined;
   #paused = false;
@@ -143,11 +145,15 @@ export class Core implements BurrowArea {
     }
     await this.#lock("secret", async () => {
       let s = this.#remember ? await SecretHolder.load(this.#cache) : null;
-      if (!s) {
+      if (s) {
+        const d = await this.#cache.getDevice();
+        this.#token = { source: d.tokenSource ?? "unknown", remembered: true, since: d.tokenSince ?? null };
+      } else {
         s = await SecretHolder.generate(); // KP-1
+        this.#token = { source: "generated", remembered: false, since: Date.now() };
         if (this.#remember) {
           await s.persist(this.#cache);
-          await this.#cache.setDevice({ protection: undefined });
+          await this.#cache.setDevice({ protection: undefined, tokenSource: "generated", tokenSince: this.#token.since! });
         }
       }
       this.#secret = s;
@@ -242,6 +248,7 @@ export class Core implements BurrowArea {
 
   get status(): Status { return this.#status; }
   get protection(): Protection { return this.#protection; }
+  get token(): TokenInfo { return { ...this.#token }; }
 
   #setStatus(s: Status, error?: BurrowError): void {
     if (s === this.#status && error === this.#error) return;
@@ -260,6 +267,7 @@ export class Core implements BurrowArea {
     for (const e of this.#mirror.values()) if (e.dirty) dirty++;
     return {
       status: this.#status,
+      tokenSource: this.#token.source,
       protection: this.#protection,
       manifestRev: this.#meta.manifestRev ?? null,
       dirtyKeys: dirty,
@@ -458,6 +466,9 @@ export class Core implements BurrowArea {
       const before = new Map(this.#mirror);
       this.#secret?.forget();
       this.#secret = s;
+      const d = await this.#cache.getDevice();
+      this.#token = { source: d.tokenSource ?? "unknown", remembered: true, since: d.tokenSince ?? null };
+      this.onToken.emit({ ...this.#token });
       this.#paused = false;
       await this.#adoptIdentity();
       const ch: StorageChanges = {};
@@ -781,15 +792,18 @@ export class Core implements BurrowArea {
 
   async exportCode(): Promise<string> {
     this.#alive();
-    const code = await this.#secret!.use((s) => encodeSyncCode(s));
-    if (this.#protection === "none") await this.#setProtection("code");
-    return code;
+    return this.#secret!.use((s) => encodeSyncCode(s));
   }
 
-  async link(options: { provider?: string; code?: string; discardLocal?: boolean } = {}): Promise<void> {
+  link(options: { provider?: string; code?: string; discardLocal?: boolean } = {}): Promise<void> {
+    return this.#link(options, "code");
+  }
+
+  async #link(options: { provider?: string; code?: string; discardLocal?: boolean }, codeSource: TokenSource): Promise<void> {
     this.#alive();
     let secret: Uint8Array | null = null;
     let via: Protection = "none";
+    let source: TokenSource = codeSource;
     if (options.code !== undefined) {
       secret = (await decodeSyncCode(options.code)).secret; // KP-12: bad-code before any network call
       via = "code";
@@ -804,18 +818,18 @@ export class Core implements BurrowArea {
           this.#log("recover-failed", { provider: p.id, code: e instanceof BurrowError ? e.code : "error" });
           secret = null;
         }
-        if (secret) { via = protectionFor(p.id); break; }
+        if (secret) { via = protectionFor(p.id); source = via; break; }
       }
       if (!secret) throw new BurrowError("no-provider");
     }
     try {
-      await this.#switchTo(secret, via, !!options.discardLocal);
+      await this.#switchTo(secret, via, source, !!options.discardLocal);
     } finally {
       secret.fill(0);
     }
   }
 
-  async #switchTo(secret: Uint8Array, via: Protection, discardLocal: boolean): Promise<void> {
+  async #switchTo(secret: Uint8Array, via: Protection, source: TokenSource, discardLocal: boolean): Promise<void> {
     const same = (await deriveAppKeys(secret, this.app)).base === this.#keys!.base;
     if (same) {
       if (this.#protection === "none") await this.#setProtection(via);
@@ -840,12 +854,14 @@ export class Core implements BurrowArea {
       this.#secret?.forget();
       this.#secret = holder;
       this.#protection = via;
-      if (this.#remember) await this.#cache.setDevice({ protection: via });
+      this.#token = { source, remembered: false, since: Date.now() };
+      if (this.#remember) await this.#cache.setDevice({ protection: via, tokenSource: source, tokenSince: this.#token.since! });
       await this.#cache.setMeta({ owner: "" }); // the cache now belongs to nobody; #adoptIdentity resets it
       await this.#adoptIdentity();
       this.#paused = false;
     });
     this.#broadcast({ t: "identity" });
+    this.onToken.emit({ ...this.#token });
     this.#unsubscribe?.(); this.#unsubscribe = null; this.#subscribe();
     this.#suppressEmit = true;
     try { await this.#sync(); } finally { this.#suppressEmit = false; }
@@ -870,7 +886,7 @@ export class Core implements BurrowArea {
     // API-8: like clearing a session cookie. The cache and remote documents stay.
     this.#secret?.forget();
     this.#secret = null;
-    await this.#cache.setDevice({ kw: undefined, wrapped: undefined, protection: undefined });
+    await this.#cache.setDevice({ kw: undefined, wrapped: undefined, protection: undefined, tokenSource: undefined, tokenSince: undefined });
     this.#broadcast({ t: "identity" });
     this.close();
   }
@@ -883,7 +899,7 @@ export class Core implements BurrowArea {
     const rest = loc.hash.replace(/[#&]?burrow=[^&]+/, "").replace(/^#?&?/, "");
     this.#env.history?.replaceState(null, "", loc.href.split("#")[0] + (rest ? "#" + rest : ""));
     try {
-      await this.link({ code: decodeURIComponent(m[1]!) });
+      await this.#link({ code: decodeURIComponent(m[1]!) }, "link");
     } catch (e) {
       this.#setStatus("error", e instanceof BurrowError ? e : new BurrowError("bad-code"));
     }

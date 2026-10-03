@@ -93,6 +93,7 @@ again with the same `app` on the same page returns the same instance.
 | `getBytesInUse(keys?)` | Approximate size, as in `chrome.storage`. |
 | `onChanged` | `{ changes: { key: { oldValue?, newValue? } }, source: "local" \| "remote" }`, batched per sync pass. `addListener(fn)` or `addEventListener("changed", e => e.detail)`. |
 | `status`, `onStatus` | `"idle"`, `"syncing"`, `"offline"` or `"error"`; the event carries the last `BurrowError`. |
+| `token`, `onToken` | `{ source, remembered, since }`: whether the token in use was `generated` here, entered as a `code`, opened from a `link`, restored from a `passkey` (or a custom provider), and whether it was `remembered` by this browser from an earlier visit. |
 | `protection`, `onUnprotected` | Which unlock method protects this device's secret. `onUnprotected` fires once per device when data exists and none does. |
 | `protect(providerId?)` | Enrol an unlock method (`"passkey"`, `"sync-code"`). Call from a user gesture. |
 | `exportCode()` | The sync code for another device, e.g. `04G1-…` (56 characters). |

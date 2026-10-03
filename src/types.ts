@@ -113,6 +113,21 @@ export interface BurrowConfig {
 }
 
 export type Status = "idle" | "syncing" | "offline" | "error";
+
+/**
+ * How this device got its storage token (the root secret): generated here on first use (KP-1),
+ * entered as a code (pasted or typed), opened from a `#burrow=` link (KP-13), recovered from a
+ * passkey, or from a custom provider (its id). "unknown" for tokens stored before this was recorded.
+ */
+export type TokenSource = "generated" | "code" | "link" | "passkey" | "unknown" | (string & {});
+
+export interface TokenInfo {
+  source: TokenSource;
+  /** True when the token was loaded from this browser's storage rather than obtained this page load. */
+  remembered: boolean;
+  /** When this device obtained the token (ms), if known. */
+  since: number | null;
+}
 export type Protection = "none" | "passkey" | "code" | (string & {});
 
 export type StorageChanges = Record<string, { oldValue?: unknown; newValue?: unknown }>;
@@ -121,6 +136,7 @@ export interface StatusEvent { status: Status; error?: BurrowError }
 
 export interface Inspection {
   status: Status;
+  tokenSource: TokenSource;
   protection: Protection;
   manifestRev: number | null;
   dirtyKeys: number;
@@ -142,6 +158,9 @@ export interface BurrowArea {
 
   readonly status: Status;
   readonly protection: Protection;
+  /** Where the token in use came from. Changes on link(); onToken fires then. */
+  readonly token: TokenInfo;
+  readonly onToken: BurrowEvent<TokenInfo>;
   readonly onStatus: BurrowEvent<StatusEvent>;
   readonly onUnprotected: BurrowEvent<void>;
   protect(providerId?: string): Promise<void>;

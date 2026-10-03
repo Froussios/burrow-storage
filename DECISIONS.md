@@ -202,3 +202,17 @@ A property test found that `set({ k: 67 })` on device A, `set({ k: 0 })` on devi
 a no-op, and B's earlier write won. An unchanged `set()` now takes a new timestamp and syncs, so
 the last write wins. Only the `onChanged` event is skipped, as in `chrome.storage`. The cost: an
 app that re-sets unchanged values causes one write per debounce window.
+
+## D-27 `store.token` reports where the token came from; `exportCode()` no longer protects (supersedes D-14)
+
+The demo always shows the storage token in use and where it came from (docs/user-journeys.md).
+`store.token` is `{ source, remembered, since }`:
+- `source` is `generated` (KP-1), `code` (`link({ code })`), `link` (a `#burrow=` URL, KP-13),
+  `passkey`, or a custom provider's id;
+- `remembered` is true when the token was loaded from this browser's storage on page load;
+- `since` is when this device obtained the token.
+
+The source is persisted next to the wrapped secret, so it survives reloads, and `onToken` fires
+when it changes. Because the demo calls `exportCode()` on every load, `exportCode()` no longer
+sets `protection: "code"` (D-14 is withdrawn). Otherwise `onUnprotected` could never fire.
+`protect("sync-code")` still records that the user kept the token.

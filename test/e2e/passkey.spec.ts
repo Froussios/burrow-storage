@@ -51,6 +51,29 @@ test("passkey: enrol -> unlink -> recover", async ({ context }) => {
   expect(await withStore(page, (s) => s.get())).toEqual({ k: "v" });
 });
 
+test("journeys 1 and 2 in the demo: create a backup with a passkey, wipe the site, restore it", async ({ context }) => {
+  const page = await context.newPage();
+  const cdp = await authenticator(page);
+  await page.goto("/demo/index.html");
+  await expect(page.locator("body")).toHaveAttribute("data-ready", "true");
+  await page.locator("#draft").fill("kept in a passkey backup");
+  await expect(page.locator("#status")).toHaveText("synced", { timeout: 15_000 });
+  const token = await page.locator("#code").textContent();
+  await page.locator("#passkey").click();
+  await expect(page.locator("#token-backup")).toHaveText("Yes, in a passkey");
+
+  await cdp.send("Storage.clearDataForOrigin", { origin: new URL(page.url()).origin, storageTypes: "all" });
+  await page.reload();
+  await expect(page.locator("body")).toHaveAttribute("data-ready", "true");
+  await expect(page.locator("#draft")).toHaveValue("");
+  await expect(page.locator("#code")).not.toHaveText(token!);
+
+  await page.locator("#link-passkey").click();
+  await expect(page.locator("#draft")).toHaveValue("kept in a passkey backup", { timeout: 30_000 });
+  await expect(page.locator("#code")).toHaveText(token!);
+  await expect(page.locator("#token-source")).toContainText("Restored from your passkey");
+});
+
 test("KP-7 without a PRF authenticator the passkey provider is unavailable and protect() falls through", async ({ context }) => {
   const page = await context.newPage();
   const cdp = await page.context().newCDPSession(page);

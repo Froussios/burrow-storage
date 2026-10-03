@@ -28,6 +28,9 @@ export interface DeviceMeta {
   kw?: CryptoKey;
   /** Which unlock method protects the current secret on this device. */
   protection?: string;
+  /** How this device obtained the secret, and when (TokenInfo). */
+  tokenSource?: string;
+  tokenSince?: number;
   /** Provider-owned values (KP-9: the passkey credential id), keyed "p:<name>". */
   [provider: `p:${string}`]: string | undefined;
 }

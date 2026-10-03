@@ -30,18 +30,25 @@
       <textarea id="draft" rows="8" placeholder="Type something. It saves as you go." aria-label="Draft"></textarea>
     </section>
 
-    <section aria-labelledby="h-sync">
-      <h2 id="h-sync">Sync to another device</h2>
+    <section aria-labelledby="h-token">
+      <h2 id="h-token">Storage token</h2>
       <p class="warn">Burrow cannot reset your data. Keep your storage token.</p>
+      <code id="code">…</code>
+      <dl class="facts">
+        <dt>Source</dt><dd id="token-source">…</dd>
+        <dt>Passkey backup</dt><dd id="token-backup">…</dd>
+      </dl>
       <div class="row wrap">
-        <button id="show-code" type="button">Show storage token</button>
+        <button id="copy-token" type="button">Copy token</button>
+        <a id="code-link" href="#">Link for your other device</a>
+      </div>
+    </section>
+
+    <section aria-labelledby="h-backup">
+      <h2 id="h-backup">Backup</h2>
+      <div class="row wrap">
         <button id="passkey" type="button">Create new backup with key</button>
         <button id="export" type="button">Export JSON</button>
-      </div>
-      <div id="code-box" hidden>
-        <p>Enter this token on your other device, or open the link there:</p>
-        <code id="code"></code>
-        <p><a id="code-link" href="#">Link for your other device</a></p>
       </div>
       <form id="link-form" class="row wrap">
         <label for="link-code">Link to existing backup</label>

@@ -24,6 +24,9 @@ button:hover { border-color: var(--accent); }
 button:focus-visible, textarea:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 a { color: var(--accent); }
 code { display: block; padding: 0.75rem; border-radius: 6px; background: var(--field); border: 1px solid var(--line); font: 1.05rem/1.4 ui-monospace, Menlo, monospace; word-break: break-all; }
+.facts { display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 1rem; margin: 0.75rem 0; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; }
 .warn { color: var(--warn); font-weight: 600; margin: 0.25rem 0 0.75rem; }
 .badge { position: absolute; top: 0.4rem; right: 0; font-size: 0.8rem; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 0.1rem 0.6rem; }
 .badge[data-status="offline"], .badge[data-status="error"] { color: var(--warn); border-color: var(--warn); }

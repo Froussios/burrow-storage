@@ -543,3 +543,63 @@ describe("SYNC-14 tabs", () => {
     await until(async () => (await t2.get("x")).x === "linked");
   });
 });
+
+describe("token source (demo journeys)", () => {
+  it("a first visit generates a token; the next page load says it was remembered", async () => {
+    const d = fresh().device();
+    const a = await d.open();
+    expect(a.token).toMatchObject({ source: "generated", remembered: false });
+    expect(a.inspect().tokenSource).toBe("generated");
+    a.close();
+    const b = await d.open();
+    expect(b.token).toMatchObject({ source: "generated", remembered: true });
+    expect(b.token.since).toBe(a.token.since);
+  });
+
+  it("linking by token records 'code', fires onToken, and survives a reload", async () => {
+    const w = fresh();
+    const a = await w.device().open();
+    const D = w.device();
+    const b = await D.open();
+    const seen: string[] = [];
+    b.onToken.addListener((t) => seen.push(`${t.source}:${t.remembered}`));
+    await b.link({ code: await a.exportCode() });
+    expect(b.token).toMatchObject({ source: "code", remembered: false });
+    expect(seen).toEqual(["code:false"]);
+    b.close();
+    expect((await D.open()).token).toMatchObject({ source: "code", remembered: true });
+  });
+
+  it("a #burrow= link records 'link'", async () => {
+    const w = fresh();
+    const code = await (await w.device().open()).exportCode();
+    const D = w.device();
+    D.location = { href: `https://example.test/#burrow=${code}`, hash: `#burrow=${code}` };
+    expect((await D.open()).token.source).toBe("link");
+  });
+
+  it("a provider records its own id", async () => {
+    const w = fresh();
+    const code = await (await w.device().open()).exportCode();
+    const { decodeSyncCode } = await import("../../src/codec/synccode.js");
+    const b = await w.device().open({ keyProvider: { id: "vault", available: async () => true, enrol: async () => {}, recover: async () => (await decodeSyncCode(code)).secret } });
+    await b.link();
+    expect(b.token.source).toBe("vault");
+  });
+
+  it("exportCode() no longer counts as protecting the token", async () => {
+    const a = await fresh().device().open();
+    await a.exportCode();
+    expect(a.protection).toBe("none");
+  });
+
+  it("another tab sees the new source after a link", async () => {
+    const w = fresh(); const d = w.device();
+    const code = await (await w.device().open()).exportCode();
+    const t1 = await d.open({}, d.env());
+    const t2 = await d.open({}, d.env());
+    await t1.link({ code });
+    await until(() => t2.token.source === "code");
+    expect(t2.token.remembered).toBe(true);
+  });
+});
