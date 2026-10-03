@@ -44,9 +44,9 @@
   setInterval(debug, 5000);
 
   // KP-14: a low-key nudge once there is something worth keeping.
-  store.onUnprotected.addListener(() => say("Tip: show your sync code or add a passkey so you can get this back on another device."));
+  store.onUnprotected.addListener(() => say("Tip: show your storage token or create a backup with a key so you can get this back on another device."));
 
-  // Sync code (KP-11, KP-13)
+  // Storage token (the sync code of KP-11, KP-13)
   $("show-code").addEventListener("click", async () => {
     const code = await store.exportCode();
     $("code").textContent = code;
@@ -63,7 +63,7 @@
       await store.protect("passkey");
       say("Backup created. On another device, go to “Link to existing backup” and choose “Use my passkey”.");
     } catch (e) {
-      say(e.code === "prf-unsupported" ? "This browser cannot use passkeys for this. Use the sync code instead." : `Passkey not added (${e.code ?? e.name}).`);
+      say(e.code === "prf-unsupported" ? "This browser cannot use passkeys for this. Keep your storage token instead." : `Passkey not added (${e.code ?? e.name}).`);
     }
     debug();
   });
@@ -77,7 +77,7 @@
       if (e.code === "would-orphan" && confirm("This device has changes that are not synced yet. Discard them and link anyway?")) {
         return link({ ...options, discardLocal: true });
       }
-      say(e.code === "bad-code" ? "That code is not right. Check it and try again." : e.code === "no-provider" ? "No passkey was used." : `Could not link (${e.code ?? e.name}).`);
+      say(e.code === "bad-code" ? "That token is not right. Check it and try again." : e.code === "no-provider" ? "No passkey was used." : `Could not link (${e.code ?? e.name}).`);
     }
     draft.value = s.getItem("draft") ?? "";
     applyTheme(s.getItem("theme"));
