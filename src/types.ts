@@ -140,8 +140,10 @@ export interface RecoverContext {
  */
 export interface KeyProvider {
   /**
-   * Unique name. `protect(id)` and `link({ provider: id })` select by it, and it becomes
-   * `protection` and `token.source` (the built-in "sync-code" is recorded as "code").
+   * Unique name. The site selects this provider with `store.protect(id)` or
+   * `store.link({ provider: id })`. Burrow then records the id: `store.protection` reads it after
+   * a successful `protect()`, and `store.token.source` after a successful `link()`. The built-in
+   * "sync-code" is recorded as "code".
    */
   readonly id: string;
   /** Whether this method can work in this browser now. Must not prompt the user. */

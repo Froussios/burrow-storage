@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const out = join(root, "node_modules/.cache/doc-snippets");
-const DOCS = ["README.md", "docs/api.md", "docs/sync-and-tokens.md", "docs/localstorage-migration.md",
+const DOCS = ["README.md", "docs/api.md", "docs/sync-and-tokens.md", "docs/storage-standards.md",
   "docs/firestore-setup.md", "docs/extending.md"];
 
 // Type names exported by burrow-storage that listings may reference without declaring.

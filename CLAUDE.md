@@ -13,7 +13,7 @@ tags). The repository is about to be public. The documentation set is current wi
 | --- | --- |
 | `README.md` | What Burrow is, why, quick start, the API in one page |
 | `docs/api.md` | The public contract, member by member; `src/types.ts` is the source of truth |
-| `docs/sync-and-tokens.md`, `docs/localstorage-migration.md`, `docs/firestore-setup.md`, `docs/extending.md` | User guides |
+| `docs/sync-and-tokens.md`, `docs/storage-standards.md`, `docs/firestore-setup.md`, `docs/extending.md` | User guides |
 | `SECURITY.md` | The cryptographic design (normative) and threat model |
 | `docs/architecture.md` | How the code is put together, module by module, with the sync algorithm |
 | `docs/decisions.md` | Decision log: D-1… (implementation) and D1… (planning, with status) |

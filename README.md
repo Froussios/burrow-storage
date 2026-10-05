@@ -341,11 +341,11 @@ storage.setItem("draft", text);     // visible at once, persisted and synced in 
 storage.getItem("draft");
 ```
 
-Swapping the identifier `localStorage` for `store.storage` is the main change. `getItem`,
-`setItem`, `removeItem`, `clear`, `key(i)`, `length`, `storage.foo = "x"`, `"foo" in storage` and
-`Object.keys(storage)` all behave as before, and pending writes are flushed when the page is
-hidden or closed. The repository's tests make exactly that swap in a sample app and run the app's
-own tests against both. The differences:
+`store.storage` implements the Web Storage `Storage` interface: `getItem`, `setItem`,
+`removeItem`, `clear`, `key(i)`, `length`, and named-property access such as `storage.foo = "x"`,
+`"foo" in storage` and `Object.keys(storage)`. Pending writes are flushed when the page is hidden
+or closed. The repository's tests run a sample app's own tests against both `localStorage` and
+`store.storage`. The main differences:
 
 - `store.storage` exists only once `burrow()` has resolved, so code that reads storage during
   start-up (for example, to apply a theme before first paint) has to wait for it.
@@ -353,7 +353,8 @@ own tests against both. The differences:
 - Each `app` has its own namespace, where `localStorage` is shared by the whole origin.
 - Values written through the async API come back from `getItem` as their JSON text.
 
-Migration guide: [docs/localstorage-migration.md](docs/localstorage-migration.md).
+Setup and the full list of differences from Web Storage and `chrome.storage`:
+[docs/storage-standards.md](docs/storage-standards.md).
 
 ## Limits, costs and browser support
 
@@ -408,7 +409,7 @@ timing metadata.
 | --- | --- |
 | [docs/api.md](docs/api.md) | Full API reference: config, methods, events, errors, types |
 | [docs/sync-and-tokens.md](docs/sync-and-tokens.md) | Storage tokens, passkey backups, links, `rememberDevice`, what to show users |
-| [docs/localstorage-migration.md](docs/localstorage-migration.md) | The `Storage` facade, and migrating an existing site |
+| [docs/storage-standards.md](docs/storage-standards.md) | Setting up, and how Burrow differs from Web Storage and `chrome.storage` |
 | [docs/firestore-setup.md](docs/firestore-setup.md) | Creating and running the store: rules, costs, quotas, abuse |
 | [docs/extending.md](docs/extending.md) | Writing a backend for another store, or a custom unlock method |
 | [SECURITY.md](SECURITY.md) | Cryptographic design and threat model |

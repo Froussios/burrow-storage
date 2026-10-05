@@ -1,5 +1,12 @@
 # The shared store: Firestore on the Spark plan
 
+> **Best effort, AI-generated.** An AI assistant wrote this guide from the repository's code and
+> scripts. The rules and the adapter are covered by tests against the Firestore emulator. The setup
+> steps, console paths, costs and quotas have not been verified end to end against a fresh Firebase
+> project, and `npx burrow-setup firestore --run` has never been run end to end. Check each step
+> against the [Firebase documentation](https://firebase.google.com/docs/firestore) before you rely
+> on it, and please report what you find.
+
 Burrow's reference backend is one Firestore collection in one Firebase project on the free Spark
 plan. You create it once and reuse it for every prototype. It is chosen because it needs no card,
 has hard daily quotas instead of a meter (so abuse can pause sync but never produce a bill),

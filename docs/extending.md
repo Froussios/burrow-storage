@@ -72,30 +72,60 @@ Durable Object can provide one, while Workers KV alone cannot.
 
 ## An unlock method
 
-An unlock method (`KeyProvider`) carries the raw 32-byte token off the device and back: to a
-passkey keyslot, a hardware key, a QR handshake, a passphrase.
+An unlock method (`KeyProvider`) gives a user's storage token a way off the device and back: into
+a passkey keyslot, a hardware key, a QR handshake, a passphrase. Burrow ships two, `passkey()` and
+`syncCode()`.
 
-The interface is `KeyProvider`, defined with a comment on every member in
-[`src/types.ts`](../src/types.ts), together with the `EnrolContext`, `RecoverContext` and
-`ProviderStore` types it receives. All four are exported as types from `burrow-storage`. A
-provider has an `id` and three methods: `available()`, `enrol(ctx)` and `recover(ctx)`.
+### Who calls what
+
+Your site never calls a provider directly. It calls two methods on the store object that
+`burrow()` returns (a `BurrowArea`, see [api.md](api.md#tokens-and-devices)), and Burrow calls the
+provider:
+
+| Your site calls | When | Burrow then calls |
+| --- | --- | --- |
+| `store.protect(id)` | The user asks to back up the token, for example by clicking "Back up with my hardware key" | `available()`, then `enrol(ctx)` with the current token |
+| `store.link({ provider: id })` | The user wants this device to use a token they backed up elsewhere | `available()`, then `recover(ctx)`, which returns the token |
+
+`link()` without `provider` tries every configured provider in order; `protect()` without an id
+uses the first one whose `available()` is true.
+
+Burrow records which provider was used, under the provider's `id`:
+
+- after `store.protect(id)` succeeds, `store.protection` reads that `id`, so the site can show
+  "backed up with your hardware key";
+- after `store.link({ provider: id })` succeeds, `store.token.source` reads that `id`, so the site
+  can show where this device's token came from.
+
+The built-in `syncCode()` is recorded as `"code"` rather than its id `"sync-code"`.
+
+### The interface
+
+`KeyProvider` is defined with a comment on every member in [`src/types.ts`](../src/types.ts),
+together with the `EnrolContext`, `RecoverContext` and `ProviderStore` types it receives. All four
+are exported as types from `burrow-storage`. A provider has an `id` and three methods:
+`available()`, `enrol(ctx)` and `recover(ctx)`.
 
 ### Contract
 
-- `enrol()` is called by `protect(id)` with the current token. Store it somewhere only the user
-  can get it back from. Do not keep a copy; the buffer is zeroised after the call. If you write to
-  the backend, use an envelope chained under a key derived from your own material, as the passkey
-  provider does, so the store treats it like any other document.
-- `recover()` is called by `link()` with `interactive: true`. Return the token, or `null` if the
-  user declined or nothing was found; throw a `BurrowError` for real failures. Burrow skips a
-  provider that throws and continues with the next one.
+- `available()` must answer without prompting the user.
+- `enrol(ctx)` receives the current token as `ctx.rootSecret`. Store it somewhere only the user
+  can get it back from, and do not keep a copy: the buffer is zeroised after the call. If you
+  write to the backend, use an envelope chained under a key derived from your own material, as the
+  passkey provider does, so the store treats it like any other document.
+- `recover(ctx)` runs from `store.link()` with `ctx.interactive` set to true, so it may prompt.
+  Return the 32-byte token, or `null` if the user declined or nothing was found; throw a
+  `BurrowError` for real failures. Burrow skips a provider that throws and tries the next one.
 - When the page runs local-only (no backend configured), both calls receive `backend: null`
   despite its type. A provider that stores something in the backend must check for that.
 - A token derived from something the user types (a passphrase) must go through PBKDF2-SHA-256
   with at least 600 000 iterations before it is used, and such tokens are tagged with version
   byte `0x02` in the storage-token encoding (reserved; v1 ships only random tokens, `0x01`).
-- Pass the provider in `keyProvider`. Passing your own replaces the defaults, so include
-  `passkey()` and `syncCode()` if you still want them:
+
+### Registering a provider
+
+Pass providers in the `keyProvider` option of `burrow()`. Your list replaces the defaults, so
+include `passkey()` and `syncCode()` if you still want them:
 
 ```js
 import { burrow, passkey, syncCode } from "burrow-storage";
@@ -103,4 +133,6 @@ const store = await burrow({ app: "my-app", keyProvider: [myHardwareKey(), passk
 await store.protect("my-hardware-key");
 ```
 
-The built-in providers are `src/providers/passkey.ts` and `src/providers/synccode.ts`.
+For working examples, read the built-in providers in
+[`src/providers/passkey.ts`](../src/providers/passkey.ts) and
+[`src/providers/synccode.ts`](../src/providers/synccode.ts).
