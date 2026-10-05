@@ -10,24 +10,17 @@ A backend stores opaque envelopes at opaque ids and enforces one rule: a write m
 expected revision. It knows nothing about users, apps, keys or encryption; a manifest, an item
 and a keyslot look identical to it.
 
-The interface, as exported by `burrow-storage` (`import type { Backend, Envelope } from
-"burrow-storage"`; throw `BackendError`, also exported):
+The interface is `Backend`, defined with a comment on every member in
+[`src/types.ts`](../src/types.ts) and exported as a type from `burrow-storage`:
 
 ```ts
-interface Backend {
-  readonly id: string;
-  readonly capabilities: {
-    writeAuth: boolean;        // true if the store verifies the tok/next chain itself
-    subscribe: boolean;        // true if subscribe() is implemented
-    keepalive: boolean;        // true if put() can complete during page unload
-    maxEnvelopeBytes: number;  // informational
-  };
-  get(id: string): Promise<Envelope | null>;                     // null = not found
-  getMany?(ids: string[]): Promise<(Envelope | null)[]>;         // default: parallel get()
-  put(id: string, env: Envelope, expectedRev: number | null, opts?: { keepalive?: boolean }): Promise<void>;
-  subscribe?(id: string, onChange: (env: Envelope) => void): () => void;
-}
+import type { Backend, BackendCapabilities, Envelope } from "burrow-storage";
+import { BackendError } from "burrow-storage";   // what every failure must reject with
 ```
+
+It has six members: `id`, `capabilities`, `get(id)`, `put(id, env, expectedRev, opts?)`, and the
+optional `getMany(ids)` and `subscribe(id, onChange)`. The rules below are the contract the sync
+engine relies on.
 
 ### Contract
 
@@ -82,20 +75,10 @@ Durable Object can provide one, while Workers KV alone cannot.
 An unlock method (`KeyProvider`) carries the raw 32-byte token off the device and back: to a
 passkey keyslot, a hardware key, a QR handshake, a passphrase.
 
-The interface, as exported by `burrow-storage`:
-
-```ts
-interface KeyProvider {
-  readonly id: string;                    // becomes `protection` and `token.source`
-  available(): Promise<boolean>;          // feature-detect; must not prompt
-  enrol(ctx: { app: string; rootSecret: Uint8Array; backend: Backend; store?: ProviderStore }): Promise<void>;
-  recover(ctx: { app: string; interactive: boolean; input?: string; backend: Backend; store?: ProviderStore }): Promise<Uint8Array | null>;
-}
-interface ProviderStore {               // a small per-device string store (e.g. a credential id)
-  get(name: string): Promise<string | undefined>;
-  set(name: string, value: string): Promise<void>;
-}
-```
+The interface is `KeyProvider`, defined with a comment on every member in
+[`src/types.ts`](../src/types.ts), together with the `EnrolContext`, `RecoverContext` and
+`ProviderStore` types it receives. All four are exported as types from `burrow-storage`. A
+provider has an `id` and three methods: `available()`, `enrol(ctx)` and `recover(ctx)`.
 
 ### Contract
 
