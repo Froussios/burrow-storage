@@ -47,6 +47,23 @@ export function backendConformance(name: string, make: () => Backend | Promise<B
       expect(await b.get(c.id)).toEqual(e0);
     });
 
+    it("ENC-4 an envelope with z: true round trips with every field preserved", async () => {
+      const b = await make(); const c = await chain();
+      const e0 = await c.env(0, JSON.stringify({ v: 1, text: "compressible ".repeat(200) }));
+      expect(e0.z).toBe(true);
+      await b.put(c.id, e0, null);
+      const got = await b.get(c.id);
+      expect(got).toEqual(e0);
+      expect(Object.keys(got!).sort()).toEqual(["ct", "iv", "next", "rev", "tok", "ts", "v", "z"]);
+      // ...and the chain continues from it, to a document without z.
+      const e1 = await c.env(1, "short");
+      expect(e1.z).toBeUndefined();
+      await b.put(c.id, e1, 0);
+      const got1 = await b.get(c.id);
+      expect(got1).toEqual(e1);
+      expect("z" in got1!).toBe(false);
+    });
+
     it("create over an existing document is conflict", async () => {
       const b = await make(); const c = await chain();
       await b.put(c.id, await c.env(0), null);
@@ -101,14 +118,19 @@ export function backendConformance(name: string, make: () => Backend | Promise<B
       expect((await b.get(c.id))!.rev).toBe(2);
     });
 
-    it("BE-1 concurrent writers at the same rev: exactly one wins, the other is conflict", async () => {
+    it("BE-1 ten concurrent writers at the same rev: exactly one wins, the rest are conflict", async () => {
       const b = await make(); const c = await chain();
       await b.put(c.id, await c.env(0), null);
-      const [x, y] = await Promise.allSettled([b.put(c.id, await c.env(1, "x"), 0), b.put(c.id, await c.env(1, "y"), 0)]);
-      const ok = [x, y].filter((r) => r.status === "fulfilled");
-      const bad = [x, y].filter((r): r is PromiseRejectedResult => r.status === "rejected");
-      expect(ok).toHaveLength(1);
-      expect(bad.map((r) => (r.reason as BackendError).code)).toEqual(["conflict"]);
+      const WRITERS = 10;
+      const envs = await Promise.all(Array.from({ length: WRITERS }, (_, i) => c.env(1, `writer ${i}`)));
+      const rs = await Promise.allSettled(envs.map((e) => b.put(c.id, e, 0)));
+      const won = rs.flatMap((r, i) => (r.status === "fulfilled" ? [i] : []));
+      const bad = rs.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+      expect(won).toHaveLength(1);
+      expect(bad.map((r) => (r.reason as BackendError).code)).toEqual(Array(WRITERS - 1).fill("conflict"));
+      for (const r of bad) expect(r.reason).toBeInstanceOf(BackendError);
+      // The stored document is the winner's, whole.
+      expect(await b.get(c.id)).toEqual(envs[won[0]!]);
     });
 
     it("BE-1 concurrent creates: exactly one wins", async () => {
