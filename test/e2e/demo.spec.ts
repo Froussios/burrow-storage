@@ -67,6 +67,25 @@ test("the demo shows the token and its source, runs under its strict CSP, and sy
   await deviceA.close(); await deviceB.close(); await deviceC.close();
 });
 
+test("API-8 forgetting the device starts a new token on reload, and the old token still links", async ({ page }) => {
+  await page.goto("/demo/index.html");
+  await expect(page.locator("body")).toHaveAttribute("data-ready", "true");
+  await page.locator("#draft").fill("kept in the backup");
+  await expect(page.locator("#status")).toHaveText("synced", { timeout: 15_000 });
+  const before = (await page.locator("#code").textContent())!;
+  page.on("dialog", (d) => void d.accept());
+  await page.locator("#forget").click();
+  await page.waitForURL("**/demo/index.html");
+  await expect(page.locator("body")).toHaveAttribute("data-ready", "true");
+  await expect(page.locator("#code")).toHaveText(TOKEN);
+  await expect(page.locator("#code")).not.toHaveText(before);
+  await expect(page.locator("#token-source")).toContainText("Generated on this device (new)");
+  await expect(page.locator("#draft")).toHaveValue("");
+  await page.locator("#link-code").fill(before);
+  await page.locator("#link-form button[type=submit]").click();
+  await expect(page.locator("#draft")).toHaveValue("kept in the backup", { timeout: 30_000 });
+});
+
 test("journey 4: an invalid token shows an error and keeps the current token", async ({ page }) => {
   await page.goto("/demo/index.html");
   await expect(page.locator("body")).toHaveAttribute("data-ready", "true");
