@@ -108,7 +108,7 @@ flow. **The storage token is the path that always works**; offer it alongside th
 
 The demo (`demo/`, [user-journeys.md](user-journeys.md)) is the reference UI. Its rules:
 
-1. **Always show the token in use** and where it came from (`store.token`): generated here,
+1. **Always show the token in use** and where it came from (`BurrowArea.token`): generated here,
    pasted, opened from a link, restored from a passkey, remembered from an earlier visit.
 2. **Nudge once.** `onUnprotected` fires once per device when there is data and no protection,
    usually soon after the first write. Register the listener right after `burrow()` resolves: the

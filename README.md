@@ -72,8 +72,8 @@ passkey backup of it, and that device derives the same ids and keys.
 
 - **Local-first.** Reads and writes complete against a local cache at once, with or without a
   network. Sync runs in the background and never blocks the UI.
-- **A familiar API.** The async API mirrors `chrome.storage`; `store.storage` is a synchronous
-  drop-in for `localStorage`.
+- **A familiar API.** `BurrowArea`, the object `burrow()` resolves to, mirrors `chrome.storage`;
+  its `storage` property is a synchronous drop-in for `localStorage`.
 - **No bill.** On Firebase's free Spark plan the quotas are hard limits, so no amount of traffic
   can run up a charge. What heavy use or abuse can cost you is availability: sync pauses until the
   daily reset, and junk that fills the free storage stops writes until you clean it up (see
@@ -111,8 +111,8 @@ ciphertext.
 
 ### What a stored document looks like
 
-This is the document that `store.set({ theme: "dark" })` produced against the in-memory backend,
-exactly as the operator of the store sees it:
+This is the document that `BurrowArea.set({ theme: "dark" })` produced against the in-memory
+backend, exactly as the operator of the store sees it:
 
 ```
 o6zmGhLyv-ZWpnmyzMvJohTlfWQuqedYgW7d-e_xhZc
@@ -282,11 +282,11 @@ fails.
 The first device needs nothing: it generates the token and remembers it. To use the same data
 elsewhere, the user carries the token across in one of two ways.
 
-**The storage token** always works. Show `await store.exportCode()` on the first device; on the
-second, call `store.link({ code })` with what the user typed or pasted. A token looks like
-`07DV-1XKY-2X98-DRCP-DJV6-FC2E-459V-AJTY-26K2-XJFQ-9BXZ-QRNF-X0F5-Z1XS` (this one is made up and
-fails its checksum). Case, spaces and hyphens do not matter, and `O`/`0` and `I`/`L`/`1` are read
-as the same. A mistyped token fails the checksum and rejects with `bad-code` before any network
+**The storage token** always works. Show the result of `BurrowArea.exportCode()` on the first
+device; on the second, call `BurrowArea.link({ code })` with what the user typed or pasted. A token
+looks like `07DV-1XKY-2X98-DRCP-DJV6-FC2E-459V-AJTY-26K2-XJFQ-9BXZ-QRNF-X0F5-Z1XS` (this one is made
+up and fails its checksum). Case, spaces and hyphens do not matter, and `O`/`0` and `I`/`L`/`1` are
+read as the same. A mistyped token fails the checksum and rejects with `bad-code` before any network
 call.
 
 The token can also travel as a link, `https://your.site/#burrow=<token>`. Burrow adopts such a link
@@ -296,12 +296,13 @@ token switches that device to it, and can then read whatever the user writes the
 does not offer links, drop the fragment before calling `burrow()`
 ([how](docs/sync-and-tokens.md#links)).
 
-**A passkey backup.** `store.protect("passkey")` creates a passkey and stores the token in a
+**A passkey backup.** `BurrowArea.protect("passkey")` creates a passkey and stores the token in a
 *keyslot* document, encrypted under a key that only that passkey can produce. It uses the WebAuthn
 PRF extension, which lets a passkey derive a secret key on request. The passkey never becomes the
-token. On another device, `store.link({ provider: "passkey" })` takes one passkey prompt. Passkeys
-need HTTPS or `localhost`, and PRF support still varies across browsers and authenticators; where it
-is missing, `protect("passkey")` rejects with `prf-unsupported`. Offer the storage token alongside.
+token. On another device, `BurrowArea.link({ provider: "passkey" })` takes one passkey prompt.
+Passkeys need HTTPS or `localhost`, and PRF support still varies across browsers and authenticators;
+where it is missing, `protect("passkey")` rejects with `prf-unsupported`. Offer the storage token
+alongside.
 
 ```js
 // Register right after burrow(): it fires once per device, soon after the first write,
@@ -321,7 +322,7 @@ try {
 }
 ```
 
-When the user confirms that they saved the token, call `store.protect("sync-code")`. It records
+When the user confirms that they saved the token, call `BurrowArea.protect("sync-code")`. It records
 that a copy exists, so `protection` stops reading `"none"`.
 
 Linking replaces the device's token for every Burrow app on the origin, pulls the data, and fires

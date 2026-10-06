@@ -213,7 +213,7 @@ export")` otherwise) and merges the items with `set()`; it does not check that `
 
 ### `storage`: the `Storage` facade
 
-`store.storage` implements the DOM `Storage` interface synchronously over the in-memory mirror.
+`BurrowArea.storage` implements the DOM `Storage` interface synchronously over the in-memory mirror.
 Reads are correct from the first call; writes are visible at once, persisted in the background
 (batched per microtask), and flushed when the page is hidden or unloaded.
 
