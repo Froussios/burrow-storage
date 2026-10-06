@@ -1,6 +1,6 @@
 # Decisions
 
-The judgement calls behind the code, in two parts. **Part A** (D-1 … D-37, with a hyphen) is the
+The judgement calls behind the code, in two parts. **Part A** (D-1 … D-38, with a hyphen) is the
 log kept while implementing; each entry names the requirement it touches in
 [history/requirements.md](history/requirements.md) ("the brief") and the choice made where the
 brief was silent or self-contradictory. **Part B** (D1 … D20, no hyphen) is the earlier planning
@@ -285,6 +285,13 @@ They were not adopted: the formats follow the brief (`id || app || String(rev)` 
 `id || String(n)`), which is public contract. Both are unambiguous in use: `id` is a fixed 43
 characters, and each app's ids and keys are derived for that app alone, so a document copied to
 another id, app or revision fails to decrypt or verify (SECURITY.md, "Formats").
+
+### D-38 The demo page loads its bundles without SRI (SEC-6)
+
+WP-15 planned an SRI script tag on the demo. The demo is deployed with the bundles it was built
+with, from its own origin, under `script-src 'self'`; an `integrity` attribute would have to be
+regenerated on every build and protects against nothing the CSP does not already exclude. SRI
+matters when a page loads Burrow from a CDN, and the README shows that form (SEC-6).
 
 ## Part B: planning decisions and their status
 
