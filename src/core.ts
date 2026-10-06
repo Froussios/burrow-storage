@@ -195,6 +195,8 @@ export class Core implements BurrowArea {
     // API-11, SYNC-5: flush facade writes and push when the page is hidden or unloaded.
     on(win, "pagehide", () => void this.#hide());
     on(win, "visibilitychange", () => this.#visible() ? this.#show() : void this.#hide());
+    // SYNC-6: pull on focus too; a pass already started by visibilitychange covers it.
+    on(win, "focus", () => { if (this.#visible() && !this.#running) void this.#sync(); });
     this.#channel = this.#env.channel(`burrow:${this.app}`);
     if (this.#channel) this.#channel.onmessage = (e) => void this.#onMessage(e.data);
     if (this.#interval > 0) this.#pollTimer = setInterval(() => { if (this.#visible()) void this.#sync(); }, this.#interval);
@@ -673,7 +675,9 @@ export class Core implements BurrowArea {
         const env = envs[i];
         if (env) remote.set(fetch[i]!, await this.#openItem(fetch[i]!, ids[i]!, env));
       }
+      const before = Object.keys(changes).length;
       await this.#applyRemote(remote, changes);
+      let pruned = 0;
       // Synced keys missing from an existing manifest were pruned tombstones: drop them.
       if (menv) {
         const gone = [...this.#mirror].filter(([k, e]) => !e.dirty && !(k in dir)).map(([k]) => k);
@@ -683,8 +687,11 @@ export class Core implements BurrowArea {
           if (!this.#settledSince(k, mark)) continue;
           addChange(changes, k, this.#mirror.get(k), undefined);
           this.#mirror.delete(k);
+          pruned++;
         }
       }
+      // ERR-3: one merge line when remote entries were considered against the local copy.
+      if (remote.size || pruned) this.#log("merge", { remote: remote.size, applied: Object.keys(changes).length - before, pruned });
       this.#log("pull", { rev: menv?.rev ?? null, fetched: fetch.length, ms: Date.now() - t0 });
 
       // 3. push dirty items, each on its own chain, in parallel
