@@ -11,38 +11,21 @@ lists exactly where each interface differs from the standard it imitates.
 
 ## Setting up
 
-1. **Choose where the data syncs.** With no configuration, Burrow keeps data on the device only.
-   To sync across devices, create a Firestore project once and put its public config on your
-   pages ([firestore-setup.md](firestore-setup.md)).
-2. **Load the library.** Either load `burrow.min.js` with a script tag, which defines the global
-   `Burrow`, or install the package and import it. The [README](../README.md#quick-start) shows
-   both forms.
-3. **Open the store** for your app, once per page, before any code that reads it:
-
-   ```js
-   import { burrow } from "burrow-storage";
-   const store = await burrow({ app: "my-app" });
-   ```
-
-4. **Use either interface,** or both; they share the same keys. Here `store` is the
-   `BurrowArea` from step 3:
-
-   ```js
-   store.storage.setItem("theme", "dark");          // Web Storage style, synchronous
-   await store.set({ draft: { text: "Hello" } });   // chrome.storage style, JSON values
-   ```
+1. **Backend.** Without one, data stays on the device. To sync across devices, configure Firestore
+   once ([firestore-setup.md](firestore-setup.md)).
+2. **Library.** `dist/burrow.min.js` defines the global `Burrow`; the `burrow-storage` package
+   exports the same API ([README](../README.md#quick-start)).
+3. **`burrow({ app })`** resolves to the app's `BurrowArea`, once per page. Neither interface
+   exists before it resolves. Both read and write the same keys.
 
 The [API reference](api.md) documents every member.
 
 ## `BurrowArea.storage` and Web Storage
 
-`BurrowArea.storage` implements the `Storage` interface from the
-[HTML standard](https://html.spec.whatwg.org/multipage/webstorage.html): `length`, `key(index)`,
-`getItem(key)`, `setItem(key, value)`, `removeItem(key)` and `clear()`, all synchronous, plus
-named-property access (`s.theme`, `s.theme = "dark"`, `delete s.theme`, `"theme" in s`,
-`Object.keys(s)`, where `s` is any `Storage`). Property access never reaches a key named after one
-of the six members; use `getItem("key")` for those. It differs from the browser's Web Storage
-(`localStorage`) in these ways:
+`BurrowArea.storage` implements the
+[`Storage` interface](https://html.spec.whatwg.org/multipage/webstorage.html#the-storage-interface)
+synchronously: its six members and named-property access. A named property never shadows one of
+the six members; `getItem()` reads such a key. It differs from `localStorage` in these ways:
 
 | | Web Storage (`localStorage`) | `BurrowArea.storage` |
 | --- | --- | --- |

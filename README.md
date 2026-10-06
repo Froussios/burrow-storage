@@ -279,83 +279,54 @@ fails.
 
 ## Reaching the data from another device
 
-The first device needs nothing: it generates the token and remembers it. To use the same data
-elsewhere, the user carries the token across in one of two ways.
+The first device generates the storage token on first use and remembers it. Another device obtains
+the same token in one of three ways:
 
-**The storage token** always works. Show the result of `BurrowArea.exportCode()` on the first
-device; on the second, call `BurrowArea.link({ code })` with what the user typed or pasted. A token
-looks like `07DV-1XKY-2X98-DRCP-DJV6-FC2E-459V-AJTY-26K2-XJFQ-9BXZ-QRNF-X0F5-Z1XS` (this one is made
-up and fails its checksum). Case, spaces and hyphens do not matter, and `O`/`0` and `I`/`L`/`1` are
-read as the same. A mistyped token fails the checksum and rejects with `bad-code` before any network
-call.
+| Way | First device | Other device |
+| --- | --- | --- |
+| Storage token | `BurrowArea.exportCode()` | `BurrowArea.link({ code })` |
+| Link | A URL ending in `#burrow=<token>` | `burrow()` adopts it on load |
+| Passkey backup | `BurrowArea.protect("passkey")` | `BurrowArea.link({ provider: "passkey" })` |
 
-The token can also travel as a link, `https://your.site/#burrow=<token>`. Burrow adopts such a link
-on **every** page load, without asking, and removes it from the address bar at once. That is
-convenient, and it can be abused: someone who gets a user to open a link carrying *their own*
-token switches that device to it, and can then read whatever the user writes there. If your site
-does not offer links, drop the fragment before calling `burrow()`
-([how](docs/sync-and-tokens.md#links)).
+- **Storage token.** 56 characters, such as
+  `07DV-1XKY-2X98-DRCP-DJV6-FC2E-459V-AJTY-26K2-XJFQ-9BXZ-QRNF-X0F5-Z1XS` (made up; it fails its
+  checksum). Case, spaces and hyphens are ignored, and `O`/`0` and `I`/`L`/`1` read the same. A
+  bad checksum rejects with `bad-code` before any network call.
+- **Link.** Adopted on **every** page load, without asking, then removed from the address bar.
+  Whoever crafts a link with *their own* token can switch a device to it and read what the user
+  writes next. Sites that do not offer links should drop the fragment before calling `burrow()`
+  ([how](docs/sync-and-tokens.md#links)).
+- **Passkey backup.** Stores the token in a *keyslot* document, encrypted under a key that only
+  the passkey can derive (WebAuthn PRF). Needs HTTPS or `localhost` and PRF support, which still
+  varies; without it `protect("passkey")` rejects with `prf-unsupported`.
 
-**A passkey backup.** `BurrowArea.protect("passkey")` creates a passkey and stores the token in a
-*keyslot* document, encrypted under a key that only that passkey can produce. It uses the WebAuthn
-PRF extension, which lets a passkey derive a secret key on request. The passkey never becomes the
-token. On another device, `BurrowArea.link({ provider: "passkey" })` takes one passkey prompt.
-Passkeys need HTTPS or `localhost`, and PRF support still varies across browsers and authenticators;
-where it is missing, `protect("passkey")` rejects with `prf-unsupported`. Offer the storage token
-alongside.
+`BurrowArea.protection` reads `"none"` until an unlock method is recorded: `protect("passkey")`, or
+`protect("sync-code")`, which records that the user kept the storage token. `onUnprotected` fires
+once per device when data exists and `protection` is `"none"`; it is not repeated for listeners
+added later.
 
-```js
-// Register right after burrow(): it fires once per device, soon after the first write,
-// and is not repeated for listeners added later.
-store.onUnprotected.addListener(() => {
-  showBanner("Keep a copy of your storage token, or back it up with a passkey.");
-});
+`link()` with a different token replaces the token for every Burrow app on the origin, refills the
+cache from the store, and fires `onToken` and `onChanged`. Writes this app has not synced are pushed first;
+if any remain, it rejects with `would-orphan`, unless called with `discardLocal: true`. Other apps on the
+origin switch on their next load and drop what they had not synced.
 
-// Second device
-try {
-  await store.link({ code: input.value });
-} catch (e) {
-  if (e.code === "bad-code") say("That token is not right.");
-  if (e.code === "would-orphan" && confirm("Discard the changes on this device that never synced?")) {
-    await store.link({ code: input.value, discardLocal: true });
-  }
-}
-```
-
-When the user confirms that they saved the token, call `BurrowArea.protect("sync-code")`. It records
-that a copy exists, so `protection` stops reading `"none"`.
-
-Linking replaces the device's token for every Burrow app on the origin, pulls the data, and fires
-`onToken` and `onChanged`. Another app on the same origin picks up the new token on its next load
-and drops what it had cached under the old one, including anything it never managed to sync.
-
-On shared computers use `burrow({ app, rememberDevice: false })`. The token then lives in memory
-only, the cache defaults to memory, and the user links each session. Have them link before they
-write: anything written first belongs to a throwaway token.
+`burrow({ app, rememberDevice: false })` keeps the token in memory only, for shared computers.
+Anything written before `link()` belongs to a throwaway token.
 
 ## Replacing localStorage
 
-```js
-const store = await burrow({ app: "my-app" });
-const storage = store.storage;      // implements the DOM Storage interface, synchronously
-storage.setItem("draft", text);     // visible at once, persisted and synced in the background
-storage.getItem("draft");
-```
+`BurrowArea.storage` implements the Web Storage `Storage` interface synchronously, including
+named-property access. Writes are visible at once and persisted and synced in the background. The
+repository runs a sample app's own tests against both `localStorage` and `BurrowArea.storage`. The
+main differences:
 
-The `storage` property of the `BurrowArea` that `burrow()` returns implements the Web Storage
-`Storage` interface: `getItem`, `setItem`, `removeItem`, `clear`, `key(i)`, `length`, and
-named-property access such as `storage.foo = "x"`, `"foo" in storage` and `Object.keys(storage)`.
-Pending writes are flushed when the page is hidden
-or closed. The repository's tests run a sample app's own tests against both `localStorage` and
-`BurrowArea.storage`. The main differences:
+- It exists only once `burrow()` has resolved, so start-up reads (for example, applying a theme
+  before first paint) wait for it.
+- No window `storage` event; `BurrowArea.onChanged` reports changes.
+- Keys are per `app`, where `localStorage` is shared by the whole origin.
+- Values written with `BurrowArea.set()` read back from `getItem` as their JSON text.
 
-- `BurrowArea.storage` exists only once `burrow()` has resolved, so code that reads storage during
-  start-up (for example, to apply a theme before first paint) has to wait for it.
-- Burrow does not fire the window `storage` event; use `onChanged`.
-- Each `app` has its own namespace, where `localStorage` is shared by the whole origin.
-- Values written through the async API come back from `getItem` as their JSON text.
-
-Setup and the full list of differences from Web Storage and `chrome.storage`:
+The full comparison with Web Storage and `chrome.storage`:
 [docs/storage-standards.md](docs/storage-standards.md).
 
 ## Limits, costs and browser support
