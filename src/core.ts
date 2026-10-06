@@ -168,7 +168,7 @@ export class Core implements BurrowArea {
     await this.#readFragment();
   }
 
-  /** Derive keys for the held secret, and make sure the cache belongs to it (DECISIONS.md D-8). */
+  /** Derive keys for the held secret, and make sure the cache belongs to it (docs/decisions.md D-8). */
   async #adoptIdentity(): Promise<void> {
     this.#keys = await this.#secret!.use((s) => deriveAppKeys(s, this.app));
     const owner = hex(await sha256(utf8("owner:" + this.#keys.base))).slice(0, 16);

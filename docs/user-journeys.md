@@ -6,9 +6,10 @@ These five journeys define what a person must be able to do on the Burrow demo p
 ## Terms
 
 - **Storage token** (or just **token**): the secret that owns a user's data. Whoever holds it can
-  read and write that data from any device. It is 56 characters, shown in groups of four
-  (`04G1-20G3-…`). The requirements call it the *root secret*, and its typed form the *sync code*
-  (KP-11).
+  read and write that data from any device. It is 56 characters, shown in 14 groups of four
+  (`07DV-1XKY-…`). The requirements brief calls it the *root secret*, and its typed form the *sync
+  code* (KP-11); the API keeps those names (`exportCode()`, `link({ code })`), see
+  [decisions.md](decisions.md) D-28.
 - **Backup**: the user's data in the shared store, encrypted under keys derived from the token.
 - **Passkey backup**: the token stored in a passkey's keyslot, so that passkey can bring it back
   on any device (KP-5, KP-6).
@@ -31,7 +32,7 @@ The **Storage token** panel is always visible. It shows:
   | Loaded from this browser on a later visit (KP-2) | Remembered by this browser; originally … |
 
   Each source also shows when this device obtained the token. The page reads the source from
-  `store.token` (`{ source, remembered, since }`) and updates it on `store.onToken`.
+  `BurrowArea.token` (`{ source, remembered, since }`) and updates it on `BurrowArea.onToken`.
 - whether a passkey backup exists.
 
 ## Summary
@@ -54,14 +55,14 @@ this device (new)* and *Passkey backup: None yet*.
 **Outcome:** the token is stored in a new passkey. The panel says *Passkey backup: Yes, in a
 passkey*. The data the user writes syncs to the store under that token.
 
-**How:** `store.protect("passkey")` creates a discoverable passkey, evaluates its PRF, and writes
-a keyslot holding the token wrapped under the PRF output.
+**How:** `BurrowArea.protect("passkey")` creates a discoverable passkey, evaluates its PRF, and
+writes a keyslot holding the token wrapped under the PRF output.
 
 **Notes:**
 - Data syncs within seconds of being written, before any passkey exists. The passkey is what
   makes the token recoverable after the browser forgets it.
-- Without PRF support, which Firefox and Safari often lack, the page says the browser cannot use
-  passkeys for this. The user should copy the token instead.
+- Where the browser or authenticator lacks the PRF extension (support varies), the page says the
+  browser cannot use passkeys for this. The user should copy the token instead.
 
 ## 2. Restore the token from a passkey
 
@@ -74,8 +75,8 @@ the prompt.
 **Outcome:** the panel shows the original token, *Restored from your passkey*. The user's
 existing data appears, typically within a few seconds.
 
-**How:** `store.link({ provider: "passkey" })` reads the keyslot, unwraps the token, makes it this
-device's token, and pulls the data.
+**How:** `BurrowArea.link({ provider: "passkey" })` reads the keyslot, unwraps the token, makes it
+this device's token, and pulls the data.
 
 **Notes:**
 - If the user wrote anything under the fresh token first, linking would abandon it. The page
@@ -95,7 +96,7 @@ device**. Alternatively, they open the **Link for your other device** URL.
 **Outcome:** the panel shows the pasted token, *Pasted or typed in* (or *Opened from a link*).
 Their existing data appears.
 
-**How:** `store.link({ code })` checks the token's checksum before any network call, adopts it
+**How:** `BurrowArea.link({ code })` checks the token's checksum before any network call, adopts it
 and pulls the data. Case, spaces and hyphens are ignored, and `O`/`0` and `I`/`L`/`1` count as
 the same. A token in the URL is removed from the address bar once read.
 

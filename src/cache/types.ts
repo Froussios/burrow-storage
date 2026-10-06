@@ -2,7 +2,7 @@
 export interface CachedItem {
   value?: unknown;
   ts: number;
-  /** Merge tie-break hash of the serialised value (DECISIONS.md D-5); filled lazily. */
+  /** Merge tie-break hash of the serialised value (docs/decisions.md D-5); filled lazily. */
   h?: string;
   deleted?: true;
   dirty?: true;
@@ -11,7 +11,7 @@ export interface CachedItem {
 
 /** SYNC-3: per-app sync state. */
 export interface AppMeta {
-  /** Fingerprint of the secret this cache belongs to (not an id; DECISIONS.md D-8). */
+  /** Fingerprint of the secret this cache belongs to (not an id; docs/decisions.md D-8). */
   owner?: string;
   manifestRev?: number | null;
   /** Greatest remote ts seen, for clock-skew correction (SYNC-11). */

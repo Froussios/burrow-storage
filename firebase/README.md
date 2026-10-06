@@ -1,12 +1,24 @@
-# Burrow — shared Firestore project (Spark)
+# Firestore rules and emulator config
 
-Files for the one Firebase project every Burrow prototype shares. See the
-requirements doc, sections "Reference backend: Firestore" (FS-1..FS-13).
+The files Burrow's reference backend needs on the store side. `npx burrow-setup firestore` walks
+through creating a project and deploying them; the full guide, including costs, quotas and the
+API-key restriction, is [docs/firestore-setup.md](../docs/firestore-setup.md).
 
-- `firebase.json`     — points the CLI at the rules and configures the emulator.
-- `firestore.rules`   — the id-as-capability rules with the SHA-256 write chain.
-- `tests/`            — emulator tests for the FS-13 matrix. `cd tests && npm i && npm test`.
+- `firestore.rules` — the id-as-capability rules: `get` for anyone, no `list`, no `delete`,
+  `create` at revision 0, `update` only at the next revision with a token whose SHA-256 matches
+  the stored commitment. The collection is `burrow`; if you use `FirestoreBackend({ collection })`
+  with another name, change it here too.
+- `firebase.json` — points the Firebase CLI at the rules and configures the emulator (port 8080,
+  no UI).
+- `tests/` — emulator tests for every rule (`cd tests && npm ci && npm test`, or
+  `npm run test:rules` from the repository root). Needs Java 21.
 
-Deploy: `firebase login && firebase use <project-id> && firebase deploy --only firestore:rules`
+Deploy to your project:
 
-Stay on Spark. Do not enable Blaze, Auth, Storage or Functions; nothing here needs them.
+```sh
+npx firebase-tools login
+npx firebase-tools deploy --only firestore:rules --project <your-project-id>
+```
+
+Stay on the Spark plan. Do not enable Blaze, Authentication, Storage or Functions; nothing here
+needs them, and Spark's hard quotas are what make abuse a nuisance rather than a bill.

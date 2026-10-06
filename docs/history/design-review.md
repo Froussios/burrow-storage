@@ -1,3 +1,11 @@
+> **Historical document.** This review of the requirements was written before implementation
+> started. Several of its proposed resolutions were adopted (C1, C2, C4, G8, G11, T1, T3); others
+> were not, and the code took a different route (notably: the Firebase SDK rather than REST, one
+> IndexedDB store per app, AES-KW wrapping, `#burrow=` links, `protection: "code"`). The binding
+> record of what was decided is [`../decisions.md`](../decisions.md); the code as built is described in
+> [`../architecture.md`](../architecture.md). Section references below point into the pre-implementation
+> architecture draft and no longer resolve.
+
 # Design review of the Burrow requirements
 
 Reviewed: `docs/requirements.md` (snapshot of the requirements doc at rev 79, 2026-10-01).

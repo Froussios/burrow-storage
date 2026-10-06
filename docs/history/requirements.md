@@ -1,14 +1,13 @@
-<!--
-Snapshot of the requirements doc "Burrow — Requirements", taken 2026-10-01 at doc rev 79.
-The doc is the upstream source; this file is the copy implementers work from.
-Known inconsistencies in this text are catalogued in docs/design-review.md and the
-resolutions that the implementation follows are in docs/architecture.md and docs/decisions.md.
-Where this file and docs/architecture.md disagree, architecture.md wins.
--->
+> **Historical document.** This is the requirements brief the implementation was built from,
+> snapshotted on 2026-10-01 (rev 79). Tests and code comments cite its requirement ids (`API-3`,
+> `ENC-7`, `SYNC-10`, …), which is why it is kept. Where it disagrees with the code, the code and
+> [`../architecture.md`](../architecture.md) describe what ships; [`../decisions.md`](../decisions.md)
+> records every deliberate departure (for example the 749 000-byte item ceiling, the `(ts, h)`
+> tie-break, and the sync code being shown to users as the *storage token*).
 
 # Burrow — Requirements
 
-2026-09-30 · @Chris
+2026-09-30
 
 ## Pitch
 
@@ -76,7 +75,7 @@ Burrow's answer is a **capability key** instead of an identity: the user holds a
 
 ## Architecture overview
 
-*(Architecture diagram in the source doc: four layers — API, Core, Key providers, Backend adapters — with the backend interface as the one swappable seam. Redrawn in `docs/architecture.md`.)*
+*(Architecture diagram in the source doc: four layers — API, Core, Key providers, Backend adapters — with the backend interface as the one swappable seam. Redrawn in `../architecture.md`.)*
 
 Site code talks to one of two shapes of the same store; the core keeps a local cache, encrypts vaults with a key from a key provider, and hands opaque bytes to whichever backend adapter is configured. Only the backend layer knows what the store is, so substituting Firestore means implementing that one interface.
 

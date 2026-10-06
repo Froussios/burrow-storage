@@ -93,7 +93,7 @@ export async function deriveSlotKeys(prfOutput: Uint8Array): Promise<SlotKeys> {
 
 /**
  * ENC-3: a secret derived from typed input passes through PBKDF2-SHA-256 (≥ 600,000 iterations)
- * before it becomes ikm. Not exported from the package in v1 (DECISIONS.md D-12).
+ * before it becomes ikm. Not exported from the package in v1 (docs/decisions.md D-12).
  */
 export async function passphraseSecret(passphrase: string, salt: string, iterations = 600_000): Promise<Uint8Array> {
   if (iterations < 600_000) throw new RangeError("PBKDF2 needs at least 600,000 iterations (ENC-3)");
