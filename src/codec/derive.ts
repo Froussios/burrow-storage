@@ -9,8 +9,14 @@ export const ID_LENGTH = 43;
 
 const HMAC = { name: "HMAC", hash: "SHA-256" } as const;
 
-async function hkdfBase(ikm: Uint8Array<ArrayBuffer>): Promise<CryptoKey> {
-  return subtle().importKey("raw", ikm, "HKDF", false, ["deriveBits", "deriveKey"]);
+/** Import key material as an HKDF key through a private copy, zeroised once imported (SEC-1). */
+async function hkdfBase(ikm: Uint8Array): Promise<CryptoKey> {
+  const copy = new Uint8Array(ikm);
+  try {
+    return await subtle().importKey("raw", copy, "HKDF", false, ["deriveBits", "deriveKey"]);
+  } finally {
+    zeroise(copy);
+  }
 }
 
 const hkdf = (salt: string, info: Uint8Array<ArrayBuffer>) =>
@@ -34,7 +40,7 @@ export interface AppKeys {
 
 /** Derive the per-app key set from the root secret. All keys non-extractable (SEC-2). */
 export async function deriveAppKeys(rootSecret: Uint8Array, app: string): Promise<AppKeys> {
-  const ikm = await hkdfBase(new Uint8Array(rootSecret));
+  const ikm = await hkdfBase(rootSecret);
   const pathBits = await expandBits(ikm, SALT_V1, concat(utf8("path"), utf8(app)));
   try {
     const base = idOf(await sha256(pathBits));
@@ -78,7 +84,7 @@ export interface SlotKeys {
 
 /** The passkey keyslot key set: PRF output plays the role of ikm (KP-5/6, ENC-11). */
 export async function deriveSlotKeys(prfOutput: Uint8Array): Promise<SlotKeys> {
-  const ikm = await hkdfBase(new Uint8Array(prfOutput));
+  const ikm = await hkdfBase(prfOutput);
   const kek = await subtle().deriveKey(hkdf(SLOT_SALT_V1, utf8("kek")), ikm,
     { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
   const slotMac = await subtle().deriveKey(hkdf(SLOT_SALT_V1, utf8("auth")), ikm,

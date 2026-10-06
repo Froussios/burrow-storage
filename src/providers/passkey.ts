@@ -31,8 +31,15 @@ async function writeSlot(backend: Backend, s: SlotKeys, rootSecret: Uint8Array):
   for (let attempt = 0; attempt < 3; attempt++) {
     const cur = await backend.get(s.slotId);
     const rev = cur ? cur.rev + 1 : 0;
+    const plain = new Uint8Array(rootSecret);
+    let env;
     try {
-      await backend.put(s.slotId, await seal(slotCipher(s), s.slotId, rev, new Uint8Array(rootSecret), Date.now()), cur ? cur.rev : null);
+      env = await seal(slotCipher(s), s.slotId, rev, plain, Date.now());
+    } finally {
+      plain.fill(0); // SEC-1
+    }
+    try {
+      await backend.put(s.slotId, env, cur ? cur.rev : null);
       return;
     } catch (e) {
       if (!(e instanceof BackendError && e.code === "conflict")) throw e;
