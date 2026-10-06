@@ -26,17 +26,23 @@ export class MemoryCache implements Cache {
   async loadItems() { return new Map([...this.#app.items].map(([k, v]) => [k, copy(v)])); }
 
   async putItems(entries: Iterable<[string, CachedItem | null]>) {
-    for (const [k, v] of entries) v ? this.#app.items.set(k, copy(v)) : this.#app.items.delete(k);
+    // Copy everything first so a value that cannot be cloned leaves the batch unwritten.
+    const list = [...entries].map(([k, v]) => [k, v && copy(v)] as const);
+    for (const [k, v] of list) v ? this.#app.items.set(k, v) : this.#app.items.delete(k);
   }
 
   async updateItems(keys: string[], fn: (key: string, cur: CachedItem | undefined) => CachedItem | null | undefined) {
-    const out = new Map<string, CachedItem | null>();
+    // Compute and copy every change before applying any, so the batch is all or nothing.
+    const changes: [string, CachedItem | null][] = [];
     for (const k of keys) {
       const cur = this.#app.items.get(k);
       const next = fn(k, cur && copy(cur));
-      if (next === undefined) continue;
-      next ? this.#app.items.set(k, copy(next)) : this.#app.items.delete(k);
-      out.set(k, next && copy(next));
+      if (next !== undefined) changes.push([k, next && copy(next)]);
+    }
+    const out = new Map<string, CachedItem | null>();
+    for (const [k, v] of changes) {
+      v ? this.#app.items.set(k, v) : this.#app.items.delete(k);
+      out.set(k, v && copy(v));
     }
     return out;
   }
