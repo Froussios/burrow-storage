@@ -19,7 +19,7 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      - run: npm run size
+      - run: set -o pipefail; npm run size | tee size.txt
       - name: Tag matches package.json
         run: test "v$(node -p 'require("./package.json").version')" = "$GITHUB_REF_NAME"
       - name: SRI hashes
@@ -30,5 +30,7 @@ jobs:
       - name: GitHub release with bundles and SRI
         env: { GH_TOKEN: "${{ github.token }}" }
         run: |
-          { echo '## Script tag (SRI)'; echo; echo '```html'; cat sri-tags.html; echo '```'; echo; echo 'See CHANGELOG.md.'; } > notes.md
+          { echo '## Script tag (SRI)'; echo; echo '```html'; cat sri-tags.html; echo '```'; echo;
+            echo '## Bundle sizes (min+gzip)'; echo; echo '```'; grep -E '^(ok|FAIL) ' size.txt; echo '```'; echo;
+            echo 'See CHANGELOG.md.'; } > notes.md
           gh release create "$GITHUB_REF_NAME" dist/burrow.min.js dist/burrow-firestore.js dist/sri.json --notes-file notes.md
