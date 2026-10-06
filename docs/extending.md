@@ -69,6 +69,10 @@ example, does not.
 
 ## An unlock method
 
+> **Planned change.** [#28](https://github.com/Froussios/burrow-storage/issues/28) proposes
+> replacing this interface: only the token would cross the API, with passkey storage as a separate,
+> optional utility.
+
 An unlock method is a `KeyProvider`: it stores the storage token somewhere off the device and
 returns it later. Burrow ships `passkey()` and `syncCode()`. `KeyProvider` and the context types
 it receives (`EnrolContext`, `RecoverContext`, `ProviderStore`) are defined with a comment on every

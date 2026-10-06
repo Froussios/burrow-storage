@@ -173,6 +173,11 @@ or `link({ code })`, otherwise `"none"`. `exportCode()` does not change it.
 
 ### Tokens and devices
 
+> **Planned change.** `protect()`, `link({ provider })`, `protection` and the `KeyProvider`
+> interface they use are to be replaced:
+> [#28](https://github.com/Froussios/burrow-storage/issues/28) proposes that only the token cross
+> the API, with passkey storage as a separate, optional utility.
+
 `exportCode()` returns the storage token: 56 Crockford base32 characters in 14 groups of 4 joined
 by hyphens, such as `07DV-1XKY-2X98-DRCP-DJV6-FC2E-459V-AJTY-26K2-XJFQ-9BXZ-QRNF-X0F5-Z1XS` (made
 up; it fails its checksum). It encodes a version byte, the 32-byte secret and a 16-bit checksum.
@@ -322,6 +327,10 @@ exist for tests: `failWith: "network" | "quota" | null` makes every call reject,
 `stats: { gets: number; puts: number }` counts calls.
 
 ## Unlock methods
+
+> **Planned change.** [#28](https://github.com/Froussios/burrow-storage/issues/28) proposes
+> replacing this interface: only the token would cross the API, with passkey storage as a separate,
+> optional utility.
 
 ```ts
 interface KeyProvider {
