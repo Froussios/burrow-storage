@@ -367,10 +367,10 @@ Things the code does not do that a reader of the interfaces might expect:
 - `Backend.capabilities.keepalive` and `put(..., { keepalive })` are plumbed through but no shipped
   backend honours them. The push started on `pagehide` is best-effort: the Firestore adapter
   writes through transactions, which the SDK does not queue, so if the page closes first the
-  items stay dirty in the cache and go out on the next visit.
+  items stay dirty in the cache and go out on the next visit (D-31).
 - `Backend.capabilities.maxEnvelopeBytes` is not consulted; `seal()` uses the constant limit.
 - Polling is a fixed interval; there is no adaptive back-off for idle tabs, so a visible idle tab
-  costs one read per `syncIntervalMs`.
+  costs one read per `syncIntervalMs` (D-29).
 - `rememberDevice: false` generates a fresh token on every load and syncs under it immediately;
   data written before `link()` creates throwaway documents in the store.
 - The token is per origin but the `would-orphan` guard in `link()` and `unlink()` looks only at
@@ -385,9 +385,11 @@ Things the code does not do that a reader of the interfaces might expect:
   chooses the passkey and rejects with `prf-unsupported` instead of falling through to the token.
 - A non-default `collection` needs a matching edit to `firestore.rules`; `burrow-setup` does not
   rewrite it.
-- There is no tool to reap abandoned documents from a project; removal is manual.
+- There is no tool to reap abandoned documents from a project; removal is manual (D-33, #22).
+- `FirestoreBackend` always uses the project's `(default)` database; there is no `databaseId`
+  option (D-36).
 - `link({ code })` adopts a well-formed token that has no data as a new, empty identity (the demo
-  shows the token in use so a typo is visible).
+  shows the token in use so a typo is visible; D-32).
 - `#readFragment()` adopts any `#burrow=` link on every start-up without asking, which allows token
   fixation by whoever crafts the link (SECURITY.md). There is no option to turn links off; a site
   can only drop the fragment before calling `burrow()`.
