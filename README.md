@@ -341,13 +341,14 @@ storage.setItem("draft", text);     // visible at once, persisted and synced in 
 storage.getItem("draft");
 ```
 
-`store.storage` implements the Web Storage `Storage` interface: `getItem`, `setItem`,
-`removeItem`, `clear`, `key(i)`, `length`, and named-property access such as `storage.foo = "x"`,
-`"foo" in storage` and `Object.keys(storage)`. Pending writes are flushed when the page is hidden
+The `storage` property of the `BurrowArea` that `burrow()` returns implements the Web Storage
+`Storage` interface: `getItem`, `setItem`, `removeItem`, `clear`, `key(i)`, `length`, and
+named-property access such as `storage.foo = "x"`, `"foo" in storage` and `Object.keys(storage)`.
+Pending writes are flushed when the page is hidden
 or closed. The repository's tests run a sample app's own tests against both `localStorage` and
-`store.storage`. The main differences:
+`BurrowArea.storage`. The main differences:
 
-- `store.storage` exists only once `burrow()` has resolved, so code that reads storage during
+- `BurrowArea.storage` exists only once `burrow()` has resolved, so code that reads storage during
   start-up (for example, to apply a theme before first paint) has to wait for it.
 - Burrow does not fire the window `storage` event; use `onChanged`.
 - Each `app` has its own namespace, where `localStorage` is shared by the whole origin.
