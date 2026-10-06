@@ -60,27 +60,60 @@ interface BurrowConfig {
 | `maxItemBytes` | Size limit per item, measured as the UTF-8 length of `JSON.stringify({ v: 1, key, value, ts })`, so the key name counts. Values above 749 000 are clamped silently. |
 | `debug` | One `console.debug` line per sync event (`pull`, `push`, `conflict`, `backoff`, `error`, …) with revisions, counts, bytes and durations. Never ids, tokens, keys or values. |
 
-If the page URL carries `#burrow=<token>` when `burrow()` runs, the device adopts that token
-first (see [`link()`](#tokens-and-devices)), the fragment is removed with `history.replaceState`, and the promise
-resolves after the first sync attempt. This happens without asking, for any link; a site that
-does not hand out links should drop the fragment before calling `burrow()`
+If the page URL carries `#burrow=<token>` when `burrow()` runs, the device adopts that token first
+(see [`link()`](#tokens-and-devices)), the fragment is removed with `history.replaceState`, and the
+promise resolves after the first sync attempt. This happens without asking, for any link; a site
+that does not hand out links should drop the fragment before calling `burrow()`
 ([sync-and-tokens.md](sync-and-tokens.md#links)).
 
 ## `BurrowArea`
 
-### Data
+What `burrow()` resolves to. It is declared, with a comment on every member, in
+[`src/types.ts`](../src/types.ts):
 
 ```ts
-get(keys?: GetKeys, opts?: { fresh?: boolean }): Promise<Record<string, unknown>>;
-set(items: Record<string, unknown>): Promise<void>;
-remove(keys: string | string[]): Promise<void>;
-clear(): Promise<void>;
-getBytesInUse(keys?: null | string | string[]): Promise<number>;
+interface BurrowArea {
+  // Data, shaped like chrome.storage.StorageArea
+  get(keys?: GetKeys, opts?: { fresh?: boolean }): Promise<Record<string, unknown>>;
+  set(items: Record<string, unknown>): Promise<void>;
+  remove(keys: string | string[]): Promise<void>;
+  clear(): Promise<void>;
+  getBytesInUse(keys?: null | string | string[]): Promise<number>;
+
+  // Events
+  readonly onChanged: BurrowEvent<ChangedEvent>;
+  readonly onStatus: BurrowEvent<StatusEvent>;
+  readonly onToken: BurrowEvent<TokenInfo>;
+  readonly onUnprotected: BurrowEvent<void>;
+
+  // State
+  readonly status: Status;
+  readonly token: TokenInfo;
+  readonly protection: Protection;
+  inspect(): Inspection;
+
+  // Tokens and devices
+  exportCode(): Promise<string>;
+  protect(providerId?: string): Promise<void>;
+  link(options?: { provider?: string; code?: string; discardLocal?: boolean }): Promise<void>;
+  unlink(options?: { discardLocal?: boolean }): Promise<void>;
+
+  // Sync and backups
+  syncNow(): Promise<void>;
+  exportJSON(): Promise<string>;
+  importJSON(json: string): Promise<void>;
+
+  // Web Storage
+  readonly storage: Storage;
+}
+type GetKeys = null | undefined | string | string[] | Record<string, unknown>;
 ```
 
-`type GetKeys = null | undefined | string | string[] | Record<string, unknown>`
+The remaining types are listed under [Types](#types).
 
-| Method | Behaviour |
+### Data
+
+| Member | Behaviour |
 | --- | --- |
 | `get()` / `get(null)` | Every live key. |
 | `get("k")`, `get(["a", "b"])` | The keys that exist. |
@@ -95,139 +128,119 @@ Values are structured-cloned on the way in and out, so callers never share objec
 
 ### Events
 
-Every event is a `BurrowEvent<T>`: a real `EventTarget` that also offers the
-`chrome.storage.onChanged` listener shape.
+Every event member is a `BurrowEvent<T>`, an `EventTarget` that also has the
+`chrome.storage.onChanged` listener methods:
 
 ```ts
-import type { ChangedEvent } from "burrow-storage";
-
-const onChange = ({ changes, source }: ChangedEvent) => console.log(source, Object.keys(changes));
-store.onChanged.addListener(onChange);           // chrome.storage style
-store.onChanged.hasListener(onChange);           // true
-store.onChanged.removeListener(onChange);
-
-// DOM style: the payload is the CustomEvent's detail
-store.onChanged.addEventListener("changed", (e) => {
-  const { changes } = (e as CustomEvent<ChangedEvent>).detail;
-});
+declare class BurrowEvent<T> extends EventTarget {
+  readonly type: string;
+  addListener(fn: (detail: T) => void): void;
+  removeListener(fn: (detail: T) => void): void;
+  hasListener(fn: (detail: T) => void): boolean;
+}
 ```
 
-| Event | Type name | Payload | Fires when |
+`addListener` callbacks receive the payload `T`. Listeners added with
+`addEventListener(type, …)` receive a `CustomEvent<T>` whose `detail` is the payload.
+
+| Member | `type` | Payload `T` | Fires when |
 | --- | --- | --- | --- |
-| `onChanged` | `"changed"` | `{ changes: { [key]: { oldValue?, newValue? } }, source: "local" \| "remote" }` | After a local write is stored (`"local"`), per batch of facade writes (`"local"`), once per sync pass for changes pulled from the store (`"remote"`), and for writes made in another tab (their own source). Changes that net to nothing are dropped. |
-| `onStatus` | `"status"` | `{ status, error?: BurrowError }` | Whenever the (status, error) pair changes. Every sync pass goes `"syncing"` then `"idle"`. |
+| `onChanged` | `"changed"` | `ChangedEvent`: `{ changes: { [key]: { oldValue?, newValue? } }, source: "local" \| "remote" }` | After a local write is stored (`"local"`), per batch of `storage` writes (`"local"`), once per sync pass for changes pulled from the store (`"remote"`), and for writes made in another tab (their own source). Changes that net to nothing are dropped. |
+| `onStatus` | `"status"` | `StatusEvent`: `{ status, error?: BurrowError }` | Whenever the (status, error) pair changes. Every sync pass goes `"syncing"` then `"idle"`. |
 | `onToken` | `"token"` | `TokenInfo` | When this device's token changes: after `link()` here or in another tab. Not at start-up. |
-| `onUnprotected` | `"unprotected"` | `undefined` | Once per device and app, when at least one key exists and `protection` is `"none"`. Checked at start-up and after local writes. Register the listener right after `burrow()` resolves: the event is not repeated for listeners added later. |
+| `onUnprotected` | `"unprotected"` | `void` | Once per device and app, when at least one key exists and `protection` is `"none"`. Checked at start-up and after local writes; not repeated for listeners added later. |
 
 ### State
 
-```ts
-readonly status: "idle" | "syncing" | "offline" | "error";
-readonly token: TokenInfo;          // { source, remembered, since }
-readonly protection: "none" | "passkey" | "code" | string;
-readonly storage: Storage;
-inspect(): Inspection;
-```
-
-| Status | Meaning |
+| `status` | Meaning |
 | --- | --- |
 | `"idle"` | Nothing in flight. Also the local-only state when no backend is configured. |
 | `"syncing"` | A sync pass is running. |
 | `"offline"` | The last pass failed with a network or quota error (`error.code` is `"backend"` or `"quota"`), or IndexedDB was unavailable at start-up. Burrow retries with exponential backoff from 2 s, capped at the larger of `syncIntervalMs` and 5 minutes. Dirty items wait. |
 | `"error"` | `decrypt-failed` (sync is paused until the device links again), or `conflict` / `item-too-large` (retried on the next trigger). |
 
-`TokenInfo.source` is `"generated"` (made on this device), `"code"` (typed or pasted),
-`"link"` (from a `#burrow=` URL), `"passkey"`, `"unknown"` (stored before the source was
-recorded), or a custom provider's id. `remembered` is true when the token was loaded from this
-browser's storage on page load; `since` is when the device obtained it.
+`token.source` is `"generated"` (made on this device), `"code"` (typed or pasted), `"link"` (from
+a `#burrow=` URL), `"passkey"`, `"unknown"` (stored before the source was recorded), or a custom
+provider's id. `token.remembered` is true when the token was loaded from this browser's storage on
+page load; `token.since` is when the device obtained it.
 
-`protection` is what can bring the token back on another device from this device's point of
-view: `"passkey"` after `protect("passkey")` or a passkey recovery, `"code"` after
-`protect("sync-code")` or `link({ code })`, otherwise `"none"`. `exportCode()` does not change it.
+`protection` is what can bring the token back on another device, as far as this device knows:
+`"passkey"` after `protect("passkey")` or a passkey recovery, `"code"` after `protect("sync-code")`
+or `link({ code })`, otherwise `"none"`. `exportCode()` does not change it.
 
-`inspect()` returns
-`{ status, tokenSource, protection, manifestRev, dirtyKeys, lastSyncAt, backend, provider }`
-where `backend` is the backend id or `"none"` and `provider` is `null`, `"sync-code"`,
-`"passkey"` or a custom id.
+`inspect()` returns an `Inspection`. Its `backend` is the backend id or `"none"`, and its
+`provider` is `null`, `"sync-code"`, `"passkey"` or a custom id.
 
 ### Tokens and devices
 
-```ts
-exportCode(): Promise<string>;
-protect(providerId?: string): Promise<void>;
-link(options?: { provider?: string; code?: string; discardLocal?: boolean }): Promise<void>;
-unlink(options?: { discardLocal?: boolean }): Promise<void>;
-```
+`exportCode()` returns the storage token: 56 Crockford base32 characters in 14 groups of 4 joined
+by hyphens, such as `07DV-1XKY-2X98-DRCP-DJV6-FC2E-459V-AJTY-26K2-XJFQ-9BXZ-QRNF-X0F5-Z1XS` (made
+up; it fails its checksum). It encodes a version byte, the 32-byte secret and a 16-bit checksum.
 
-**`exportCode()`** returns the storage token: 56 Crockford base32 characters in 14 groups of 4
-joined by hyphens, such as `07DV-1XKY-2X98-DRCP-DJV6-FC2E-459V-AJTY-26K2-XJFQ-9BXZ-QRNF-X0F5-Z1XS`
-(a made-up example that fails its checksum). It encodes a version byte, the 32-byte secret and a
-16-bit checksum.
-
-**`protect(providerId?)`** enrols an unlock method for the current token. Without an id it uses
-the first configured provider that is available (with the defaults: the passkey, else the token);
-with `"passkey"` it creates a discoverable passkey with user verification and writes a keyslot
-document to the backend; with `"sync-code"` it only records that the user has kept the token.
-Call it from a user gesture. Rejections: `no-provider` (unknown id, nothing available, or the
-passkey prompt was dismissed), `prf-unsupported` (the browser or authenticator cannot evaluate the
-PRF extension), `backend` (a passkey needs a backend), `conflict` (the keyslot write kept
+`protect(providerId?)` enrols an unlock method for the current token: the provider named
+`providerId`, or the first configured provider whose `available()` is true. `"passkey"` creates a
+discoverable passkey with user verification and writes a keyslot document to the backend;
+`"sync-code"` only records that the user has kept the token. It rejects with `no-provider`
+(unknown id, nothing available, or the passkey prompt was dismissed), `prf-unsupported` (no
+WebAuthn PRF), `backend` (a passkey needs a backend) or `conflict` (the keyslot write kept
 conflicting). A failing store may also surface a raw `BackendError`.
 
-**`link(options)`** adopts an existing token on this device.
+`link(options)` adopts an existing token on this device:
 
-- `link({ code })` decodes the token first and rejects with `bad-code` before any network call
-  when it is malformed, has a bad checksum, or an unknown version.
-- `link({ provider: "passkey" })` or `link()` asks each configured provider (in order, or only the
-  named one) to recover a token; the passkey shows one prompt. A provider that fails or is
-  declined is skipped, and if none succeeds the call rejects with `no-provider`.
-- If the recovered token is the one already in use, the call just records the protection and
-  resumes sync. This is how a device recovers from `decrypt-failed`.
-- Otherwise, if this app has writes that never reached the store, Burrow tries to push them under
-  the old token first and rejects with `would-orphan` if any remain; pass `discardLocal: true` to
-  drop them. Then the new token replaces the old one **for every app on the origin**, this app's
-  cache is cleared and refilled from the store, `onToken` fires, and `onChanged` reports the
-  before/after difference with `source: "remote"`. Open tabs of this app switch at once; other
-  apps on the origin switch on their next load, and drop any writes they had not synced.
-- `link()` resolves even when the first sync afterwards fails; check `status`.
+- With `code`, the token is decoded first; a malformed token, a bad checksum or an unknown version
+  rejects with `bad-code` before any network call.
+- Otherwise each configured provider (only the one named `provider`, if given) is asked in order
+  to recover a token. A provider that fails or is declined is skipped; if none succeeds the call
+  rejects with `no-provider`.
+- If the recovered token is the one in use, only `protection` is recorded and sync resumes. This
+  is how a device recovers from `decrypt-failed`.
+- Otherwise this app's unsynced writes are pushed under the old token first; if any remain, it
+  rejects with `would-orphan` unless `discardLocal` is true. The new token then replaces the old
+  one **for every app on the origin**, this app's cache is refilled from the store, `onToken`
+  fires, and `onChanged` reports the difference with `source: "remote"`. Open tabs of this app
+  switch at once; other apps on the origin switch on their next load and drop writes they had not
+  synced.
+- It resolves even when the first sync afterwards fails; `status` reports that.
 
-**`unlink(options)`** forgets the token on this device, like logging out. It has the same
-`would-orphan` guard as `link()`. The remote documents are untouched, the instance is closed (every
-later call throws `BurrowError("no-provider")`), other tabs of this app close theirs, and the next
-`burrow()` on the device generates a fresh token and clears the old token's cached items before
-use.
+`unlink(options)` forgets the token on this device, with the same `would-orphan` guard. The remote
+documents are untouched. The instance closes (every later call throws `BurrowError("no-provider")`),
+other tabs of this app close theirs, and the next `burrow()` on the device generates a fresh token
+and clears the old token's cached items before use.
 
 ### Sync and backups
 
-```ts
-syncNow(): Promise<void>;
-exportJSON(): Promise<string>;
-importJSON(json: string): Promise<void>;
-```
-
 `syncNow()` flushes pending writes and runs one sync pass. Unlike `set()`, it rejects with the
-`BurrowError` when the pass leaves the store in `"offline"` or `"error"`.
+`BurrowError` when the pass leaves `status` at `"offline"` or `"error"`.
 
 `exportJSON()` returns `{ "burrow": 1, "app": "…", "exportedAt": "<ISO date>", "items": { … } }`
 as pretty-printed plaintext. `importJSON(json)` validates that shape (`TypeError("not a Burrow
-export")` otherwise) and merges the items with `set()`; it does not check that `app` matches.
+export")` otherwise) and writes the items with `set()`; it does not check that `app` matches.
 
-### `storage`: the `Storage` facade
+### `storage`
 
-`BurrowArea.storage` implements the DOM `Storage` interface synchronously over the in-memory mirror.
-Reads are correct from the first call; writes are visible at once, persisted in the background
-(batched per microtask), and flushed when the page is hidden or unloaded.
+A synchronous implementation of the DOM `Storage` interface over the in-memory mirror. Reads are
+correct from the first call; writes are visible at once, persisted in the background (batched per
+microtask), and flushed when the page is hidden or unloaded.
 
-- `length`, `key(i)` (insertion order), `getItem`, `setItem`, `removeItem`, `clear`.
-- Property access as on `localStorage`: `s.theme`, `s["theme"] = "dark"`, `"theme" in s`,
-  `delete s.theme`, `Object.keys(s)`. The six method names always resolve to the methods.
-- `setItem` stores `String(value)`. `getItem` returns strings as they are and other values written
-  through the async API as their JSON text; `null` for a missing key.
-- Changes are reported on `onChanged` (batched per microtask). The window `storage` event is
-  never fired.
+- `length`, `key(i)` (insertion order), `getItem`, `setItem`, `removeItem`, `clear`, and
+  named-property access, as on `localStorage`. The six member names always resolve to the members.
+- `setItem` stores `String(value)`. `getItem` returns other values written with `set()` as their
+  JSON text, and `null` for a missing key.
+- Changes are reported on `onChanged`, batched per microtask. The window `storage` event is never
+  fired.
 - An item over `maxItemBytes` throws `BurrowError("item-too-large")` synchronously.
-- `Object.prototype.toString.call(s)` is `"[object Storage]"`; `s instanceof Storage` is false.
+- `Object.prototype.toString` gives `"[object Storage]"`, but `instanceof Storage` is false.
 
 ## Errors
+
+```ts
+declare class BurrowError extends Error {
+  readonly name: "BurrowError";
+  readonly code: BurrowErrorCode;
+}
+type BurrowErrorCode = "no-provider" | "prf-unsupported" | "bad-code" | "item-too-large" | "backend"
+  | "conflict" | "quota" | "decrypt-failed" | "would-orphan";
+```
 
 Failures that Burrow detects reject with a `BurrowError` that carries a stable `code`. Argument
 mistakes reject with a `TypeError` (the synchronous facade throws it). Two errors from below can
@@ -248,59 +261,100 @@ anything that looks like an id or token.
 | `quota` | `onStatus`, `syncNow()` | The store's daily quota is exhausted. Sync pauses and retries with backoff. |
 | `backend` | `onStatus`, `syncNow()`, `protect("passkey")` | A network or store failure (retried), or a passkey backup was requested with no backend. |
 
-`BackendError` is what a backend adapter throws: `conflict`, `unauthorized`, `too-large`, `quota`
-or `network`. Burrow maps them to `conflict`, `backend`, `item-too-large`, `quota` and `backend`
-respectively.
+```ts
+declare class BackendError extends Error {
+  readonly name: "BackendError";
+  readonly code: BackendErrorCode;
+}
+type BackendErrorCode = "conflict" | "unauthorized" | "too-large" | "quota" | "network";
+```
+
+`BackendError` is what a backend adapter throws. Burrow maps `conflict`, `unauthorized`,
+`too-large`, `quota` and `network` to `conflict`, `backend`, `item-too-large`, `quota` and
+`backend` respectively.
 
 ## Backends
 
 ```ts
 interface Backend {
   readonly id: string;
-  readonly capabilities: { writeAuth: boolean; subscribe: boolean; keepalive: boolean; maxEnvelopeBytes: number };
+  readonly capabilities: BackendCapabilities;
   get(id: string): Promise<Envelope | null>;
   getMany?(ids: string[]): Promise<(Envelope | null)[]>;
   put(id: string, env: Envelope, expectedRev: number | null, opts?: { keepalive?: boolean }): Promise<void>;
   subscribe?(id: string, onChange: (env: Envelope) => void): () => void;
 }
+interface BackendCapabilities {
+  writeAuth: boolean; subscribe: boolean; keepalive: boolean; maxEnvelopeBytes: number;
+}
 ```
 
-**`new FirestoreBackend({ apiKey, projectId, appId, collection?, emulator? })`** from
-`burrow-storage/firestore`. `collection` defaults to `"burrow"` (the bundled rules name that
-collection; change both together). `emulator: { host, port }` points at the Firestore emulator.
+Writing your own: [extending.md](extending.md).
+
+### `new FirestoreBackend(config: FirestoreConfig)`
+
+Exported by `burrow-storage/firestore`.
+
+```ts
+interface FirestoreConfig {
+  apiKey: string;
+  projectId: string;
+  appId: string;
+  collection?: string;                       // default "burrow", the collection the bundled rules name
+  emulator?: { host: string; port: number }; // the Firestore emulator
+}
+```
+
 Reads and writes go through Firestore transactions; live updates use a document listener on the
 user's manifest. Capabilities: `writeAuth: true, subscribe: true, keepalive: false`.
 
-**`new MemoryBackend({ store?, latencyMs? })`** enforces exactly the same rules as the Firestore
-rules file, including the write-token chain. Pass the same `store` map to several instances to
-simulate several devices. Test hooks: `failWith: "network" | "quota" | null` makes every call
-reject; `stats.gets` and `stats.puts` count calls.
+### `new MemoryBackend(options?: MemoryBackendOptions)`
 
-Writing your own: [docs/extending.md](extending.md).
+```ts
+interface MemoryBackendOptions {
+  store?: Map<string, Envelope>; // share one map between instances to simulate several devices
+  latencyMs?: number;
+}
+```
 
-## Unlock methods (`KeyProvider`)
+Enforces exactly the rules of the Firestore rules file, write-token chain included. Two members
+exist for tests: `failWith: "network" | "quota" | null` makes every call reject, and
+`stats: { gets: number; puts: number }` counts calls.
+
+## Unlock methods
 
 ```ts
 interface KeyProvider {
   readonly id: string;
   available(): Promise<boolean>;
-  enrol(ctx: { app: string; rootSecret: Uint8Array; backend: Backend; store?: ProviderStore }): Promise<void>;
-  recover(ctx: { app: string; interactive: boolean; input?: string; backend: Backend; store?: ProviderStore }): Promise<Uint8Array | null>;
+  enrol(ctx: EnrolContext): Promise<void>;
+  recover(ctx: RecoverContext): Promise<Uint8Array | null>;
 }
 ```
 
-**`passkey({ rpId?, rpName?, userName?, timeoutMs? })`**: id `"passkey"`. `rpId` defaults to the
-page's host (set it to the registrable domain to share one passkey across subdomains), `rpName`
-to the host, `userName` to the app id, `timeoutMs` to 120 000. `available()` never prompts: it
-checks for `PublicKeyCredential`, a user-verifying platform authenticator, and that
-`getClientCapabilities()` does not deny `extension:prf`.
+`EnrolContext`, `RecoverContext` and `ProviderStore` are in [`src/types.ts`](../src/types.ts);
+[extending.md](extending.md#an-unlock-method) has the contract. On a local-only page, their
+`backend` is `null` at runtime despite its type.
 
-**`syncCode()`**: id `"sync-code"`. Always available; `enrol()` is a no-op (the token is obtained
-with `exportCode()`); `recover({ input })` decodes a token. Its protection value is `"code"`.
+### `passkey(options?: PasskeyOptions): KeyProvider`
 
-When the page runs local-only (no backend configured), `protect()` and `link()` still call custom
-providers, and pass `backend` as `null` despite its type. A provider that needs the store must
-check for that.
+```ts
+interface PasskeyOptions {
+  rpId?: string;      // default: the page's host; the registrable domain shares one passkey across subdomains
+  rpName?: string;    // default: the page's host
+  userName?: string;  // default: the app id
+  timeoutMs?: number; // default: 120 000
+}
+```
+
+Id `"passkey"`. `available()` never prompts: it checks for `PublicKeyCredential`, a
+user-verifying platform authenticator, and that `getClientCapabilities()` does not deny
+`extension:prf`.
+
+### `syncCode(): KeyProvider`
+
+Id `"sync-code"`, recorded as `"code"`. Always available. `enrol()` does nothing (the token comes
+from `exportCode()`); `recover({ input })` decodes a token.
 
 ## Types
 
@@ -315,6 +369,7 @@ type TokenSource = "generated" | "code" | "link" | "passkey" | "unknown" | (stri
 type Protection = "none" | "passkey" | "code" | (string & {});
 type Status = "idle" | "syncing" | "offline" | "error";
 interface ChangedEvent { changes: StorageChanges; source: "local" | "remote" }
+type StorageChanges = Record<string, { oldValue?: unknown; newValue?: unknown }>;
 interface StatusEvent { status: Status; error?: BurrowError }
 interface Inspection {
   status: Status; tokenSource: TokenSource; protection: Protection; manifestRev: number | null;

@@ -5,7 +5,8 @@
 // Each ```ts / ```js block in the files below is classified:
 //   - usage example            → compiled as a module (js blocks with JS-level strictness)
 //   - member signature listing → must match the same members of BurrowArea exactly
-//   - interface/type listing   → each declared name must match the exported type of that name
+//   - interface/type/class listing → each declared name must match the exported type of that name
+//     (a `declare class` listing only has to be a subset of the real class)
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -19,7 +20,12 @@ const DOCS = ["README.md", "docs/api.md", "docs/sync-and-tokens.md", "docs/stora
 // Type names exported by burrow-storage that listings may reference without declaring.
 const EXPORTED = ["Envelope", "Manifest", "ManifestEntry", "Item", "BackendCapabilities", "Backend", "ProviderStore",
   "EnrolContext", "RecoverContext", "KeyProvider", "BurrowConfig", "Status", "TokenSource", "TokenInfo", "Protection",
-  "StorageChanges", "ChangedEvent", "StatusEvent", "Inspection", "GetKeys", "BurrowArea", "BurrowError", "BackendError"];
+  "StorageChanges", "ChangedEvent", "StatusEvent", "Inspection", "GetKeys", "BurrowArea", "BurrowError", "BackendError",
+  "BurrowErrorCode", "BackendErrorCode", "PasskeyOptions", "MemoryBackendOptions"];
+// Generic exports, aliased with their parameters.
+const GENERIC = { BurrowEvent: "T" };
+// Type names exported by burrow-storage/firestore.
+const FIRESTORE = ["FirestoreConfig"];
 
 // Free names the usage examples treat as page context.
 const CONTEXT = `
@@ -61,14 +67,28 @@ export { none, a, b };
 
 function declarations(body) {
   const declared = [...body.matchAll(/^(?:export\s+)?(?:interface|type)\s+(\w+)/gm)].map((m) => m[1]);
-  const aliases = EXPORTED.filter((n) => !declared.includes(n)).map((n) => `  type ${n} = R.${n};`).join("\n");
-  const checks = declared.filter((n) => EXPORTED.includes(n)).map((n) =>
-    `const a_${n}: R.${n} = null! as unknown as D.${n};\nconst b_${n}: D.${n} = null! as unknown as R.${n};\nexport { a_${n}, b_${n} };`);
-  // Interfaces with methods are compared structurally in both directions.
+  const classes = [...body.matchAll(/^declare\s+class\s+(\w+)/gm)].map((m) => m[1]);
+  const all = [...declared, ...classes];
+  const aliases = [
+    ...EXPORTED.filter((n) => !all.includes(n)).map((n) => `  type ${n} = R.${n};`),
+    ...Object.entries(GENERIC).filter(([n]) => !all.includes(n)).map(([n, p]) => `  type ${n}<${p}> = R.${n}<${p}>;`),
+    ...FIRESTORE.filter((n) => !all.includes(n)).map((n) => `  type ${n} = F.${n};`),
+  ].join("\n");
+  const real = (n) => (FIRESTORE.includes(n) ? `F.${n}` : `R.${n}`) + (GENERIC[n] ? "<unknown>" : "");
+  const doc = (n) => `D.${n}` + (GENERIC[n] ? "<unknown>" : "");
+  const known = (n) => EXPORTED.includes(n) || FIRESTORE.includes(n) || n in GENERIC;
+  // Interfaces and types are compared structurally in both directions; a documented class only
+  // has to list members the real class has (its private fields cannot be written down).
+  const checks = [
+    ...declared.filter(known).map((n) =>
+      `const a_${n}: ${real(n)} = null! as unknown as ${doc(n)};\nconst b_${n}: ${doc(n)} = null! as unknown as ${real(n)};\nexport { a_${n}, b_${n} };`),
+    ...classes.filter(known).map((n) => `const b_${n}: ${doc(n)} = null! as unknown as ${real(n)};\nexport { b_${n} };`),
+  ];
   return `import type * as R from "burrow-storage";
+import type * as F from "burrow-storage/firestore";
 namespace D {
 ${aliases}
-${body.replace(/^(interface|type)\s/gm, "export $1 ")}
+${body.replace(/^(interface|type)\s/gm, "export $1 ").replace(/^declare\s+class\s/gm, "export declare class ")}
 }
 ${checks.join("\n")}
 export {};
@@ -89,7 +109,7 @@ for (const file of DOCS) {
     // Examples that import from the repository itself (e.g. the conformance suite) are repo-internal.
     if (/from\s+["']\.\.?\//.test(body)) continue;
     let kind, code;
-    if (/^(interface|type)\s/.test(head)) { kind = "ts"; code = declarations(body); }
+    if (/^(interface|type|declare class)\s/.test(head)) { kind = "ts"; code = declarations(body); }
     else if (/^(readonly\s|\w+\??\(.*\):)/.test(head) && !/=/.test(head.split(":")[0])) { kind = "ts"; code = members(body); }
     else { kind = lang; code = usage(body); }
     const name = `s${String(++n).padStart(2, "0")}.ts`;
