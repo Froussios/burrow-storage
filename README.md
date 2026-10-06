@@ -306,9 +306,9 @@ once per device when data exists and `protection` is `"none"`; it is not repeate
 added later.
 
 `link()` with a different token replaces the token for every Burrow app on the origin, refills the
-cache from the store, and fires `onToken` and `onChanged`. Writes this app has not synced are pushed first;
-if any remain, it rejects with `would-orphan`, unless called with `discardLocal: true`. Other apps on the
-origin switch on their next load and drop what they had not synced.
+cache from the store, and fires `onToken` and `onChanged`. Writes this app has not synced are pushed
+first; if any remain, it rejects with `would-orphan`, unless called with `discardLocal: true`. Other
+apps on the origin switch on their next load and drop what they had not synced.
 
 `burrow({ app, rememberDevice: false })` keeps the token in memory only, for shared computers.
 Anything written before `link()` belongs to a throwaway token.
