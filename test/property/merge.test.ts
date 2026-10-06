@@ -61,7 +61,8 @@ type Op =
   | { t: "remove"; dev: number; key: string }
   | { t: "sync"; dev: number }
   | { t: "syncBoth"; a: number; b: number }
-  | { t: "offline"; dev: number; on: boolean };
+  | { t: "offline"; dev: number; on: boolean }
+  | { t: "wait"; ms: number };
 
 const KEYS = ["k1", "k2", "k3"];
 const op = (devices: number): fc.Arbitrary<Op> => fc.oneof(
@@ -96,6 +97,8 @@ async function runScenario(ops: Op[], skews: number[]) {
           if (visible) lastOp.set(o.key, { t: "remove" });
         }
         skew = 0;
+      } else if (o.t === "wait") {
+        clock += o.ms;
       } else if (o.t === "sync") {
         await areas[o.dev]!.syncNow().catch(() => {});
       } else if (o.t === "syncBoth") {
@@ -108,7 +111,7 @@ async function runScenario(ops: Op[], skews: number[]) {
     // Two full rounds: everyone pushes, then everyone pulls the result.
     for (let round = 0; round < 2; round++) for (const a of areas) await a.syncNow();
     const states = await Promise.all(areas.map((a) => a.get()));
-    return { states, lastOp, dirty: areas.map((a) => a.inspect().dirtyKeys) };
+    return { states, lastOp, dirty: areas.map((a) => a.inspect().dirtyKeys), elapsed: clock - 1_700_000_000_000 };
   } finally {
     world.close();
     vi.restoreAllMocks();
@@ -138,6 +141,50 @@ describe("multi-device convergence (MemoryBackend)", () => {
       }
     }), { numRuns: Number(process.env.FC_RUNS ?? 40) });
   }, 300_000);
+
+  it("SYNC-10 across tombstone expiry (clock spans > 30 days) devices converge and deletes stay deleted", async () => {
+    const DAY = 86_400_000;
+    // Random waits of up to 8 days between operations, plus one jump past the 30-day tombstone TTL
+    // somewhere in the middle, so tombstones written before it are pruned from the manifest while
+    // devices that were offline (or simply did not sync) still hold the deleted keys.
+    const wait = fc.record({ t: fc.constant("wait" as const), ms: fc.integer({ min: 1, max: 8 * DAY }) });
+    const opOrWait = fc.oneof({ weight: 6, arbitrary: op(3) }, { weight: 1, arbitrary: wait });
+    const ops = fc.tuple(fc.array(opOrWait, { minLength: 1, maxLength: 15 }), fc.integer({ min: TOMBSTONE_TTL_MS + 1, max: TOMBSTONE_TTL_MS + 10 * DAY }), fc.array(opOrWait, { minLength: 1, maxLength: 15 }))
+      .map(([before, jump, after]): Op[] => [...before, { t: "wait", ms: jump }, ...after]);
+    await fc.assert(fc.asyncProperty(ops, async (ops) => {
+      const { states, lastOp, dirty, elapsed } = await runScenario(ops, [0, 0, 0]);
+      expect(elapsed).toBeGreaterThan(TOMBSTONE_TTL_MS);
+      expect(dirty).toEqual([0, 0, 0]);
+      for (const s of states) expect(s).toEqual(states[0]);
+      // Last write per key wins; a key whose last operation was a remove is absent everywhere.
+      const expected: Record<string, number> = {};
+      for (const [k, o] of lastOp) if (o.t === "set") expected[k] = o.value;
+      expect(states[0]).toEqual(expected);
+    }), { numRuns: Number(process.env.FC_RUNS ?? 40) });
+  }, 300_000);
+
+  it("SYNC-10 a device offline for more than 30 days does not resurrect a key deleted elsewhere", async () => {
+    const DAY = 86_400_000;
+    // C holds k (synced) and goes offline; A deletes k; 31+ days later A syncs again (pruning the
+    // tombstone from the manifest) and only then does C come back. Variants: C also wrote k offline
+    // before the delete (older than the delete: must lose) or after the gap (newer: must win).
+    for (const cWrites of ["none", "before", "after"] as const) {
+      const ops: Op[] = [
+        { t: "set", dev: 0, key: "k1", value: 1 }, { t: "set", dev: 0, key: "k2", value: 2 },
+        { t: "sync", dev: 0 }, { t: "sync", dev: 1 }, { t: "sync", dev: 2 },
+        { t: "offline", dev: 2, on: true },
+        ...(cWrites === "before" ? [{ t: "set", dev: 2, key: "k1", value: 7 } as Op] : []),
+        { t: "remove", dev: 0, key: "k1" }, { t: "sync", dev: 0 }, { t: "sync", dev: 1 },
+        { t: "wait", ms: 31 * DAY },
+        { t: "set", dev: 1, key: "k3", value: 3 }, { t: "sync", dev: 1 }, { t: "sync", dev: 0 },
+        ...(cWrites === "after" ? [{ t: "set", dev: 2, key: "k1", value: 9 } as Op] : []),
+        { t: "offline", dev: 2, on: false }, { t: "sync", dev: 2 },
+      ];
+      const { states } = await runScenario(ops, [0, 0, 0]);
+      const want = cWrites === "after" ? { k1: 9, k2: 2, k3: 3 } : { k2: 2, k3: 3 };
+      for (const s of states) expect(s, `C wrote ${cWrites}`).toEqual(want);
+    }
+  }, 120_000);
 
   it("two devices writing the same key at the same millisecond converge (tie-break)", async () => {
     await fc.assert(fc.asyncProperty(fc.integer({ min: 0, max: 99 }), fc.integer({ min: 0, max: 99 }), async (x, y) => {

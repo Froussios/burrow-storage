@@ -1,7 +1,8 @@
 import { readFileSync, writeFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Cache } from "../../src/cache/types.js";
 import type { Core } from "../../src/core.js";
 import type { ChangedEvent } from "../../src/types.js";
 import { appTests } from "../sample-app/app.spec.js";
@@ -54,6 +55,43 @@ describe("API-9..12 Storage facade", () => {
     a.storage.setItem("late", "1");
     d.win.dispatchEvent(new Event("pagehide"));
     await until(() => a.inspect().dirtyKeys === 0 && a.inspect().manifestRev !== null);
+  });
+
+  it("API-11 N synchronous facade writes in one tick persist in one cache transaction", async () => {
+    const d = world.device();
+    const env = d.env();
+    let cache: Cache | undefined;
+    const openCache = env.openCache;
+    env.openCache = async (app, kind) => (cache = await openCache(app, kind));
+    const b = await d.open({ debounceMs: 1e9 }, env); // no push, so no sync pass writes these keys
+    await b.syncNow(); // let the first pass finish
+    const write = vi.spyOn(cache!, "updateItems");
+    const put = vi.spyOn(cache!, "putItems");
+    const N = 25;
+    for (let i = 0; i < N; i++) b.storage.setItem(`n${i}`, String(i));
+    b.storage.removeItem("n0");
+    expect(b.storage.length).toBe(N - 1);
+    await until(() => write.mock.calls.some(([keys]) => keys.includes("n1")));
+    await new Promise((r) => setTimeout(r, 20));
+    const ours = write.mock.calls.filter(([keys]) => keys.some((k) => /^n\d+$/.test(k)));
+    expect(ours).toHaveLength(1);
+    expect([...ours[0]![0]].sort()).toEqual(Array.from({ length: N }, (_, i) => `n${i}`).sort());
+    expect(put).not.toHaveBeenCalled();
+    expect(b.inspect().dirtyKeys).toBe(N); // n0 is a dirty tombstone
+  });
+
+  it("API-11 pending facade writes are flushed on visibilitychange to hidden and pushed", async () => {
+    const d = world.device();
+    const b = await d.open({ debounceMs: 1e9 }); // no debounced push: only hiding the page pushes
+    await b.syncNow();
+    expect(b.inspect().manifestRev).toBeNull();
+    b.storage.setItem("late", "1");
+    d.visibility.visibilityState = "hidden";
+    d.win.dispatchEvent(new Event("visibilitychange"));
+    await until(() => b.inspect().dirtyKeys === 0 && b.inspect().manifestRev !== null);
+    const other = await world.device().open();
+    await other.link({ code: await b.exportCode() });
+    expect(other.storage.getItem("late")).toBe("1");
   });
 
   it("API-12 changes are forwarded to onChanged, batched, and no window storage event fires", async () => {
