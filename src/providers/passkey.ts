@@ -118,7 +118,6 @@ export function passkey(options: PasskeyOptions = {}): KeyProvider {
       const prf = prfOf(cred);
       if (!prf?.enabled && !prf?.results?.first) throw new BurrowError("prf-unsupported");
       const rawId = new Uint8Array(cred.rawId);
-      await store?.set(CRED, b64url(rawId)); // KP-9
       // Some authenticators return PRF output at creation; the rest need one assertion.
       let out = prf.results?.first ? bytes(prf.results.first) : (await evaluate(rawId))?.prf;
       if (!out) throw new BurrowError("no-provider", "the passkey prompt was dismissed");
@@ -127,6 +126,7 @@ export function passkey(options: PasskeyOptions = {}): KeyProvider {
       } finally {
         out.fill(0);
       }
+      await store?.set(CRED, b64url(rawId)); // KP-9, only once a keyslot backs this passkey
     },
 
     // KP-6: one passkey prompt per new device.
