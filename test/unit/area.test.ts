@@ -7,14 +7,21 @@ import type { ChangedEvent, Envelope, StatusEvent } from "../../src/types.js";
 import { World, until } from "../support/devices.js";
 
 let world: World;
-afterEach(() => { world?.close(); vi.restoreAllMocks(); });
+afterEach(() => {
+  world?.close();
+  vi.restoreAllMocks();
+});
 const fresh = () => (world = new World());
 
 describe("API-1/API-2 entry point", () => {
   it("API-1 resolves with no interaction and no providers invoked", async () => {
-    const w = fresh(); const d = w.device();
-    const enrol = vi.fn(), recover = vi.fn();
-    const a = await d.open({ keyProvider: { id: "x", available: async () => true, enrol, recover } });
+    const w = fresh();
+    const d = w.device();
+    const enrol = vi.fn(),
+      recover = vi.fn();
+    const a = await d.open({
+      keyProvider: { id: "x", available: async () => true, enrol, recover },
+    });
     expect(a.status).not.toBe("error");
     expect(a.protection).toBe("none");
     expect(enrol).not.toHaveBeenCalled();
@@ -22,7 +29,8 @@ describe("API-1/API-2 entry point", () => {
   });
 
   it("API-2 same app on one page returns the same instance; other apps differ", async () => {
-    const d = fresh().device(); const env = d.env();
+    const d = fresh().device();
+    const env = d.env();
     const [a, b] = await Promise.all([d.open({}, env), d.open({}, env)]);
     expect(a).toBe(b);
     expect(await d.open({ app: "other" }, env)).not.toBe(a);
@@ -30,7 +38,8 @@ describe("API-1/API-2 entry point", () => {
 
   it("rejects an invalid app id", async () => {
     const d = fresh().device();
-    for (const app of ["", "Upper", "has space", "x".repeat(65)]) await expect(d.open({ app })).rejects.toThrow(TypeError);
+    for (const app of ["", "Upper", "has space", "x".repeat(65)])
+      await expect(d.open({ app })).rejects.toThrow(TypeError);
   });
 
   it("KP-1/KP-2 the secret persists across page loads on the device", async () => {
@@ -49,11 +58,18 @@ describe("API-1/API-2 entry point", () => {
     const d = fresh().device();
     const env = d.env();
     const asked: string[] = [];
-    env.openCache = async (_app, kind) => { asked.push(kind); throw new DOMException("The user denied permission", "InvalidStateError"); };
+    env.openCache = async (_app, kind) => {
+      asked.push(kind);
+      throw new DOMException("The user denied permission", "InvalidStateError");
+    };
     const a = await d.open({ backend: undefined }, env); // local-only: nothing can move status on
     expect(asked).toEqual(["indexeddb"]);
     expect(a.status).toBe("offline");
-    expect(a.inspect()).toMatchObject({ status: "offline", backend: "none", dirtyKeys: 0 });
+    expect(a.inspect()).toMatchObject({
+      status: "offline",
+      backend: "none",
+      dirtyKeys: 0,
+    });
     // Reads and writes still work, through both APIs, without IndexedDB.
     await a.set({ k: 1 });
     a.storage.setItem("s", "v");
@@ -63,9 +79,12 @@ describe("API-1/API-2 entry point", () => {
   });
 
   it("SYNC-4/D-19 on the memory fallback, status returns to idle after a successful sync", async () => {
-    const w = fresh(); const d = w.device();
+    const w = fresh();
+    const d = w.device();
     const env = d.env();
-    env.openCache = async () => { throw new Error("IndexedDB unavailable"); };
+    env.openCache = async () => {
+      throw new Error("IndexedDB unavailable");
+    };
     // The fallback cache is the page's own memory cache, shared by every test in this file: use
     // an app id of its own so earlier fallback tests' items do not show up here.
     const app = "sync4-idle";
@@ -81,7 +100,9 @@ describe("API-1/API-2 entry point", () => {
 
   it("KP-1 different devices start with different secrets", async () => {
     const w = fresh();
-    expect(await (await w.device().open()).exportCode()).not.toBe(await (await w.device().open()).exportCode());
+    expect(await (await w.device().open()).exportCode()).not.toBe(
+      await (await w.device().open()).exportCode(),
+    );
   });
 });
 
@@ -93,7 +114,10 @@ describe("API-3..6 StorageArea", () => {
     expect(await a.get(null)).toEqual({ a: 1, b: { c: [2] }, d: null });
     expect(await a.get("a")).toEqual({ a: 1 });
     expect(await a.get(["a", "missing"])).toEqual({ a: 1 });
-    expect(await a.get({ a: 0, missing: "dflt" })).toEqual({ a: 1, missing: "dflt" });
+    expect(await a.get({ a: 0, missing: "dflt" })).toEqual({
+      a: 1,
+      missing: "dflt",
+    });
     expect(await a.get([])).toEqual({});
   });
 
@@ -101,7 +125,8 @@ describe("API-3..6 StorageArea", () => {
     const a = await fresh().device().open();
     const items = { a: 1, b: "xy", k: [1, { n: null }], keep: true };
     await a.set(items);
-    const bytes = (...keys: (keyof typeof items)[]) => keys.reduce((n, k) => n + k.length + JSON.stringify(items[k]).length, 0);
+    const bytes = (...keys: (keyof typeof items)[]) =>
+      keys.reduce((n, k) => n + k.length + JSON.stringify(items[k]).length, 0);
     const all = bytes("a", "b", "k", "keep");
     expect(await a.getBytesInUse()).toBe(all);
     expect(await a.getBytesInUse(null)).toBe(all);
@@ -122,7 +147,10 @@ describe("API-3..6 StorageArea", () => {
     expect(await a.get()).toEqual({ keep: true });
     expect(seen).toEqual([
       { source: "local", changes: { k: { oldValue: [1, { n: null }] } } },
-      { source: "local", changes: { a: { oldValue: 1 }, b: { oldValue: "xy" } } },
+      {
+        source: "local",
+        changes: { a: { oldValue: 1 }, b: { oldValue: "xy" } },
+      },
     ]);
     expect(await a.getBytesInUse()).toBe(bytes("keep"));
     expect(await a.getBytesInUse(["a", "b", "k"])).toBe(0);
@@ -156,7 +184,9 @@ describe("API-3..6 StorageArea", () => {
 
   it("ENC-4 item-too-large rejects before anything is written", async () => {
     const a = await fresh().device().open({ maxItemBytes: 1000 });
-    await expect(a.set({ ok: 1, big: "x".repeat(2000) })).rejects.toMatchObject({ name: "BurrowError", code: "item-too-large" });
+    await expect(a.set({ ok: 1, big: "x".repeat(2000) })).rejects.toMatchObject(
+      { name: "BurrowError", code: "item-too-large" },
+    );
     expect(await a.get()).toEqual({});
   });
 
@@ -179,7 +209,9 @@ describe("API-3..6 StorageArea", () => {
   it("onChanged is also a real EventTarget", async () => {
     const a = await fresh().device().open();
     const got: unknown[] = [];
-    a.onChanged.addEventListener("changed", (e) => got.push((e as CustomEvent).detail.changes));
+    a.onChanged.addEventListener("changed", (e) =>
+      got.push((e as CustomEvent).detail.changes),
+    );
     await a.set({ k: "v" });
     expect(got).toEqual([{ k: { newValue: "v" } }]);
   });
@@ -192,7 +224,10 @@ describe("API-3..6 StorageArea", () => {
     d.backend.failWith = "network";
     await a.set({ x: 1 });
     await until(() => a.status === "offline");
-    expect(statuses.at(-1)).toMatchObject({ status: "offline", error: { code: "backend" } });
+    expect(statuses.at(-1)).toMatchObject({
+      status: "offline",
+      error: { code: "backend" },
+    });
     expect(a.inspect().dirtyKeys).toBe(1);
     d.backend.failWith = null;
     await a.syncNow();
@@ -229,7 +264,14 @@ describe("API-3..6 StorageArea", () => {
     await a.set({ k: 1 });
     await a.syncNow();
     const i = a.inspect();
-    expect(i).toMatchObject({ status: "idle", protection: "none", manifestRev: 0, dirtyKeys: 0, backend: "memory", provider: null });
+    expect(i).toMatchObject({
+      status: "idle",
+      protection: "none",
+      manifestRev: 0,
+      dirtyKeys: 0,
+      backend: "memory",
+      provider: null,
+    });
     expect(typeof i.lastSyncAt).toBe("number");
     expect(JSON.stringify(i)).not.toMatch(/[A-Za-z0-9_-]{40,}/);
   });
@@ -238,7 +280,8 @@ describe("API-3..6 StorageArea", () => {
 describe("§8 sync between devices", () => {
   async function pair() {
     const w = fresh();
-    const A = w.device(), B = w.device();
+    const A = w.device(),
+      B = w.device();
     const a = await A.open();
     const b = await B.open();
     await b.link({ code: await a.exportCode() });
@@ -256,7 +299,12 @@ describe("§8 sync between devices", () => {
     await b.link({ code: await a.exportCode() });
     expect(await b.get()).toEqual({ theme: "dark", draft: "hello" });
     expect(b.protection).toBe("code");
-    expect(events).toEqual([{ source: "remote", changes: { theme: { newValue: "dark" }, draft: { newValue: "hello" } } }]);
+    expect(events).toEqual([
+      {
+        source: "remote",
+        changes: { theme: { newValue: "dark" }, draft: { newValue: "hello" } },
+      },
+    ]);
   });
 
   it("API-5/SYNC-13 remote changes arrive batched, once per pass, with source remote", async () => {
@@ -266,7 +314,9 @@ describe("§8 sync between devices", () => {
     await a.set({ x: 1, y: 2 });
     await a.syncNow();
     await b.syncNow();
-    expect(events).toEqual([{ source: "remote", changes: { x: { newValue: 1 }, y: { newValue: 2 } } }]);
+    expect(events).toEqual([
+      { source: "remote", changes: { x: { newValue: 1 }, y: { newValue: 2 } } },
+    ]);
     await b.syncNow();
     expect(events).toHaveLength(1);
   });
@@ -275,11 +325,13 @@ describe("§8 sync between devices", () => {
     const { a, A } = await pair();
     await a.syncNow();
     const s = A.backend.stats;
-    let g = s.gets, p = s.puts;
+    let g = s.gets,
+      p = s.puts;
     await a.syncNow();
     expect([s.gets - g, s.puts - p]).toEqual([1, 0]);
     await a.set({ k1: 1, k2: 2, k3: 3 });
-    g = s.gets; p = s.puts;
+    g = s.gets;
+    p = s.puts;
     await a.syncNow();
     expect(s.puts - p).toBe(4);
   });
@@ -289,17 +341,31 @@ describe("§8 sync between devices", () => {
     class ManifestFails extends MemoryBackend {
       failId: string | null = null;
       readonly ok = new Map<string, number>();
-      override async put(id: string, env: Envelope, expectedRev: number | null): Promise<void> {
-        if (id === this.failId) { await Promise.resolve(); throw new BackendError("network"); }
+      override async put(
+        id: string,
+        env: Envelope,
+        expectedRev: number | null,
+      ): Promise<void> {
+        if (id === this.failId) {
+          await Promise.resolve();
+          throw new BackendError("network");
+        }
         await super.put(id, env, expectedRev);
         this.ok.set(id, (this.ok.get(id) ?? 0) + 1);
       }
     }
-    const w = fresh(); const d = w.device();
+    const w = fresh();
+    const d = w.device();
     const be = new ManifestFails({ store: w.store });
     const a = await d.open({ backend: be, debounceMs: 1e9 });
-    const keys = await deriveAppKeys((await decodeSyncCode(await a.exportCode())).secret, "test");
-    const [idOld, idNew] = await Promise.all([docId(keys, "old"), docId(keys, "new")]);
+    const keys = await deriveAppKeys(
+      (await decodeSyncCode(await a.exportCode())).secret,
+      "test",
+    );
+    const [idOld, idNew] = await Promise.all([
+      docId(keys, "old"),
+      docId(keys, "new"),
+    ]);
     await a.set({ old: 1 });
     await a.syncNow();
     expect(a.inspect().manifestRev).toBe(0);
@@ -315,7 +381,11 @@ describe("§8 sync between devices", () => {
     be.failId = null;
     await a.syncNow();
     expect(a.status).toBe("idle");
-    expect(Object.fromEntries(be.ok)).toEqual({ [idOld]: 1, [idNew]: 1, [keys.base]: 1 });
+    expect(Object.fromEntries(be.ok)).toEqual({
+      [idOld]: 1,
+      [idNew]: 1,
+      [keys.base]: 1,
+    });
     expect(a.inspect()).toMatchObject({ dirtyKeys: 0, manifestRev: 1 });
     expect(w.store.get(idOld)!.rev).toBe(1);
     expect(w.store.get(idNew)!.rev).toBe(0);
@@ -326,7 +396,8 @@ describe("§8 sync between devices", () => {
   });
 
   it("SYNC-5 writes are debounced and coalesced into one push", async () => {
-    const w = fresh(); const d = w.device();
+    const w = fresh();
+    const d = w.device();
     const a = await d.open({ debounceMs: 50 });
     await a.syncNow();
     const p = d.backend.stats.puts;
@@ -337,39 +408,49 @@ describe("§8 sync between devices", () => {
 
   it("different keys edited offline on two devices converge with both changes", async () => {
     const { a, b, A, B } = await pair();
-    A.backend.failWith = "network"; B.backend.failWith = "network";
+    A.backend.failWith = "network";
+    B.backend.failWith = "network";
     await a.set({ fromA: 1 });
     await b.set({ fromB: 2 });
-    A.backend.failWith = null; B.backend.failWith = null;
+    A.backend.failWith = null;
+    B.backend.failWith = null;
     await Promise.all([a.syncNow(), b.syncNow()]);
-    await a.syncNow(); await b.syncNow();
+    await a.syncNow();
+    await b.syncNow();
     expect(await a.get()).toEqual({ fromA: 1, fromB: 2 });
     expect(await b.get()).toEqual({ fromA: 1, fromB: 2 });
   });
 
   it("the same key edited on two devices converges on the later write", async () => {
     const { a, b, A, B } = await pair();
-    A.backend.failWith = "network"; B.backend.failWith = "network";
+    A.backend.failWith = "network";
+    B.backend.failWith = "network";
     await a.set({ k: "first" });
     await new Promise((r) => setTimeout(r, 5));
     await b.set({ k: "later" });
-    A.backend.failWith = null; B.backend.failWith = null;
+    A.backend.failWith = null;
+    B.backend.failWith = null;
     await Promise.all([b.syncNow(), a.syncNow()]);
-    await a.syncNow(); await b.syncNow();
+    await a.syncNow();
+    await b.syncNow();
     expect(await a.get("k")).toEqual({ k: "later" });
     expect(await b.get("k")).toEqual({ k: "later" });
   });
 
   it("re-setting an unchanged value still wins over a concurrent write elsewhere", async () => {
     const { a, b, A, B } = await pair();
-    A.backend.failWith = "network"; B.backend.failWith = "network";
+    A.backend.failWith = "network";
+    B.backend.failWith = "network";
     await a.set({ k: 67 });
     await new Promise((r) => setTimeout(r, 3));
     await b.set({ k: 0 });
     await new Promise((r) => setTimeout(r, 3));
     await a.set({ k: 67 }); // same value on A, but the last write overall
-    A.backend.failWith = null; B.backend.failWith = null;
-    await b.syncNow(); await a.syncNow(); await b.syncNow();
+    A.backend.failWith = null;
+    B.backend.failWith = null;
+    await b.syncNow();
+    await a.syncNow();
+    await b.syncNow();
     expect(await a.get("k")).toEqual({ k: 67 });
     expect(await b.get("k")).toEqual({ k: 67 });
   });
@@ -380,8 +461,10 @@ describe("§8 sync between devices", () => {
     await a.set({ gone: "soon", stays: 1 });
     await a.syncNow();
     const code = await a.exportCode();
-    const b = await w.device().open(); await b.link({ code });
-    const c = await w.device().open(); await c.link({ code });
+    const b = await w.device().open();
+    await b.link({ code });
+    const c = await w.device().open();
+    await c.link({ code });
     expect(await c.get("gone")).toEqual({ gone: "soon" });
     await a.remove("gone");
     await a.syncNow();
@@ -390,14 +473,20 @@ describe("§8 sync between devices", () => {
     // C never saw the delete; it syncs again, also pushing an unrelated write.
     await c.set({ other: true });
     await c.syncNow();
-    await a.syncNow(); await b.syncNow();
-    for (const x of [a, b, c]) expect(await x.get()).toEqual({ stays: 1, other: true });
+    await a.syncNow();
+    await b.syncNow();
+    for (const x of [a, b, c])
+      expect(await x.get()).toEqual({ stays: 1, other: true });
   });
 
   it("clear() removes every key everywhere", async () => {
     const { a, b } = await pair();
-    await a.set({ x: 1, y: 2 }); await a.syncNow(); await b.syncNow();
-    await b.clear(); await b.syncNow(); await a.syncNow();
+    await a.set({ x: 1, y: 2 });
+    await a.syncNow();
+    await b.syncNow();
+    await b.clear();
+    await b.syncNow();
+    await a.syncNow();
     expect(await a.get()).toEqual({});
   });
 
@@ -405,7 +494,8 @@ describe("§8 sync between devices", () => {
     const { a, b } = await pair();
     await Promise.all([a.set({ a1: 1, a2: 2 }), b.set({ b1: 1, b2: 2 })]);
     await Promise.all([a.syncNow(), b.syncNow()]);
-    await a.syncNow(); await b.syncNow();
+    await a.syncNow();
+    await b.syncNow();
     expect(await a.get()).toEqual({ a1: 1, a2: 2, b1: 1, b2: 2 });
     expect(await b.get()).toEqual({ a1: 1, a2: 2, b1: 1, b2: 2 });
   });
@@ -426,12 +516,14 @@ describe("§8 sync between devices", () => {
 
   it("SYNC-7 get({fresh}) fetches specific items directly", async () => {
     const w = fresh();
-    const A = w.device(), B = w.device();
+    const A = w.device(),
+      B = w.device();
     (B.backend.capabilities as { subscribe: boolean }).subscribe = false; // no live updates on B
     const a = await A.open();
     const b = await B.open();
     await b.link({ code: await a.exportCode() });
-    await a.set({ k: 1 }); await a.syncNow();
+    await a.set({ k: 1 });
+    await a.syncNow();
     expect(await b.get("k")).toEqual({});
     expect(await b.get("k", { fresh: true })).toEqual({ k: 1 });
   });
@@ -446,20 +538,40 @@ describe("§8 sync between devices", () => {
   it("ENC-1/FS-2 a store dump holds only 43-char ids and envelope fields, nothing in the clear", async () => {
     const w = fresh();
     const a = await w.device().open();
-    await a.set({ "secret-key-name": "secret value", nested: { password: "hunter2" } });
+    await a.set({
+      "secret-key-name": "secret value",
+      nested: { password: "hunter2" },
+    });
     await a.syncNow();
     const dump = JSON.stringify([...w.store]);
-    for (const s of ["secret-key-name", "secret value", "password", "hunter2", "test"]) expect(dump).not.toContain(s);
+    for (const s of [
+      "secret-key-name",
+      "secret value",
+      "password",
+      "hunter2",
+      "test",
+    ])
+      expect(dump).not.toContain(s);
     for (const [id, env] of w.store) {
       expect(id).toMatch(/^[A-Za-z0-9_-]{43}$/);
-      expect(Object.keys(env).every((k) => ["v", "iv", "ct", "rev", "ts", "tok", "next", "z"].includes(k))).toBe(true);
+      expect(
+        Object.keys(env).every((k) =>
+          ["v", "iv", "ct", "rev", "ts", "tok", "next", "z"].includes(k),
+        ),
+      ).toBe(true);
     }
   });
 
   it("ENC-6 a document that does not decrypt pauses sync and leaves the cache alone", async () => {
     const { a, b, w } = await pair();
-    await a.set({ k: 1 }); await a.syncNow(); await b.syncNow();
-    for (const [id, env] of w.store) w.store.set(id, { ...env, ct: env.ct.replace(/^./, (c) => (c === "A" ? "B" : "A")) });
+    await a.set({ k: 1 });
+    await a.syncNow();
+    await b.syncNow();
+    for (const [id, env] of w.store)
+      w.store.set(id, {
+        ...env,
+        ct: env.ct.replace(/^./, (c) => (c === "A" ? "B" : "A")),
+      });
     await expect(b.syncNow()).rejects.toMatchObject({ code: "decrypt-failed" });
     expect(b.status).toBe("error");
     expect(await b.get()).toEqual({ k: 1 });
@@ -473,26 +585,49 @@ describe("§6 link, protect, unlink", () => {
     const d = fresh().device();
     const a = await d.open();
     const g = d.backend.stats.gets;
-    await expect(a.link({ code: "0000-0000" })).rejects.toMatchObject({ code: "bad-code" });
+    await expect(a.link({ code: "0000-0000" })).rejects.toMatchObject({
+      code: "bad-code",
+    });
     expect(d.backend.stats.gets).toBe(g);
   });
 
   it("API-7 link() with no provider able to recover rejects no-provider", async () => {
-    const a = await fresh().device().open({ keyProvider: { id: "x", available: async () => true, enrol: async () => {}, recover: async () => null } });
+    const a = await fresh()
+      .device()
+      .open({
+        keyProvider: {
+          id: "x",
+          available: async () => true,
+          enrol: async () => {},
+          recover: async () => null,
+        },
+      });
     await expect(a.link()).rejects.toMatchObject({ code: "no-provider" });
   });
 
   it("API-7 link() tries providers in order", async () => {
     const w = fresh();
     const a = await w.device().open();
-    await a.set({ k: 1 }); await a.syncNow();
+    await a.set({ k: 1 });
+    await a.syncNow();
     const code = await a.exportCode();
     const calls: string[] = [];
     const p = (id: string, out: string | null) => ({
-      id, available: async () => true, enrol: async () => {},
-      recover: async () => { calls.push(id); return out ? (await import("../../src/codec/synccode.js")).decodeSyncCode(out).then((r) => r.secret) : null; },
+      id,
+      available: async () => true,
+      enrol: async () => {},
+      recover: async () => {
+        calls.push(id);
+        return out
+          ? (await import("../../src/codec/synccode.js"))
+              .decodeSyncCode(out)
+              .then((r) => r.secret)
+          : null;
+      },
     });
-    const b = await w.device().open({ keyProvider: [p("one", null), p("two", code), p("three", null)] });
+    const b = await w.device().open({
+      keyProvider: [p("one", null), p("two", code), p("three", null)],
+    });
     await b.link();
     expect(calls).toEqual(["one", "two"]);
     expect(b.protection).toBe("two");
@@ -502,7 +637,8 @@ describe("§6 link, protect, unlink", () => {
   it("link() while the first sync pass is still in flight pulls the new identity's data", async () => {
     const w = fresh();
     const a = await w.device().open();
-    await a.set({ theme: "dark" }); await a.syncNow();
+    await a.set({ theme: "dark" });
+    await a.syncNow();
     const b = await w.device({ latencyMs: 80 }).open(); // its first pass is still running
     await b.link({ code: await a.exportCode() });
     expect(await b.get()).toEqual({ theme: "dark" });
@@ -515,10 +651,13 @@ describe("§6 link, protect, unlink", () => {
     const b = await B.open();
     B.backend.failWith = "network";
     await b.set({ unsynced: 1 });
-    await expect(b.link({ code: await a.exportCode() })).rejects.toMatchObject({ code: "would-orphan" });
+    await expect(b.link({ code: await a.exportCode() })).rejects.toMatchObject({
+      code: "would-orphan",
+    });
     expect(await b.get()).toEqual({ unsynced: 1 });
     B.backend.failWith = null;
-    await a.set({ fromA: 1 }); await a.syncNow();
+    await a.set({ fromA: 1 });
+    await a.syncNow();
     // With discardLocal the device adopts the other secret.
     B.backend.failWith = "network";
     await b.link({ code: await a.exportCode(), discardLocal: true });
@@ -540,9 +679,11 @@ describe("§6 link, protect, unlink", () => {
   });
 
   it("API-8 unlink() forgets the secret; the cache and remote stay; the next burrow() is a fresh secret", async () => {
-    const w = fresh(); const d = w.device();
+    const w = fresh();
+    const d = w.device();
     const a = await d.open();
-    await a.set({ k: 1 }); await a.syncNow();
+    await a.set({ k: 1 });
+    await a.syncNow();
     const code = await a.exportCode();
     const docs = w.store.size;
     await a.unlink();
@@ -578,7 +719,9 @@ describe("§6 link, protect, unlink", () => {
 
   it("protect() with an unknown provider rejects no-provider", async () => {
     const a = await fresh().device().open();
-    await expect(a.protect("nope")).rejects.toMatchObject({ code: "no-provider" });
+    await expect(a.protect("nope")).rejects.toMatchObject({
+      code: "no-provider",
+    });
   });
 
   it("KP-14 onUnprotected fires once per device when data exists and nothing protects it", async () => {
@@ -600,10 +743,14 @@ describe("§6 link, protect, unlink", () => {
   it("KP-13 a #burrow=<code> fragment links the device and is stripped from the URL", async () => {
     const w = fresh();
     const a = await w.device().open();
-    await a.set({ k: "shared" }); await a.syncNow();
+    await a.set({ k: "shared" });
+    await a.syncNow();
     const D = w.device();
     const code = await a.exportCode();
-    D.location = { href: `https://example.test/app#burrow=${code}`, hash: `#burrow=${code}` };
+    D.location = {
+      href: `https://example.test/app#burrow=${code}`,
+      hash: `#burrow=${code}`,
+    };
     const b = await D.open();
     expect(await b.get()).toEqual({ k: "shared" });
     expect(D.location!.href).toBe("https://example.test/app");
@@ -614,7 +761,9 @@ describe("§6 link, protect, unlink", () => {
     const a = await d.open({ rememberDevice: false });
     const code = await a.exportCode();
     a.close();
-    expect(await (await d.open({ rememberDevice: false })).exportCode()).not.toBe(code);
+    expect(
+      await (await d.open({ rememberDevice: false })).exportCode(),
+    ).not.toBe(code);
   });
 });
 
@@ -629,12 +778,16 @@ describe("SYNC-14 tabs", () => {
     t2.onChanged.addListener((e) => seen.push(e));
     await t1.set({ k: "from t1" });
     await until(() => seen.length === 1);
-    expect(seen[0]).toEqual({ source: "local", changes: { k: { newValue: "from t1" } } });
+    expect(seen[0]).toEqual({
+      source: "local",
+      changes: { k: { newValue: "from t1" } },
+    });
     expect(t2.storage.getItem("k")).toBe("from t1");
   });
 
   it("only one tab syncs at a time and the result reaches both", async () => {
-    const w = fresh(); const d = w.device();
+    const w = fresh();
+    const d = w.device();
     const t1 = await d.open({}, d.env());
     const t2 = await d.open({}, d.env());
     await t1.set({ a: 1 });
@@ -646,9 +799,11 @@ describe("SYNC-14 tabs", () => {
   });
 
   it("linking in one tab moves the other tab to the new identity", async () => {
-    const w = fresh(); const d = w.device();
+    const w = fresh();
+    const d = w.device();
     const src = await w.device().open();
-    await src.set({ x: "linked" }); await src.syncNow();
+    await src.set({ x: "linked" });
+    await src.syncNow();
     const t1 = await d.open({}, d.env());
     const t2 = await d.open({}, d.env());
     await t1.link({ code: await src.exportCode() });
@@ -679,14 +834,20 @@ describe("token source (demo journeys)", () => {
     expect(b.token).toMatchObject({ source: "code", remembered: false });
     expect(seen).toEqual(["code:false"]);
     b.close();
-    expect((await D.open()).token).toMatchObject({ source: "code", remembered: true });
+    expect((await D.open()).token).toMatchObject({
+      source: "code",
+      remembered: true,
+    });
   });
 
   it("a #burrow= link records 'link'", async () => {
     const w = fresh();
     const code = await (await w.device().open()).exportCode();
     const D = w.device();
-    D.location = { href: `https://example.test/#burrow=${code}`, hash: `#burrow=${code}` };
+    D.location = {
+      href: `https://example.test/#burrow=${code}`,
+      hash: `#burrow=${code}`,
+    };
     expect((await D.open()).token.source).toBe("link");
   });
 
@@ -694,7 +855,14 @@ describe("token source (demo journeys)", () => {
     const w = fresh();
     const code = await (await w.device().open()).exportCode();
     const { decodeSyncCode } = await import("../../src/codec/synccode.js");
-    const b = await w.device().open({ keyProvider: { id: "vault", available: async () => true, enrol: async () => {}, recover: async () => (await decodeSyncCode(code)).secret } });
+    const b = await w.device().open({
+      keyProvider: {
+        id: "vault",
+        available: async () => true,
+        enrol: async () => {},
+        recover: async () => (await decodeSyncCode(code)).secret,
+      },
+    });
     await b.link();
     expect(b.token.source).toBe("vault");
   });
@@ -706,7 +874,8 @@ describe("token source (demo journeys)", () => {
   });
 
   it("another tab sees the new source after a link", async () => {
-    const w = fresh(); const d = w.device();
+    const w = fresh();
+    const d = w.device();
     const code = await (await w.device().open()).exportCode();
     const t1 = await d.open({}, d.env());
     const t2 = await d.open({}, d.env());

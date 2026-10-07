@@ -18,16 +18,36 @@ export interface PasskeyOptions {
 
 const CRED = "passkey.credentialId";
 type PrfResults = { enabled?: boolean; results?: { first?: BufferSource } };
-const prfOf = (c: PublicKeyCredential) => (c.getClientExtensionResults() as { prf?: PrfResults }).prf;
-const prfInput = () => ({ prf: { eval: { first: utf8(PRF_SALT_V1) } } }) as AuthenticationExtensionsClientInputs;
-const bytes = (b: BufferSource) => new Uint8Array(b instanceof ArrayBuffer ? b : b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength));
-const slotCipher = (s: SlotKeys): DocCipher => ({ key: s.kek, mac: s.slotMac, aad: s.slotId + "slot" });
+const prfOf = (c: PublicKeyCredential) =>
+  (c.getClientExtensionResults() as { prf?: PrfResults }).prf;
+const prfInput = () =>
+  ({
+    prf: { eval: { first: utf8(PRF_SALT_V1) } },
+  }) as AuthenticationExtensionsClientInputs;
+const bytes = (b: BufferSource) =>
+  new Uint8Array(
+    b instanceof ArrayBuffer
+      ? b
+      : b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength),
+  );
+const slotCipher = (s: SlotKeys): DocCipher => ({
+  key: s.kek,
+  mac: s.slotMac,
+  aad: s.slotId + "slot",
+});
 
 function dismissed(e: unknown): boolean {
-  return (e as DOMException)?.name === "NotAllowedError" || (e as DOMException)?.name === "AbortError";
+  return (
+    (e as DOMException)?.name === "NotAllowedError" ||
+    (e as DOMException)?.name === "AbortError"
+  );
 }
 
-async function writeSlot(backend: Backend, s: SlotKeys, rootSecret: Uint8Array): Promise<void> {
+async function writeSlot(
+  backend: Backend,
+  s: SlotKeys,
+  rootSecret: Uint8Array,
+): Promise<void> {
   for (let attempt = 0; attempt < 3; attempt++) {
     const cur = await backend.get(s.slotId);
     const rev = cur ? cur.rev + 1 : 0;
@@ -51,7 +71,9 @@ async function writeSlot(backend: Backend, s: SlotKeys, rootSecret: Uint8Array):
 export function passkey(options: PasskeyOptions = {}): KeyProvider {
   const host = () => globalThis.location?.hostname ?? "localhost";
 
-  async function evaluate(credentialId?: Uint8Array<ArrayBuffer>): Promise<{ prf: Uint8Array; rawId: ArrayBuffer } | null> {
+  async function evaluate(
+    credentialId?: Uint8Array<ArrayBuffer>,
+  ): Promise<{ prf: Uint8Array; rawId: ArrayBuffer } | null> {
     let cred: PublicKeyCredential | null;
     try {
       cred = (await navigator.credentials.get({
@@ -60,7 +82,9 @@ export function passkey(options: PasskeyOptions = {}): KeyProvider {
           ...(options.rpId ? { rpId: options.rpId } : {}),
           userVerification: "required",
           timeout: options.timeoutMs ?? 120_000,
-          allowCredentials: credentialId ? [{ type: "public-key", id: credentialId }] : [],
+          allowCredentials: credentialId
+            ? [{ type: "public-key", id: credentialId }]
+            : [],
           extensions: prfInput(),
         },
       })) as PublicKeyCredential | null;
@@ -79,9 +103,11 @@ export function passkey(options: PasskeyOptions = {}): KeyProvider {
 
     // KP-7: feature-detect without prompting.
     async available() {
-      const PKC = globalThis.PublicKeyCredential as (typeof PublicKeyCredential & {
-        getClientCapabilities?: () => Promise<Record<string, boolean>>;
-      }) | undefined;
+      const PKC = globalThis.PublicKeyCredential as
+        | (typeof PublicKeyCredential & {
+            getClientCapabilities?: () => Promise<Record<string, boolean>>;
+          })
+        | undefined;
       if (!PKC || !globalThis.navigator?.credentials) return false;
       try {
         if (PKC.getClientCapabilities) {
@@ -100,27 +126,53 @@ export function passkey(options: PasskeyOptions = {}): KeyProvider {
       try {
         cred = (await navigator.credentials.create({
           publicKey: {
-            rp: { name: options.rpName ?? host(), ...(options.rpId ? { id: options.rpId } : {}) },
-            user: { id: randomBytes(16), name: options.userName ?? app, displayName: options.userName ?? app },
+            rp: {
+              name: options.rpName ?? host(),
+              ...(options.rpId ? { id: options.rpId } : {}),
+            },
+            user: {
+              id: randomBytes(16),
+              name: options.userName ?? app,
+              displayName: options.userName ?? app,
+            },
             challenge: randomBytes(32),
-            pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
-            authenticatorSelection: { residentKey: "required", requireResidentKey: true, userVerification: "required" },
+            pubKeyCredParams: [
+              { type: "public-key", alg: -7 },
+              { type: "public-key", alg: -257 },
+            ],
+            authenticatorSelection: {
+              residentKey: "required",
+              requireResidentKey: true,
+              userVerification: "required",
+            },
             attestation: "none",
             timeout: options.timeoutMs ?? 120_000,
             extensions: prfInput(),
           },
         })) as PublicKeyCredential | null;
       } catch (e) {
-        if (dismissed(e)) throw new BurrowError("no-provider", "the passkey prompt was dismissed", { cause: e });
+        if (dismissed(e))
+          throw new BurrowError(
+            "no-provider",
+            "the passkey prompt was dismissed",
+            { cause: e },
+          );
         throw new BurrowError("prf-unsupported", undefined, { cause: e });
       }
       if (!cred) throw new BurrowError("no-provider");
       const prf = prfOf(cred);
-      if (!prf?.enabled && !prf?.results?.first) throw new BurrowError("prf-unsupported");
+      if (!prf?.enabled && !prf?.results?.first)
+        throw new BurrowError("prf-unsupported");
       const rawId = new Uint8Array(cred.rawId);
       // Some authenticators return PRF output at creation; the rest need one assertion.
-      let out = prf.results?.first ? bytes(prf.results.first) : (await evaluate(rawId))?.prf;
-      if (!out) throw new BurrowError("no-provider", "the passkey prompt was dismissed");
+      let out = prf.results?.first
+        ? bytes(prf.results.first)
+        : (await evaluate(rawId))?.prf;
+      if (!out)
+        throw new BurrowError(
+          "no-provider",
+          "the passkey prompt was dismissed",
+        );
       try {
         await writeSlot(backend, await deriveSlotKeys(out), rootSecret);
       } finally {

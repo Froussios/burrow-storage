@@ -8,7 +8,9 @@ import { defineConfig, devices } from "@playwright/test";
 const url = process.env.BURROW_DEMO_URL;
 const port = Number(process.env.E2E_PORT ?? 4173);
 if (!url && !process.env.FIRESTORE_EMULATOR_HOST) {
-  throw new Error("set BURROW_DEMO_URL to the deployed demo, or run under the emulator (see playwright.smoke.config.ts)");
+  throw new Error(
+    "set BURROW_DEMO_URL to the deployed demo, or run under the emulator (see playwright.smoke.config.ts)",
+  );
 }
 
 export default defineConfig({
@@ -21,7 +23,14 @@ export default defineConfig({
     baseURL: url ? url.replace(/\/?$/, "/") : `http://localhost:${port}/site/`,
     trace: "retain-on-failure",
   },
-  ...(url ? {} : {
-    webServer: { command: "node scripts/serve.mjs", env: { PORT: String(port) }, url: `http://localhost:${port}/site/index.html`, reuseExistingServer: false },
-  }),
+  ...(url
+    ? {}
+    : {
+        webServer: {
+          command: "node scripts/serve.mjs",
+          env: { PORT: String(port) },
+          url: `http://localhost:${port}/site/index.html`,
+          reuseExistingServer: false,
+        },
+      }),
 });

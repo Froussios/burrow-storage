@@ -5,8 +5,14 @@ import { defineConfig } from "tsup";
 const stubSdk = {
   name: "stub-firestore-sdk",
   setup(build: { onResolve: Function; onLoad: Function }) {
-    build.onResolve({ filter: /firestore-sdk\.js$/ }, (args: { path: string }) => ({ path: args.path, namespace: "stub" }));
-    build.onLoad({ filter: /.*/, namespace: "stub" }, () => ({ contents: "export {}", loader: "js" }));
+    build.onResolve(
+      { filter: /firestore-sdk\.js$/ },
+      (args: { path: string }) => ({ path: args.path, namespace: "stub" }),
+    );
+    build.onLoad({ filter: /.*/, namespace: "stub" }, () => ({
+      contents: "export {}",
+      loader: "js",
+    }));
   },
 };
 

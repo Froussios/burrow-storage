@@ -25,22 +25,33 @@ export class SecretHolder {
     } finally {
       zeroise(copy); // SEC-1
     }
-    return new SecretHolder(kw, new Uint8Array(await subtle().wrapKey("raw", vehicle, kw, "AES-KW")));
+    return new SecretHolder(
+      kw,
+      new Uint8Array(await subtle().wrapKey("raw", vehicle, kw, "AES-KW")),
+    );
   }
 
   /** KP-2: the persisted secret, or null when this device has none. */
   static async load(cache: Cache): Promise<SecretHolder | null> {
     const d = await cache.getDevice();
-    return d.kw && d.wrapped ? new SecretHolder(d.kw, new Uint8Array(d.wrapped)) : null;
+    return d.kw && d.wrapped
+      ? new SecretHolder(d.kw, new Uint8Array(d.wrapped))
+      : null;
   }
 
   /** KP-1: a fresh 32-byte secret from crypto.getRandomValues. */
   static async generate(): Promise<SecretHolder> {
     const s = randomBytes(32);
-    try { return await SecretHolder.wrap(s); } finally { zeroise(s); }
+    try {
+      return await SecretHolder.wrap(s);
+    } finally {
+      zeroise(s);
+    }
   }
 
-  get live(): boolean { return this.#kw !== null; }
+  get live(): boolean {
+    return this.#kw !== null;
+  }
 
   async persist(cache: Cache): Promise<void> {
     if (!this.#kw || !this.#wrapped) throw new Error("secret was forgotten");
@@ -50,9 +61,21 @@ export class SecretHolder {
   /** Unwraps for the duration of `fn` and zeroises the copy afterwards (SEC-1). */
   async use<T>(fn: (secret: Uint8Array) => Promise<T>): Promise<T> {
     if (!this.#kw || !this.#wrapped) throw new Error("secret was forgotten");
-    const k = await subtle().unwrapKey("raw", this.#wrapped, this.#kw, "AES-KW", VEHICLE, true, ["sign"]);
+    const k = await subtle().unwrapKey(
+      "raw",
+      this.#wrapped,
+      this.#kw,
+      "AES-KW",
+      VEHICLE,
+      true,
+      ["sign"],
+    );
     const raw = new Uint8Array(await subtle().exportKey("raw", k));
-    try { return await fn(raw); } finally { zeroise(raw); }
+    try {
+      return await fn(raw);
+    } finally {
+      zeroise(raw);
+    }
   }
 
   /** API-8: zeroise in memory. The caller removes the persisted copy. */

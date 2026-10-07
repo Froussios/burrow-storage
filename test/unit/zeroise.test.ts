@@ -8,9 +8,17 @@ import { SecretHolder } from "../../src/secret.js";
 function recordImports(): Uint8Array[] {
   const seen: Uint8Array[] = [];
   const real = crypto.subtle.importKey.bind(crypto.subtle);
-  vi.spyOn(crypto.subtle, "importKey").mockImplementation(((format: KeyFormat, data: BufferSource, ...rest: unknown[]) => {
+  vi.spyOn(crypto.subtle, "importKey").mockImplementation(((
+    format: KeyFormat,
+    data: BufferSource,
+    ...rest: unknown[]
+  ) => {
     if (format === "raw" && data instanceof Uint8Array) seen.push(data);
-    return (real as (...a: unknown[]) => Promise<CryptoKey>)(format, data, ...rest);
+    return (real as (...a: unknown[]) => Promise<CryptoKey>)(
+      format,
+      data,
+      ...rest,
+    );
   }) as typeof crypto.subtle.importKey);
   return seen;
 }
@@ -46,6 +54,8 @@ describe("SEC-1 key material copies are zeroised after import", () => {
     expect(seen.length).toBe(1);
     expect(allZero(seen[0]!)).toBe(true);
     expect(input).toEqual(secret());
-    expect(await holder.use(async (s) => Array.from(s))).toEqual(Array.from(secret()));
+    expect(await holder.use(async (s) => Array.from(s))).toEqual(
+      Array.from(secret()),
+    );
   });
 });

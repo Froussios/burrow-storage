@@ -11,7 +11,12 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: [["list"]],
   use: { baseURL: `http://localhost:${port}`, trace: "retain-on-failure" },
-  webServer: { command: `node scripts/serve.mjs`, env: { PORT: String(port) }, url: `http://localhost:${port}/test/e2e/harness.html`, reuseExistingServer: false },
+  webServer: {
+    command: `node scripts/serve.mjs`,
+    env: { PORT: String(port) },
+    url: `http://localhost:${port}/test/e2e/harness.html`,
+    reuseExistingServer: false,
+  },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
     { name: "firefox", use: { ...devices["Desktop Firefox"] } },

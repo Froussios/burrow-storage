@@ -8,33 +8,57 @@ const stub = (filter) => ({
   name: "stub",
   setup(b) {
     b.onResolve({ filter }, (a) => ({ path: a.path, namespace: "stub" }));
-    b.onLoad({ filter: /.*/, namespace: "stub" }, () => ({ contents: "export const passkey = () => ({}), FirestoreBackend = 0;", loader: "js" }));
+    b.onLoad({ filter: /.*/, namespace: "stub" }, () => ({
+      contents: "export const passkey = () => ({}), FirestoreBackend = 0;",
+      loader: "js",
+    }));
   },
 });
 
 async function measure(name, contents, stubs, limit) {
   const r = await build({
     stdin: { contents, resolveDir: process.cwd(), loader: "ts" },
-    bundle: true, minify: true, format: "esm", platform: "browser", target: "es2022", write: false,
-    plugins: stubs ? [stub(stubs)] : [], logLevel: "error",
+    bundle: true,
+    minify: true,
+    format: "esm",
+    platform: "browser",
+    target: "es2022",
+    write: false,
+    plugins: stubs ? [stub(stubs)] : [],
+    logLevel: "error",
   });
   const code = r.outputFiles[0].contents;
   const gz = gzipSync(code, { level: 9 }).length;
   const ok = gz <= limit;
-  console.log(`${ok ? "ok  " : "FAIL"} ${name}: ${(code.length / 1024).toFixed(1)} KB min, ${(gz / 1024).toFixed(2)} KB min+gzip (limit ${(limit / 1024).toFixed(0)} KB)`);
+  console.log(
+    `${ok ? "ok  " : "FAIL"} ${name}: ${(code.length / 1024).toFixed(1)} KB min, ${(gz / 1024).toFixed(2)} KB min+gzip (limit ${(limit / 1024).toFixed(0)} KB)`,
+  );
   return { ok, gz };
 }
 
 // The core alone: what `burrow({ app, backend: new MemoryBackend() })` pulls in, minus the passkey
 // provider (budgeted below) and the Firestore adapter (loaded on demand).
-const core = await measure("core + memory backend",
+const core = await measure(
+  "core + memory backend",
   `export { burrow, MemoryBackend, BurrowError } from "./src/index.ts";`,
-  /providers\/passkey\.js$|backends\/firestore\.js$/, 12 * 1024);
-const withPk = await measure("core + memory backend + passkey (info)",
+  /providers\/passkey\.js$|backends\/firestore\.js$/,
+  12 * 1024,
+);
+const withPk = await measure(
+  "core + memory backend + passkey (info)",
   `export { burrow, MemoryBackend, BurrowError } from "./src/index.ts";`,
-  /backends\/firestore\.js$/, Infinity);
+  /backends\/firestore\.js$/,
+  Infinity,
+);
 const pkGz = withPk.gz - core.gz;
 const pkOk = pkGz <= 2 * 1024;
-console.log(`${pkOk ? "ok  " : "FAIL"} passkey provider (incremental): ${(pkGz / 1024).toFixed(2)} KB min+gzip (limit 2 KB)`);
-await measure("everything incl. Firestore adapter, excl. SDK (info)", `export * from "./src/iife.ts";`, /firestore-sdk\.js$/, Infinity);
+console.log(
+  `${pkOk ? "ok  " : "FAIL"} passkey provider (incremental): ${(pkGz / 1024).toFixed(2)} KB min+gzip (limit 2 KB)`,
+);
+await measure(
+  "everything incl. Firestore adapter, excl. SDK (info)",
+  `export * from "./src/iife.ts";`,
+  /firestore-sdk\.js$/,
+  Infinity,
+);
 process.exit(core.ok && pkOk ? 0 : 1);

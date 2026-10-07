@@ -7,6 +7,7 @@ export function syncCode(): KeyProvider {
     id: "sync-code",
     available: async () => true,
     enrol: async () => {},
-    recover: async ({ input }) => (input ? (await decodeSyncCode(input)).secret : null),
+    recover: async ({ input }) =>
+      input ? (await decodeSyncCode(input)).secret : null,
   };
 }

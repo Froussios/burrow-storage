@@ -60,6 +60,8 @@ then a smoke test against it), `release.yml` (npm publish with provenance on `v*
 ```
 npm ci
 npm run typecheck      # tsc --noEmit
+npm run format         # prettier --write . (80 columns; comments are not rewrapped)
+npm run format:check   # prettier --check . (runs in CI)
 npm test               # vitest: test/unit, test/property, test/conformance/memory.test.ts
 npm run test:watch
 npm run build          # tsup → dist/index.js, dist/firestore.js, dist/burrow.min.js, dist/burrow-firestore.js

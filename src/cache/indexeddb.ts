@@ -8,13 +8,22 @@ const DEVICE = "_device";
 const storeFor = (app: string) => "app:" + app;
 
 const req = <T>(r: IDBRequest<T>) =>
-  new Promise<T>((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+  new Promise<T>((res, rej) => {
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
 
-function openDb(idb: IDBFactory, version?: number, stores: string[] = []): Promise<IDBDatabase> {
+function openDb(
+  idb: IDBFactory,
+  version?: number,
+  stores: string[] = [],
+): Promise<IDBDatabase> {
   return new Promise((res, rej) => {
     const r = version ? idb.open(DB, version) : idb.open(DB);
     r.onupgradeneeded = () => {
-      for (const s of [META, DEVICE, ...stores]) if (!r.result.objectStoreNames.contains(s)) r.result.createObjectStore(s);
+      for (const s of [META, DEVICE, ...stores])
+        if (!r.result.objectStoreNames.contains(s))
+          r.result.createObjectStore(s);
     };
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
@@ -35,7 +44,10 @@ export class IdbCache implements Cache {
   }
 
   /** Opens (creating the app's store if needed). Rejects if IndexedDB is unusable (SYNC-4). */
-  static async open(app: string, idb: IDBFactory | null = globalThis.indexedDB ?? null): Promise<IdbCache> {
+  static async open(
+    app: string,
+    idb: IDBFactory | null = globalThis.indexedDB ?? null,
+  ): Promise<IdbCache> {
     if (!idb) throw new Error("IndexedDB unavailable");
     const c = new IdbCache(idb, app);
     await c.#conn();
@@ -43,13 +55,18 @@ export class IdbCache implements Cache {
   }
 
   #conn(): Promise<IDBDatabase> {
-    return (this.#db ??= this.#connect().catch((e) => { this.#db = null; throw e; }));
+    return (this.#db ??= this.#connect().catch((e) => {
+      this.#db = null;
+      throw e;
+    }));
   }
 
   async #connect(): Promise<IDBDatabase> {
     for (let attempt = 0; attempt < 5; attempt++) {
       const db = await openDb(this.#idb);
-      const need = [META, DEVICE, this.#store].some((s) => !db.objectStoreNames.contains(s));
+      const need = [META, DEVICE, this.#store].some(
+        (s) => !db.objectStoreNames.contains(s),
+      );
       if (!need) return this.#watch(db);
       const v = db.version + 1;
       db.close();
@@ -67,11 +84,18 @@ export class IdbCache implements Cache {
 
   #watch(db: IDBDatabase): IDBDatabase {
     // Another tab adding an app's store bumps the version: let it, and reconnect lazily.
-    db.onversionchange = () => { db.close(); this.#db = null; };
+    db.onversionchange = () => {
+      db.close();
+      this.#db = null;
+    };
     return db;
   }
 
-  async #tx<T>(stores: string[], mode: IDBTransactionMode, fn: (t: IDBTransaction) => Promise<T> | T): Promise<T> {
+  async #tx<T>(
+    stores: string[],
+    mode: IDBTransactionMode,
+    fn: (t: IDBTransaction) => Promise<T> | T,
+  ): Promise<T> {
     const db = await this.#conn();
     const t = db.transaction(stores, mode);
     const done = new Promise<void>((res, rej) => {
@@ -84,7 +108,11 @@ export class IdbCache implements Cache {
       out = await fn(t);
     } catch (e) {
       // A batch is all or nothing: requests already queued must not commit (cache/types.ts).
-      try { t.abort(); } catch { /* already finished */ }
+      try {
+        t.abort();
+      } catch {
+        /* already finished */
+      }
       await done.catch(() => {});
       throw e;
     }
@@ -95,7 +123,10 @@ export class IdbCache implements Cache {
   loadItems(): Promise<Map<string, CachedItem>> {
     return this.#tx([this.#store], "readonly", async (t) => {
       const s = t.objectStore(this.#store);
-      const [keys, vals] = await Promise.all([req(s.getAllKeys()), req(s.getAll())]);
+      const [keys, vals] = await Promise.all([
+        req(s.getAllKeys()),
+        req(s.getAll()),
+      ]);
       return new Map(keys.map((k, i) => [k as string, vals[i] as CachedItem]));
     });
   }
@@ -109,12 +140,20 @@ export class IdbCache implements Cache {
     });
   }
 
-  updateItems(keys: string[], fn: (key: string, cur: CachedItem | undefined) => CachedItem | null | undefined): Promise<Map<string, CachedItem | null>> {
+  updateItems(
+    keys: string[],
+    fn: (
+      key: string,
+      cur: CachedItem | undefined,
+    ) => CachedItem | null | undefined,
+  ): Promise<Map<string, CachedItem | null>> {
     const out = new Map<string, CachedItem | null>();
     if (!keys.length) return Promise.resolve(out);
     return this.#tx([this.#store], "readwrite", async (t) => {
       const s = t.objectStore(this.#store);
-      const curs = await Promise.all(keys.map((k) => req(s.get(k)) as Promise<CachedItem | undefined>));
+      const curs = await Promise.all(
+        keys.map((k) => req(s.get(k)) as Promise<CachedItem | undefined>),
+      );
       keys.forEach((k, i) => {
         const next = fn(k, curs[i]);
         if (next === undefined) return;
@@ -126,11 +165,17 @@ export class IdbCache implements Cache {
   }
 
   clearItems(): Promise<void> {
-    return this.#tx([this.#store], "readwrite", (t) => { t.objectStore(this.#store).clear(); });
+    return this.#tx([this.#store], "readwrite", (t) => {
+      t.objectStore(this.#store).clear();
+    });
   }
 
   getMeta(): Promise<AppMeta> {
-    return this.#tx([META], "readonly", async (t) => (await req(t.objectStore(META).get(this.#store))) ?? {});
+    return this.#tx(
+      [META],
+      "readonly",
+      async (t) => (await req(t.objectStore(META).get(this.#store))) ?? {},
+    );
   }
 
   setMeta(patch: Partial<AppMeta>): Promise<void> {
@@ -144,7 +189,10 @@ export class IdbCache implements Cache {
   getDevice(): Promise<DeviceMeta> {
     return this.#tx([DEVICE], "readonly", async (t) => {
       const s = t.objectStore(DEVICE);
-      const [keys, vals] = await Promise.all([req(s.getAllKeys()), req(s.getAll())]);
+      const [keys, vals] = await Promise.all([
+        req(s.getAllKeys()),
+        req(s.getAll()),
+      ]);
       return Object.fromEntries(keys.map((k, i) => [k, vals[i]])) as DeviceMeta;
     });
   }
@@ -152,12 +200,16 @@ export class IdbCache implements Cache {
   setDevice(patch: Partial<DeviceMeta>): Promise<void> {
     return this.#tx([DEVICE], "readwrite", (t) => {
       const s = t.objectStore(DEVICE);
-      for (const [k, v] of Object.entries(patch)) v === undefined ? s.delete(k) : s.put(v, k);
+      for (const [k, v] of Object.entries(patch))
+        v === undefined ? s.delete(k) : s.put(v, k);
     });
   }
 
   close(): void {
-    void this.#db?.then((db) => db.close(), () => {});
+    void this.#db?.then(
+      (db) => db.close(),
+      () => {},
+    );
     this.#db = null;
   }
 }

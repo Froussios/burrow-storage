@@ -45,7 +45,13 @@ export interface Cache {
    * newer write made meanwhile by another tab. `fn` returns the new entry, null to delete, or
    * undefined to leave it. Resolves with the entries as written.
    */
-  updateItems(keys: string[], fn: (key: string, cur: CachedItem | undefined) => CachedItem | null | undefined): Promise<Map<string, CachedItem | null>>;
+  updateItems(
+    keys: string[],
+    fn: (
+      key: string,
+      cur: CachedItem | undefined,
+    ) => CachedItem | null | undefined,
+  ): Promise<Map<string, CachedItem | null>>;
   clearItems(): Promise<void>;
   getMeta(): Promise<AppMeta>;
   setMeta(patch: Partial<AppMeta>): Promise<void>;

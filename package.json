@@ -52,7 +52,9 @@
     "test:live": "vitest run --config vitest.live.config.ts",
     "serve": "node scripts/serve.mjs",
     "demo:build": "node scripts/build-demo.mjs",
-    "sri": "node scripts/sri.mjs"
+    "sri": "node scripts/sri.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "peerDependencies": {
     "firebase": ">=10"
@@ -69,6 +71,7 @@
     "fast-check": "^4.10.2",
     "firebase": "^12.19.0",
     "firebase-tools": "^15.32.1",
+    "prettier": "3.9.9",
     "tsup": "^8.5.1",
     "typescript": "~5.9",
     "vitest": "^5.0.3"

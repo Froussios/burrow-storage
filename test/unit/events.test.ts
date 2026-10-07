@@ -12,7 +12,9 @@ async function catchUncaught(fn: () => void): Promise<unknown[]> {
   const caught: unknown[] = [];
   const saved = process.listeners("uncaughtException");
   process.removeAllListeners("uncaughtException");
-  const mine = (e: unknown) => { caught.push(e); };
+  const mine = (e: unknown) => {
+    caught.push(e);
+  };
   process.on("uncaughtException", mine);
   try {
     fn();
@@ -46,7 +48,9 @@ describe("BurrowEvent", () => {
   it("API-5 adding the same function twice registers it once", () => {
     const ev = new BurrowEvent<string>("changed");
     let calls = 0;
-    const fn = () => { calls++; };
+    const fn = () => {
+      calls++;
+    };
     ev.addListener(fn);
     ev.addListener(fn);
     ev.emit("x");
@@ -60,8 +64,14 @@ describe("BurrowEvent", () => {
     const ev = new BurrowEvent<{ k: number }>("changed");
     const order: string[] = [];
     const detail = { k: 1 };
-    ev.addListener((d) => { expect(d).toBe(detail); order.push("a"); });
-    ev.addListener((d) => { expect(d).toBe(detail); order.push("b"); });
+    ev.addListener((d) => {
+      expect(d).toBe(detail);
+      order.push("a");
+    });
+    ev.addListener((d) => {
+      expect(d).toBe(detail);
+      order.push("b");
+    });
     ev.emit(detail);
     expect(order).toEqual(["a", "b"]);
   });
@@ -73,7 +83,9 @@ describe("BurrowEvent", () => {
     const got: Event[] = [];
     const l = (e: Event) => got.push(e);
     ev.addEventListener("status", l);
-    ev.addEventListener("other", () => { throw new Error("wrong type"); });
+    ev.addEventListener("other", () => {
+      throw new Error("wrong type");
+    });
     ev.emit({ status: "idle" });
     expect(got).toHaveLength(1);
     expect(got[0]).toBeInstanceOf(CustomEvent);
@@ -88,7 +100,9 @@ describe("BurrowEvent", () => {
     const ev = new BurrowEvent<number>("changed");
     const seen: string[] = [];
     ev.addListener((n) => seen.push(`listener:${n}`));
-    ev.addEventListener("changed", (e) => seen.push(`target:${(e as CustomEvent<number>).detail}`));
+    ev.addEventListener("changed", (e) =>
+      seen.push(`target:${(e as CustomEvent<number>).detail}`),
+    );
     ev.emit(7);
     expect(seen).toEqual(["listener:7", "target:7"]);
   });
@@ -97,11 +111,18 @@ describe("BurrowEvent", () => {
     const ev = new BurrowEvent<number>("changed");
     const seen: number[] = [];
     const boom = new Error("listener failed");
-    ev.addListener(() => { throw boom; });
+    ev.addListener(() => {
+      throw boom;
+    });
     ev.addListener((n) => seen.push(n));
-    ev.addEventListener("changed", (e) => seen.push((e as CustomEvent<number>).detail * 10));
+    ev.addEventListener("changed", (e) =>
+      seen.push((e as CustomEvent<number>).detail * 10),
+    );
     let returned = false;
-    const caught = await catchUncaught(() => { ev.emit(4); returned = true; });
+    const caught = await catchUncaught(() => {
+      ev.emit(4);
+      returned = true;
+    });
     // emit() itself does not throw: the core's caller is never interrupted by a page's listener.
     expect(returned).toBe(true);
     expect(seen).toEqual([4, 40]);

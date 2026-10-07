@@ -17,12 +17,30 @@ export { syncCode } from "./providers/synccode.js";
 export type * from "./types.js";
 
 /** FS-3: the Firestore config from <meta name="burrow-firestore"> or window.BURROW.firestore. */
-export function readFirestoreConfig(): { apiKey: string; projectId: string; appId: string } | null {
-  const meta = globalThis.document?.querySelector?.('meta[name="burrow-firestore"]')?.getAttribute("content");
+export function readFirestoreConfig(): {
+  apiKey: string;
+  projectId: string;
+  appId: string;
+} | null {
+  const meta = globalThis.document
+    ?.querySelector?.('meta[name="burrow-firestore"]')
+    ?.getAttribute("content");
   if (meta) {
-    try { return JSON.parse(meta); } catch { console.warn('[burrow] <meta name="burrow-firestore"> is not valid JSON'); }
+    try {
+      return JSON.parse(meta);
+    } catch {
+      console.warn('[burrow] <meta name="burrow-firestore"> is not valid JSON');
+    }
   }
-  return (globalThis as { BURROW?: { firestore?: { apiKey: string; projectId: string; appId: string } } }).BURROW?.firestore ?? null;
+  return (
+    (
+      globalThis as {
+        BURROW?: {
+          firestore?: { apiKey: string; projectId: string; appId: string };
+        };
+      }
+    ).BURROW?.firestore ?? null
+  );
 }
 
 let warnedNoBackend = false;
@@ -31,7 +49,10 @@ async function defaultBackend(): Promise<Backend | null> {
   const cfg = readFirestoreConfig();
   if (!cfg) {
     // Principle 7: keep working locally when sync is unavailable.
-    if (!warnedNoBackend) { warnedNoBackend = true; console.warn("[burrow] no backend configured; data stays on this device"); }
+    if (!warnedNoBackend) {
+      warnedNoBackend = true;
+      console.warn("[burrow] no backend configured; data stays on this device");
+    }
     return null;
   }
   const { FirestoreBackend } = await import("./backends/firestore.js");
@@ -40,11 +61,20 @@ async function defaultBackend(): Promise<Backend | null> {
 
 /** The host page's services. */
 export function browserEnv(ns = "page"): Env {
-  const g = globalThis as typeof globalThis & { window?: Window; document?: Document };
+  const g = globalThis as typeof globalThis & {
+    window?: Window;
+    document?: Document;
+  };
   return {
     ns,
-    openCache: (app, kind) => (kind === "memory" ? Promise.resolve(new MemoryCache(app)) : IdbCache.open(app)),
-    channel: (name) => (typeof BroadcastChannel === "function" ? new BroadcastChannel(name) : null),
+    openCache: (app, kind) =>
+      kind === "memory"
+        ? Promise.resolve(new MemoryCache(app))
+        : IdbCache.open(app),
+    channel: (name) =>
+      typeof BroadcastChannel === "function"
+        ? new BroadcastChannel(name)
+        : null,
     locks: g.navigator?.locks ?? null,
     win: g.window ?? null,
     doc: g.document ?? null,
@@ -58,13 +88,18 @@ export function browserEnv(ns = "page"): Env {
 const instances = new WeakMap<Env, Map<string, Promise<Core>>>();
 
 /** @internal Create an area against an explicit environment (tests simulate devices with this). */
-export function createBurrow(config: BurrowConfig, env: Env): Promise<BurrowArea> {
+export function createBurrow(
+  config: BurrowConfig,
+  env: Env,
+): Promise<BurrowArea> {
   let apps = instances.get(env);
   if (!apps) instances.set(env, (apps = new Map()));
   const app = config?.app;
   let p = apps.get(app);
   if (!p) {
-    p = Core.create(config, env, [passkey(), syncCode()], () => apps.delete(app));
+    p = Core.create(config, env, [passkey(), syncCode()], () =>
+      apps.delete(app),
+    );
     apps.set(app, p);
     p.catch(() => apps.delete(app));
   }

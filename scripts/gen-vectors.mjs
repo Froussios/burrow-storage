@@ -9,7 +9,8 @@ const b64url = (b) => Buffer.from(b).toString("base64url");
 const id = (b) => b64url(b).slice(0, 43);
 const sha = (b) => createHash("sha256").update(b).digest();
 const hmac = (k, d) => createHmac("sha256", k).update(d).digest();
-const expand = (ikm, salt, info) => Buffer.from(hkdfSync("sha256", ikm, salt, info, 32));
+const expand = (ikm, salt, info) =>
+  Buffer.from(hkdfSync("sha256", ikm, salt, info, 32));
 
 const rootSecret = Buffer.from(Array.from({ length: 32 }, (_, i) => i));
 const app = "test-app";
@@ -33,7 +34,8 @@ function syncCode(secret, version = 1) {
   let bits = "";
   for (const b of raw) bits += b.toString(2).padStart(8, "0");
   let code = "";
-  for (let i = 0; i < bits.length; i += 5) code += A[parseInt(bits.slice(i, i + 5).padEnd(5, "0"), 2)];
+  for (let i = 0; i < bits.length; i += 5)
+    code += A[parseInt(bits.slice(i, i + 5).padEnd(5, "0"), 2)];
   return code.match(/.{4}/g).join("-");
 }
 
@@ -43,7 +45,12 @@ const itemId = docId("theme");
 const UNICODE_KEY = "κλειδί 鍵 🔑";
 
 // The write-token chain of one document, n = 0..5: tok(id, n) and the commitment next(id, n).
-const chainOf = (key, i) => Array.from({ length: 6 }, (_, n) => ({ n, tok: tok(key, i, n), next: next(key, i, n) }));
+const chainOf = (key, i) =>
+  Array.from({ length: 6 }, (_, n) => ({
+    n,
+    tok: tok(key, i, n),
+    next: next(key, i, n),
+  }));
 
 // A second root secret: SHA-256 of a fixed label, unrelated in structure to the first.
 const root2 = sha(Buffer.from("burrow test vector root 2"));
@@ -59,18 +66,36 @@ const docId2 = (k) => id(hmac(pathKey2, "item" + k));
 const encKey = expand(rootSecret, "burrow/v1", "enc" + app);
 const envRev = 3;
 const envTs = 1_700_000_000_000;
-const envPlaintext = JSON.stringify({ v: 1, key: "theme", value: "dark", ts: envTs });
+const envPlaintext = JSON.stringify({
+  v: 1,
+  key: "theme",
+  value: "dark",
+  ts: envTs,
+});
 const envIv = Buffer.from("000102030405060708090a0b", "hex");
 const gcm = createCipheriv("aes-256-gcm", encKey, envIv);
 gcm.setAAD(Buffer.from(itemId + app + String(envRev), "utf8"));
-const envCt = Buffer.concat([gcm.update(envPlaintext, "utf8"), gcm.final(), gcm.getAuthTag()]);
+const envCt = Buffer.concat([
+  gcm.update(envPlaintext, "utf8"),
+  gcm.final(),
+  gcm.getAuthTag(),
+]);
 
 const v = {
   rootSecretHex: rootSecret.toString("hex"),
   app,
   base,
-  docId: { theme: itemId, [UNICODE_KEY]: docId(UNICODE_KEY), draft: docId("draft"), "": docId("") },
-  tok: { base0: tok(macKey, base, 0), base1: tok(macKey, base, 1), theme7: tok(macKey, itemId, 7) },
+  docId: {
+    theme: itemId,
+    [UNICODE_KEY]: docId(UNICODE_KEY),
+    draft: docId("draft"),
+    "": docId(""),
+  },
+  tok: {
+    base0: tok(macKey, base, 0),
+    base1: tok(macKey, base, 1),
+    theme7: tok(macKey, itemId, 7),
+  },
   next: { base0: next(macKey, base, 0), theme7: next(macKey, itemId, 7) },
   slot: {
     prfHex: prf.toString("hex"),
@@ -86,7 +111,11 @@ const v = {
   root2: {
     rootSecretHex: root2.toString("hex"),
     base: base2,
-    docId: { theme: docId2("theme"), [UNICODE_KEY]: docId2(UNICODE_KEY), "": docId2("") },
+    docId: {
+      theme: docId2("theme"),
+      [UNICODE_KEY]: docId2(UNICODE_KEY),
+      "": docId2(""),
+    },
     // Write tokens for the item document of "theme".
     chain: chainOf(macKey2, docId2("theme")),
     syncCode: syncCode(root2),
@@ -95,11 +124,22 @@ const v = {
     key: "theme",
     plaintext: envPlaintext,
     env: {
-      v: 1, iv: b64url(envIv), ct: b64url(envCt), rev: envRev, ts: envTs,
-      tok: tok(macKey, itemId, envRev), next: next(macKey, itemId, envRev),
+      v: 1,
+      iv: b64url(envIv),
+      ct: b64url(envCt),
+      rev: envRev,
+      ts: envTs,
+      tok: tok(macKey, itemId, envRev),
+      next: next(macKey, itemId, envRev),
     },
   },
-  otherApp: { app: "other", base: id(sha(expand(rootSecret, "burrow/v1", "pathother"))) },
+  otherApp: {
+    app: "other",
+    base: id(sha(expand(rootSecret, "burrow/v1", "pathother"))),
+  },
 };
-writeFileSync(new URL("../test/vectors.json", import.meta.url), JSON.stringify(v, null, 2) + "\n");
+writeFileSync(
+  new URL("../test/vectors.json", import.meta.url),
+  JSON.stringify(v, null, 2) + "\n",
+);
 console.log(v);

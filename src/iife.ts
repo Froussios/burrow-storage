@@ -5,17 +5,28 @@ import { setFirestoreSdkLoader } from "./backends/firestore.js";
 
 type Sdk = typeof import("./backends/firestore-sdk.js");
 const g = globalThis as typeof globalThis & { BurrowFirestoreSdk?: Sdk };
-const here = (globalThis.document?.currentScript as HTMLScriptElement | null)?.src;
+const here = (globalThis.document?.currentScript as HTMLScriptElement | null)
+  ?.src;
 let loading: Promise<Sdk> | undefined;
 
-setFirestoreSdkLoader(() => (loading ??= new Promise<Sdk>((resolve, reject) => {
-  if (g.BurrowFirestoreSdk) return resolve(g.BurrowFirestoreSdk);
-  const s = document.createElement("script");
-  s.src = new URL("burrow-firestore.js", here ?? location.href).href;
-  s.onload = () => (g.BurrowFirestoreSdk ? resolve(g.BurrowFirestoreSdk) : reject(new Error("burrow-firestore.js did not load")));
-  s.onerror = () => { loading = undefined; s.remove(); reject(new Error("could not load burrow-firestore.js")); };
-  document.head.appendChild(s);
-})));
+setFirestoreSdkLoader(
+  () =>
+    (loading ??= new Promise<Sdk>((resolve, reject) => {
+      if (g.BurrowFirestoreSdk) return resolve(g.BurrowFirestoreSdk);
+      const s = document.createElement("script");
+      s.src = new URL("burrow-firestore.js", here ?? location.href).href;
+      s.onload = () =>
+        g.BurrowFirestoreSdk
+          ? resolve(g.BurrowFirestoreSdk)
+          : reject(new Error("burrow-firestore.js did not load"));
+      s.onerror = () => {
+        loading = undefined;
+        s.remove();
+        reject(new Error("could not load burrow-firestore.js"));
+      };
+      document.head.appendChild(s);
+    })),
+);
 
 export * from "./index.js";
 export { FirestoreBackend } from "./backends/firestore.js";

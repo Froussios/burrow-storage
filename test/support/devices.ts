@@ -14,13 +14,17 @@ export class World {
   readonly store = new Map<string, Envelope>();
   readonly areas: Core[] = [];
   devices: Device[] = [];
-  device(opts: { cache?: "indexeddb" | "memory"; latencyMs?: number } = {}): Device {
+  device(
+    opts: { cache?: "indexeddb" | "memory"; latencyMs?: number } = {},
+  ): Device {
     const d = new Device(this, opts);
     this.devices.push(d);
     return d;
   }
   /** Stop every area opened in this world (timers, channels). */
-  close(): void { for (const a of this.areas.splice(0)) a.close(); }
+  close(): void {
+    for (const a of this.areas.splice(0)) a.close();
+  }
 }
 
 export class Device {
@@ -29,11 +33,19 @@ export class Device {
   readonly mem = new MemoryDevice();
   readonly backend: MemoryBackend;
   readonly kind: "indexeddb" | "memory";
-  readonly visibility = { visibilityState: "visible" as DocumentVisibilityState };
+  readonly visibility = {
+    visibilityState: "visible" as DocumentVisibilityState,
+  };
   readonly win = new EventTarget();
   location: { hash: string; href: string } | null = null;
-  constructor(readonly world: World, opts: { cache?: "indexeddb" | "memory"; latencyMs?: number }) {
-    this.backend = new MemoryBackend({ store: world.store, latencyMs: opts.latencyMs });
+  constructor(
+    readonly world: World,
+    opts: { cache?: "indexeddb" | "memory"; latencyMs?: number },
+  ) {
+    this.backend = new MemoryBackend({
+      store: world.store,
+      latencyMs: opts.latencyMs,
+    });
     this.kind = opts.cache ?? "indexeddb";
   }
 
@@ -41,19 +53,42 @@ export class Device {
   env(): Env {
     return {
       ns: this.ns,
-      openCache: (app, kind) => kind === "memory" || this.kind === "memory" ? Promise.resolve(new MemoryCache(app, this.mem)) : IdbCache.open(app, this.idb),
+      openCache: (app, kind) =>
+        kind === "memory" || this.kind === "memory"
+          ? Promise.resolve(new MemoryCache(app, this.mem))
+          : IdbCache.open(app, this.idb),
       channel: (name) => new BroadcastChannel(`${this.ns}:${name}`),
       locks: navigator.locks,
       win: this.win,
       doc: this.visibility,
       location: this.location,
-      history: { replaceState: (_d, _u, url) => { if (this.location && url) this.location = { href: url, hash: url.includes("#") ? url.slice(url.indexOf("#")) : "" }; } },
+      history: {
+        replaceState: (_d, _u, url) => {
+          if (this.location && url)
+            this.location = {
+              href: url,
+              hash: url.includes("#") ? url.slice(url.indexOf("#")) : "",
+            };
+        },
+      },
       defaultBackend: async () => null,
     };
   }
 
-  async open(config: Partial<BurrowConfig> = {}, env = this.env()): Promise<Core> {
-    const a = (await createBurrow({ app: "test", backend: this.backend, syncIntervalMs: 0, debounceMs: 10, ...config }, env)) as Core;
+  async open(
+    config: Partial<BurrowConfig> = {},
+    env = this.env(),
+  ): Promise<Core> {
+    const a = (await createBurrow(
+      {
+        app: "test",
+        backend: this.backend,
+        syncIntervalMs: 0,
+        debounceMs: 10,
+        ...config,
+      },
+      env,
+    )) as Core;
     if (!this.world.areas.includes(a)) this.world.areas.push(a);
     return a;
   }

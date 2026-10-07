@@ -89,7 +89,12 @@ export interface Backend {
    * `unauthorized` for a broken token chain or a malformed envelope. Other rejections:
    * `too-large`, `quota`, `network`. `opts.keepalive` asks the write to survive page unload.
    */
-  put(id: string, env: Envelope, expectedRev: number | null, opts?: { keepalive?: boolean }): Promise<void>;
+  put(
+    id: string,
+    env: Envelope,
+    expectedRev: number | null,
+    opts?: { keepalive?: boolean },
+  ): Promise<void>;
   /**
    * Optional push notifications for one document. Call `onChange` with each new envelope stored
    * at `id`, and return a function that stops them. Burrow subscribes to the user's manifest only.
@@ -189,7 +194,8 @@ export type Status = "idle" | "syncing" | "offline" | "error";
  * entered as a code (pasted or typed), opened from a `#burrow=` link (KP-13), recovered from a
  * passkey, or from a custom provider (its id). "unknown" for tokens stored before this was recorded.
  */
-export type TokenSource = "generated" | "code" | "link" | "passkey" | "unknown" | (string & {});
+export type TokenSource =
+  "generated" | "code" | "link" | "passkey" | "unknown" | (string & {});
 
 export interface TokenInfo {
   source: TokenSource;
@@ -200,9 +206,18 @@ export interface TokenInfo {
 }
 export type Protection = "none" | "passkey" | "code" | (string & {});
 
-export type StorageChanges = Record<string, { oldValue?: unknown; newValue?: unknown }>;
-export interface ChangedEvent { changes: StorageChanges; source: "local" | "remote" }
-export interface StatusEvent { status: Status; error?: BurrowError }
+export type StorageChanges = Record<
+  string,
+  { oldValue?: unknown; newValue?: unknown }
+>;
+export interface ChangedEvent {
+  changes: StorageChanges;
+  source: "local" | "remote";
+}
+export interface StatusEvent {
+  status: Status;
+  error?: BurrowError;
+}
 
 export interface Inspection {
   status: Status;
@@ -215,7 +230,8 @@ export interface Inspection {
   provider: string | null;
 }
 
-export type GetKeys = null | undefined | string | string[] | Record<string, unknown>;
+export type GetKeys =
+  null | undefined | string | string[] | Record<string, unknown>;
 
 /** The store for one app, returned by `burrow()`. Shaped like chrome.storage's StorageArea (§5). Reference: docs/api.md. */
 export interface BurrowArea {
@@ -223,7 +239,10 @@ export interface BurrowArea {
    * Read from the local cache: all keys (no argument or null), one key, a list of keys, or an
    * object whose values are defaults for missing keys. `{ fresh: true }` fetches from the store first.
    */
-  get(keys?: GetKeys, opts?: { fresh?: boolean }): Promise<Record<string, unknown>>;
+  get(
+    keys?: GetKeys,
+    opts?: { fresh?: boolean },
+  ): Promise<Record<string, unknown>>;
   /**
    * Write JSON values. Validates every key first, so an invalid batch writes nothing: non-JSON
    * values reject with TypeError, oversized items with `item-too-large`. Resolves once stored
@@ -258,7 +277,11 @@ export interface BurrowArea {
    * token for every app on the origin. Rejects `would-orphan` if this app has unsynced writes,
    * unless `discardLocal` is true.
    */
-  link(options?: { provider?: string; code?: string; discardLocal?: boolean }): Promise<void>;
+  link(options?: {
+    provider?: string;
+    code?: string;
+    discardLocal?: boolean;
+  }): Promise<void>;
   /** Forget the token on this device, like logging out, and close this instance. Same `would-orphan` guard as `link()`. */
   unlink(options?: { discardLocal?: boolean }): Promise<void>;
   /** Flush pending writes and run one sync pass. Rejects with the error if the pass fails. */
