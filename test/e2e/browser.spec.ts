@@ -135,7 +135,7 @@ test("KP-13 (not implemented, D-41) a #burrow=<code> fragment is ignored and sta
 }) => {
   const deviceA = await browser.newContext();
   const a = await openArea(deviceA);
-  await withStore(a, (s) => s.set({ via: "link" }));
+  await withStore(a, (s) => s.set({ k: "shared" }));
   await withStore(a, (s) => s.syncNow());
   const code = await withStore(a, (s) => s.exportCode());
   const deviceB = await browser.newContext();
