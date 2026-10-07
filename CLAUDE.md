@@ -54,7 +54,8 @@ uses Node's `--localstorage-file`); `engines` says `>=18` because that is enough
 via fast-check, backend conformance), Playwright (`test/e2e`, three engines, a CDP virtual
 authenticator for passkeys), `node --test` for the rules under the Firestore emulator
 (firebase-tools, Java 21). No linter is configured. GitHub Actions: `ci.yml`, `pages.yml`
-(demo to GitHub Pages on `main`), `release.yml` (npm publish with provenance on `v*` tags).
+(demo to GitHub Pages at <https://froussios.github.io/burrow-storage/> on every push to `main`,
+then a smoke test against it), `release.yml` (npm publish with provenance on `v*` tags).
 
 ```
 npm ci
@@ -70,13 +71,18 @@ npm run test:firestore # conformance suite against the emulator
 npm run test:e2e       # playwright under the emulator (npm run build first)
 npm run test:live      # conformance against a real project from BURROW_FIRESTORE or the demo page; writes throwaway docs; never in CI
 npm run serve          # static server for demo/ and test pages at http://localhost:4173 (after a build)
+npm run demo:build     # site/: the deployable demo, footer stamped with the commit (after a build)
+npm run test:smoke     # demo smoke test: BURROW_DEMO_URL=<deployed demo>, or site/ under the emulator:
+                       #   node scripts/emulator.mjs "npm run test:smoke"
 npm run sri            # SRI hashes for the bundles → dist/sri.json
 node scripts/gen-vectors.mjs   # regenerate test/vectors.json (output must not change within v1)
 ```
 
 `BURROW_EMULATOR_PORT` overrides port 8080. In Claude Code web sessions Chromium is preinstalled
-under `/opt/pw-browsers`; do not run `playwright install`. If Java is missing, say so and skip the
-emulator suites.
+under `/opt/pw-browsers`; do not run `playwright install`. If its build is not the one Playwright
+expects, run through an untracked local config that spreads the real one and sets
+`use.launchOptions.executablePath: "/opt/pw-browsers/chromium"`. If Java is missing, say so and
+skip the emulator suites.
 
 ## Layout
 
@@ -95,10 +101,10 @@ src/
   sync/merge.ts         pure LWW merge
   providers/            passkey.ts, synccode.ts
   backends/             memory.ts, firestore.ts, firestore-sdk.ts
-test/                   unit/, property/, conformance/, e2e/, sample-app/, support/, vectors.json, setup.ts
+test/                   unit/, property/, conformance/, e2e/, smoke/, sample-app/, support/, vectors.json, setup.ts
 firebase/               firestore.rules, firebase.json, README.md, tests/ (rules tests, own package.json)
-scripts/                burrow-setup.mjs (bin), setup.sh, emulator.mjs, serve.mjs, size.mjs, sri.mjs, gen-vectors.mjs
-demo/                   index.html, demo.js, demo.css, burrow.config.example.html
+scripts/                burrow-setup.mjs (bin), setup.sh, emulator.mjs, serve.mjs, build-demo.mjs, size.mjs, sri.mjs, gen-vectors.mjs
+demo/                   index.html, demo.js, demo.css, favicon.svg, burrow.config.example.html
 docs/                   guides, api, architecture, decisions, user-journeys, history/
 ```
 

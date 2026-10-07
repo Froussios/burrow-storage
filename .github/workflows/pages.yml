@@ -9,25 +9,45 @@ permissions:
   pages: write
   id-token: write
 
-concurrency: { group: pages, cancel-in-progress: true }
+# One deploy and its smoke test at a time, so each smoke test sees its own deploy (#24, D-40).
+concurrency: { group: pages, cancel-in-progress: false }
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: { name: github-pages, url: "${{ steps.deployment.outputs.page_url }}" }
+    outputs:
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with: { node-version: 24, cache: npm }
       - run: npm ci
       - run: npm run build
-      - name: Assemble the static site (demo + bundles, same origin for a 'self' CSP)
-        run: |
-          mkdir -p site
-          cp demo/index.html demo/demo.js demo/demo.css site/
-          cp dist/burrow.min.js dist/burrow-firestore.js site/
+      - name: Assemble site/ (demo + bundles on one origin, stamped with this commit)
+        run: npm run demo:build
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with: { path: site }
       - id: deployment
         uses: actions/deploy-pages@v4
+
+  smoke:
+    name: Smoke test the deployed demo
+    needs: deploy
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: 24, cache: npm }
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Smoke test (live store; waits for the page to show this commit)
+        run: npm run test:smoke
+        env:
+          BURROW_DEMO_URL: ${{ needs.deploy.outputs.url }}
+          BURROW_DEMO_COMMIT: ${{ github.sha }}
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with: { name: smoke-traces, path: test-results, retention-days: 14 }

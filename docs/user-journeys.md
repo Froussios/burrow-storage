@@ -1,9 +1,10 @@
 # Demo page: user journeys
 
 These five journeys define what a person must be able to do on the Burrow demo page
-(`demo/index.html`). They drive the demo's design and its browser tests. The page also has
-**Forget this device**, which calls `unlink()` (API-8): the token is forgotten here, the next load
-starts a new one, and the old token still links back to the data.
+(`demo/index.html`, deployed at <https://froussios.github.io/burrow-storage/>). They drive the
+demo's design and its browser tests. The page also has **Forget this device**, which calls
+`unlink()` (API-8): the token is forgotten here, the next load starts a new one, and the old token
+still links back to the data.
 
 ## Terms
 
@@ -43,7 +44,7 @@ The **Storage token** panel is always visible. It shows:
 | --- | --- | --- | --- | --- |
 | 1 | No token | Create new backup with key | The token is stored in a passkey; data is backed up | `passkey.spec.ts`, demo journeys 1 and 2 |
 | 2 | No token | Use my passkey | The existing token and data appear | `passkey.spec.ts`, demo journeys 1 and 2 |
-| 3 | No token | Paste a token | The existing data appears | `demo.spec.ts` |
+| 3 | No token | Paste a token | The existing data appears | `demo.spec.ts`; `test/smoke/demo.spec.ts` against the deployed demo |
 | 4 | No token | Paste an invalid token | An error, or empty data with working sync | `demo.spec.ts`, journey 4 |
 | 5 | Has a token | Open the page | Previous data appears immediately | `demo.spec.ts` (reload) |
 

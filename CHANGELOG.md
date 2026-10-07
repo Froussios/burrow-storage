@@ -33,7 +33,11 @@ labels, and the storage-token encoding are public contract: changing them is a m
 - Firestore security rules with the SHA-256 write chain, emulator tests, `npx burrow-setup
   firestore` guide and `--run` script.
 - Static demo (theme, draft, storage token panel, passkey backup, export, debug panel) under a
-  strict CSP; GitHub Pages workflow.
+  strict CSP.
+- The demo is always available at <https://froussios.github.io/burrow-storage/>, redeployed to
+  GitHub Pages from every push to `main`. Its footer shows the commit and build time
+  (`npm run demo:build`), and a Playwright smoke test (`npm run test:smoke`) checks each deploy
+  against the live store.
 - Script-tag build `burrow.min.js` (global `Burrow`) that loads the Firestore SDK as a
   same-directory classic script (`burrow-firestore.js`), so it also loads from `file://`.
 - SRI hashes and npm provenance in the release workflow.
