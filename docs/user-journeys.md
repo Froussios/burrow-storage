@@ -93,9 +93,7 @@ this device's token, and pulls the data.
 **Starting state:** no token. The user has their token, copied from another device's panel.
 
 **Steps:** they paste or type it into **Link to existing backup** and click **Link this
-device**. The demo offers no link that carries the token: opening the page with `#burrow=<token>`
-in the URL leaves it on its own token (KP-13 is not implemented, [decisions.md](decisions.md)
-D-41).
+device**.
 
 **Outcome:** the panel shows the pasted token, *Pasted or typed in*.
 Their existing data appears.

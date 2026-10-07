@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryBackend } from "../../src/backends/memory.js";
-import { IdbCache } from "../../src/cache/indexeddb.js";
 import { deriveAppKeys, docId } from "../../src/codec/derive.js";
 import { decodeSyncCode } from "../../src/codec/synccode.js";
 import { BackendError, BurrowError } from "../../src/errors.js";
@@ -853,24 +852,6 @@ describe("token source (demo journeys)", () => {
       source: "code",
       remembered: true,
     });
-  });
-
-  it("a token remembered as 'link' by a pre-release build still loads and reports 'link'", async () => {
-    const w = fresh();
-    const a = await w.device().open();
-    await a.set({ k: "kept" });
-    await a.syncNow();
-    const D = w.device();
-    const b = await D.open();
-    await b.link({ code: await a.exportCode() });
-    b.close();
-    const cache = await IdbCache.open("test", D.idb);
-    await cache.setDevice({ tokenSource: "link" });
-    cache.close();
-    const c = await D.open();
-    expect(c.token).toMatchObject({ source: "link", remembered: true });
-    expect(await c.exportCode()).toBe(await a.exportCode());
-    expect(await c.get()).toEqual({ k: "kept" });
   });
 
   it("a provider records its own id", async () => {

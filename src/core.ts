@@ -39,7 +39,6 @@ import type {
   ProviderStore,
   Status,
   TokenInfo,
-  TokenSource,
   StatusEvent,
   StorageChanges,
 } from "./types.js";
@@ -1271,7 +1270,6 @@ export class Core implements BurrowArea {
     this.#alive();
     let secret: Uint8Array | null = null;
     let via: Protection = "none";
-    let source: TokenSource = "code";
     if (options.code !== undefined) {
       // KP-12: bad-code before any network call
       secret = (await decodeSyncCode(options.code)).secret;
@@ -1299,23 +1297,25 @@ export class Core implements BurrowArea {
         }
         if (secret) {
           via = protectionFor(p.id);
-          source = via;
           break;
         }
       }
       if (!secret) throw new BurrowError("no-provider");
     }
     try {
-      await this.#switchTo(secret, via, source, !!options.discardLocal);
+      await this.#switchTo(secret, via, !!options.discardLocal);
     } finally {
       secret.fill(0);
     }
   }
 
+  /**
+   * Adopt `secret`. `via` is both the new protection and the token's source:
+   * "code" for a typed token, otherwise the provider's protection.
+   */
   async #switchTo(
     secret: Uint8Array,
     via: Protection,
-    source: TokenSource,
     discardLocal: boolean,
   ): Promise<void> {
     const same =
@@ -1345,11 +1345,11 @@ export class Core implements BurrowArea {
       this.#secret?.forget();
       this.#secret = holder;
       this.#protection = via;
-      this.#token = { source, remembered: false, since: Date.now() };
+      this.#token = { source: via, remembered: false, since: Date.now() };
       if (this.#remember)
         await this.#cache.setDevice({
           protection: via,
-          tokenSource: source,
+          tokenSource: via,
           tokenSince: this.#token.since!,
         });
       // the cache now belongs to nobody; #adoptIdentity resets it

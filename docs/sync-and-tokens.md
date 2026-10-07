@@ -55,14 +55,6 @@ try {
 - A password manager is the natural place to keep it: the user saves it once on the first device
   and fills it in on the next.
 
-## No links
-
-Burrow does not read the token from the page URL, and a `#burrow=` fragment is ignored. A token in
-a URL lands in browser history, synced history, autocomplete, chat logs and screenshots, and a
-page that adopted it on load would let anyone who got a user to open a link switch that device to
-a token they hold (token fixation). Ask users to keep the token in a password manager and paste it,
-or to create a passkey backup ([decisions.md D-41](decisions.md)).
-
 ## Second device, option 2: a passkey backup
 
 ```js

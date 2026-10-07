@@ -200,13 +200,12 @@ that re-sets unchanged values causes one write per debounce window.
 
 The demo always shows the storage token in use and where it came from
 ([user-journeys.md](user-journeys.md)). `store.token` is `{ source, remembered, since }`: `source`
-is `generated`, `code` (`link({ code })`), `passkey`, or a custom provider's id (`link`, for a
-`#burrow=` URL, was removed by D-41); `remembered` is true when the token was loaded from this
-browser's storage on page load; `since` is when this device obtained it. The source is persisted
-next to the wrapped token, so it survives reloads, and `onToken` fires when it changes. Because the
-demo calls `exportCode()` on every load, `exportCode()` no longer sets `protection: "code"`;
-otherwise `onUnprotected` could never fire. `protect("sync-code")` still records that the user kept
-the token.
+is `generated`, `code` (`link({ code })`), `passkey`, or a custom provider's id; `remembered` is
+true when the token was loaded from this browser's storage on page load; `since` is when this device
+obtained it. The source is persisted next to the wrapped token, so it survives reloads, and
+`onToken` fires when it changes. Because the demo calls `exportCode()` on every load, `exportCode()`
+no longer sets `protection: "code"`; otherwise `onUnprotected` could never fire.
+`protect("sync-code")` still records that the user kept the token.
 
 ### D-28 The sync code is presented to people as the "storage token"
 
@@ -353,12 +352,9 @@ implemented.
 - **Better paths exist.** A password manager, through `exportCode()` and `link({ code })`, or a
   passkey backup, which moves the token without showing it.
 
-`burrow()` no longer reads `location` and leaves a `#burrow=` fragment in place; `Env` lost its
-`location` and `history` members. `TokenSource` no longer lists `"link"`, but a device whose
-remembered token was recorded as `"link"` still loads it and reports `"link"`: the stored source
-is passed through rather than rewritten, and the type admits any string. The demo keeps a label
-for it. The docs do not describe parsing the fragment and calling `link({ code })`; a site can
-build that, and then owns both risks above (SECURITY.md).
+`burrow()` no longer reads `location`, `Env` lost its `location` and `history` members, and
+`TokenSource` no longer has `"link"`. The docs do not describe links at all, not even as a recipe
+on top of `link({ code })`.
 
 ## Part B: planning decisions and their status
 
@@ -374,7 +370,7 @@ confirmation. The implementation then went its own way on several. Status agains
 | D4 | No passphrase provider in v1 | **Adopted** (D-12). The decoder accepts version byte `0x02` for forward compatibility. |
 | D5 | Wrap the token with AES-GCM rather than AES-KW | **Superseded.** AES-KW under a non-extractable key, with an extractable HMAC "vehicle" key carrying the raw bytes (`src/secret.ts`). |
 | D6 | A chrome-style emitter that is not an `EventTarget` | **Superseded.** `BurrowEvent` extends `EventTarget` and adds the chrome-style methods (D-13). |
-| D7 | No URL-fragment transport for the token | **Adopted** (D-41). `#burrow=<token>` links were supported for a while, which superseded D7; they were removed before the first release. |
+| D7 | No URL-fragment transport for the token | **Adopted** (D-41). |
 | D8 | `linked`, `not-linked`/`unsupported` error codes, `compress`, `rememberDevice: false` starts unlinked | **Not adopted** except `debug`. `rememberDevice: false` generates an in-memory token per load (D-15). |
 | D9 | Single package, two entries, IIFE includes both | **Adopted** for the entries; the IIFE excludes the SDK (D-17). |
 | D10 | tsup, vitest, fast-check, Playwright, firebase-tools, size-limit, eslint, prettier | **Partly adopted.** No eslint, prettier or size-limit; a custom `scripts/size.mjs`; rules tests use `node --test`. |

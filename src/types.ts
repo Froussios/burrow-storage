@@ -263,9 +263,7 @@ export type Status = "idle" | "syncing" | "offline" | "error";
  * How this device got its storage token (the root secret): generated here on
  * first use (KP-1), entered as a code (pasted or typed), recovered from a
  * passkey, or from a custom provider (its id). "unknown" for tokens stored
- * before this was recorded. A stored source is reported as it was recorded, so
- * a token adopted from a `#burrow=` link by a pre-release build still reports
- * "link" (D-41).
+ * before this was recorded.
  */
 export type TokenSource =
   "generated" | "code" | "passkey" | "unknown" | (string & {});

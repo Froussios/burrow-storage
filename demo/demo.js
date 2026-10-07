@@ -70,8 +70,6 @@
   const SOURCES = {
     generated: "generated on this device",
     code: "pasted or typed in",
-    // Tokens adopted from a #burrow= link before links were removed (D-41).
-    link: "opened from a link",
     passkey: "restored from your passkey",
   };
   const when = (ms) => (ms ? ` · ${new Date(ms).toLocaleString()}` : "");

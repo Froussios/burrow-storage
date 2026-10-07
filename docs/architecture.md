@@ -83,8 +83,7 @@ closed by `unlink()`, are removed so the next call starts fresh.
 6. `#start()`: listen for `pagehide`, `visibilitychange` and `focus`; open
    `BroadcastChannel("burrow:" + app)`; start the poll timer (`syncIntervalMs > 0`, fires only while
    visible); subscribe to the manifest if the backend can; kick off the first sync (not awaited);
-   schedule the `onUnprotected` check. `burrow()` resolves after this. The page URL is never read;
-   a `#burrow=` fragment is ignored (D-41).
+   schedule the `onUnprotected` check. `burrow()` resolves after this.
 
 ## 4. Data model
 
@@ -343,7 +342,7 @@ npm provenance on a `v*` tag.
 | Property (`test/property/merge.test.ts`) | `npm test` | Node, fast-check | merge convergence, tombstones, clock skew |
 | Conformance (`test/conformance/`) | `npm test` (memory), `npm run test:firestore` (emulator), `npm run test:live` (a real project, never in CI) | Node | `backendConformance()` for every backend |
 | Rules (`firebase/tests/rules.test.mjs`) | `npm run test:rules` | `node --test` under the emulator (Java 21) | the rules matrix |
-| Browser (`test/e2e/*.spec.ts`) | `npm run test:e2e` | Playwright on Chromium, Firefox, WebKit, served by `scripts/serve.mjs` against the emulator | persistence, tabs, unload flush, a `#burrow=` fragment being ignored, the demo journeys; passkeys on Chromium via a CDP virtual authenticator with PRF |
+| Browser (`test/e2e/*.spec.ts`) | `npm run test:e2e` | Playwright on Chromium, Firefox, WebKit, served by `scripts/serve.mjs` against the emulator | persistence, tabs, unload flush, the demo journeys; passkeys on Chromium via a CDP virtual authenticator with PRF |
 | Demo smoke (`test/smoke/demo.spec.ts`) | `npm run test:smoke` | Playwright on Chromium, against the deployed demo (`BURROW_DEMO_URL`) and its live store, or against the assembled `site/` under the emulator | the page shows the expected commit, keeps its strict CSP, loads from its own origin and the store only, logs no console errors, shows a token; two fresh contexts sync both ways |
 
 Test titles cite the requirement ids they verify. `npm run docs:check` (`scripts/check-docs.mjs`)

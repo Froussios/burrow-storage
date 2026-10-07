@@ -60,10 +60,6 @@ interface BurrowConfig {
 | `maxItemBytes` | Size limit per item, measured as the UTF-8 length of `JSON.stringify({ v: 1, key, value, ts })`, so the key name counts. Values above 749 000 are clamped silently. |
 | `debug` | One `console.debug` line per sync event (`pull`, `push`, `conflict`, `backoff`, `error`, …) with revisions, counts, bytes and durations. Never ids, tokens, keys or values. |
 
-`burrow()` never reads the page URL. A token reaches a device only through
-[`link()`](#tokens-and-devices) or a provider, never from a link the user opened
-([decisions.md D-41](decisions.md)).
-
 ## `BurrowArea`
 
 What `burrow()` resolves to. It is declared, with a comment on every member, in
@@ -158,10 +154,9 @@ declare class BurrowEvent<T> extends EventTarget {
 | `"error"` | `decrypt-failed` (sync is paused until the device links again), or `conflict` / `item-too-large` (retried on the next trigger). |
 
 `token.source` is `"generated"` (made on this device), `"code"` (typed or pasted), `"passkey"`,
-`"unknown"` (stored before the source was recorded), or a custom provider's id. A device that
-adopted its token from a `#burrow=` link under a pre-release build still reports `"link"`.
-`token.remembered` is true when the token was loaded from this browser's storage on page load;
-`token.since` is when the device obtained it.
+`"unknown"` (stored before the source was recorded), or a custom provider's id. `token.remembered`
+is true when the token was loaded from this browser's storage on page load; `token.since` is when
+the device obtained it.
 
 `protection` is what can bring the token back on another device, as far as this device knows:
 `"passkey"` after `protect("passkey")` or a passkey recovery, `"code"` after `protect("sync-code")`

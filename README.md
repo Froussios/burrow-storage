@@ -379,7 +379,7 @@ is ciphertext under a key derived from it:
   stored beside it in IndexedDB. That stops a script from exporting the token, but not someone
   who copies the browser profile. Cached items are plaintext, as with `localStorage`.
 - **Leaving the device:** the token leaves only when the user carries it, as text, or inside a
-  passkey keyslot. Burrow never reads it from the page URL.
+  passkey keyslot.
 
 Out of scope, as for `localStorage`: a malicious script on your own origin, and the code your site
 serves. Ship a strict CSP and use SRI for the script tag. Burrow needs no `eval`, no inline script
