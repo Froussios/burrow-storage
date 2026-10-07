@@ -46,9 +46,17 @@ function forEmulator(html) {
     appId: "1:0:web:0",
     emulator: { host, port: Number(p) },
   });
-  return html
-    .replace(/(<meta name="burrow-firestore"\s+content=')[^']*'/, `$1${cfg}'`)
-    .replace(/connect-src ([^;"]*)/, `connect-src $1 http://${emu}`);
+  // Throws rather than serve a page that would reach the live project.
+  const swap = (s, re, to) => {
+    if (!re.test(s)) throw new Error(`serve.mjs: no match for ${re}`);
+    return s.replace(re, to);
+  };
+  html = swap(
+    html,
+    /(<meta\s+name="burrow-firestore"\s+content=')[^']*'/,
+    `$1${cfg}'`,
+  );
+  return swap(html, /connect-src ([^;"]*)/, `connect-src $1 http://${emu}`);
 }
 
 createServer(async (req, res) => {

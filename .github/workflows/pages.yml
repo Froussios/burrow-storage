@@ -38,17 +38,22 @@ jobs:
     needs: deploy
     runs-on: ubuntu-latest
     permissions: { contents: read }
+    env:
+      BURROW_DEMO_URL: ${{ needs.deploy.outputs.url }}
+      BURROW_DEMO_COMMIT: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with: { node-version: 24, cache: npm }
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - name: Smoke test (live store; waits for the page to show this commit)
-        run: npm run test:smoke
-        env:
-          BURROW_DEMO_URL: ${{ needs.deploy.outputs.url }}
-          BURROW_DEMO_COMMIT: ${{ github.sha }}
+      # Both wait for the page to show this commit. One step per thing checked
+      # (D-41), so a red run says which; a second backend adds its own step.
+      - name: "Page: this commit, strict CSP, connects only where the CSP allows, shows a token"
+        run: npm run test:smoke -- --project=page
+      - name: "Firestore: the Firebase project burrow-storage-shared takes writes under the Burrow rules and syncs two devices"
+        if: ${{ !cancelled() }}
+        run: npm run test:smoke -- --project=firestore
       - if: failure()
         uses: actions/upload-artifact@v4
         with: { name: smoke-traces, path: test-results, retention-days: 14 }

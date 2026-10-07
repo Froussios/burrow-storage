@@ -1,6 +1,6 @@
 # Decisions
 
-The judgement calls behind the code, in two parts. **Part A** (D-1 … D-40, with a hyphen) is the
+The judgement calls behind the code, in two parts. **Part A** (D-1 … D-41, with a hyphen) is the
 log kept while implementing; each entry names the requirement it touches in
 [history/requirements.md](history/requirements.md) ("the brief") and the choice made where the
 brief was silent or self-contradictory. **Part B** (D1 … D20, no hyphen) is the earlier planning
@@ -320,8 +320,8 @@ With "Deploy from a branch", GitHub renders the README at the same URL instead o
 
 ### D-40 Each demo deploy is smoke-tested against the live store (#24)
 
-After the deploy job, `pages.yml` runs `test/smoke/demo.spec.ts` on Chromium against the deployed
-URL. The page must show the commit being deployed: the test reloads with a fresh query until it
+After the deploy job, `pages.yml` runs the smoke checks in `test/smoke/` on Chromium against the
+deployed URL (split by what they check since D-41). The page must show the commit being deployed: the test reloads with a fresh query until it
 does, for up to three minutes, so a cached copy of the previous deploy cannot pass. The page must
 also keep its strict CSP, log no console errors, request nothing outside its own origin and the
 store, and show a token. Two fresh browser contexts must then sync both ways: one writes, the other
@@ -334,6 +334,30 @@ writes a few KB (one token's manifest and two items) to `burrow-storage-shared`,
 that Playwright retries writes another set. These documents are never deleted (D-33, #22), and the
 runs share Spark's daily quotas with every other use of the project. CI runs the same spec against
 the assembled `site/` under the emulator, so the test itself is checked before a merge.
+
+### D-41 The smoke checks are split into the page and each backend
+
+The demo smoke test of D-40 checked two different things under one name: the page, and the
+Firebase project the demo is configured with. A red "smoke test" did not say which, and a second
+backend would have had to fit into the same spec. The checks are now one Playwright project per
+thing checked, and `pages.yml` runs each as its own named step:
+
+- **page** (`test/smoke/page.spec.ts`): the page shows this commit, keeps its strict CSP, connects
+  only to its own origin and the origins its `connect-src` names, logs no errors, and shows a
+  token. Nothing in it names a backend.
+- **firestore** (`test/smoke/firestore.spec.ts`): `connect-src` names Firestore and nothing else,
+  and two fresh contexts sync both ways through the project in the page's Firebase config
+  (`burrow-storage-shared` when deployed, the emulator in CI). A pass means the project exists,
+  has a Firestore database, accepts the web app config, has the Burrow rules deployed, and is
+  within its quota.
+
+The Firestore check also asserts where the page went: the emulator only under the emulator,
+`firestore.googleapis.com` only when deployed. Without that check, a regression went unnoticed: the
+Prettier reformat put `<meta name="burrow-firestore"` on two lines, `scripts/serve.mjs` stopped
+pointing the pages at the emulator, and the CI browser and smoke runs wrote to the live project
+while still passing. `serve.mjs` now matches across line breaks, and it throws when a page has
+nothing to rewrite. The Firestore step runs even when the page step fails. A new backend adds a spec, a project and a
+step of its own, with the checks that backend needs. Shared helpers live in `test/smoke/support.ts`.
 
 ## Part B: planning decisions and their status
 

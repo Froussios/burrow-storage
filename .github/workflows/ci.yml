@@ -54,6 +54,6 @@ jobs:
       - run: npx playwright install --with-deps chromium firefox webkit
       - run: npm run build
       - run: npm run test:e2e
-      - name: Demo smoke test against the assembled site/ (emulator)
+      - name: Demo smoke checks against the assembled site/ (page; Firestore on the emulator)
         run: npm run demo:build && node scripts/emulator.mjs "npm run test:smoke"
         env: { BURROW_DEMO_COMMIT: "${{ github.sha }}" }

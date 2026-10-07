@@ -36,8 +36,8 @@ labels, and the storage-token encoding are public contract: changing them is a m
   strict CSP.
 - The demo is always available at <https://froussios.github.io/burrow-storage/>, redeployed to
   GitHub Pages from every push to `main`. Its footer shows the commit and build time
-  (`npm run demo:build`), and a Playwright smoke test (`npm run test:smoke`) checks each deploy
-  against the live store.
+  (`npm run demo:build`), and Playwright smoke checks (`npm run test:smoke`) check each deploy:
+  the page itself, and the demo's Firebase project as a separate step.
 - Script-tag build `burrow.min.js` (global `Burrow`) that loads the Firestore SDK as a
   same-directory classic script (`burrow-firestore.js`), so it also loads from `file://`.
 - SRI hashes and npm provenance in the release workflow.

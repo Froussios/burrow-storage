@@ -1,6 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// The demo smoke test (test/smoke, #24), on Chromium.
+// The demo smoke checks (test/smoke, #24, D-41), on Chromium, as one
+// Playwright project per thing checked: "page" (the page, whatever its
+// backend) and "firestore" (the demo's Firebase project). Run one with
+// `npm run test:smoke -- --project=firestore`.
 // After a deploy, against the deployed page (pages.yml does this, and fails the
 // run on a failure):
 //   BURROW_DEMO_URL=https://froussios.github.io/burrow-storage/ \
@@ -19,6 +22,19 @@ if (!url && !process.env.FIRESTORE_EMULATOR_HOST) {
 
 export default defineConfig({
   testDir: "test/smoke",
+  projects: [
+    // Separate output dirs, so a run of one keeps the other's traces.
+    {
+      name: "page",
+      testMatch: "page.spec.ts",
+      outputDir: "test-results/page",
+    },
+    {
+      name: "firestore",
+      testMatch: "firestore.spec.ts",
+      outputDir: "test-results/firestore",
+    },
+  ],
   timeout: 240_000,
   retries: process.env.CI ? 1 : 0,
   reporter: [["list"]],
