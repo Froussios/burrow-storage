@@ -130,7 +130,7 @@ test("offline: writes work locally, status goes offline, sync resumes when back 
   await deviceB.close();
 });
 
-test("KP-13 a #burrow=<code> link opens on a new device already linked, and the code leaves the URL", async ({
+test("KP-13 (not implemented, D-41) a #burrow=<code> fragment is ignored and stays in the URL", async ({
   browser,
 }) => {
   const deviceA = await browser.newContext();
@@ -148,8 +148,9 @@ test("KP-13 a #burrow=<code> link opens on a new device already linked, and the 
     };
     w.store = await w.Burrow.burrow({ app: "e2e" });
   });
-  expect(await withStore(b, (s) => s.get())).toEqual({ via: "link" });
-  expect(b.url()).not.toContain("burrow=");
+  expect(await withStore(b, (s) => s.exportCode())).not.toBe(code);
+  expect(await withStore(b, (s) => s.get())).toEqual({});
+  expect(new URL(b.url()).hash).toBe(`#burrow=${code}`);
   await deviceA.close();
   await deviceB.close();
 });

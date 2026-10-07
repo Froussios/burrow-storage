@@ -18,10 +18,10 @@ labels, and the storage-token encoding are public contract: changing them is a m
   deterministic `(ts, h)` tie-break and 30-day tombstones, clock-skew correction, debounced
   pushes, polling and listener-driven pulls, exponential backoff, multi-tab coordination over
   `BroadcastChannel` with Web Locks.
-- Unlock methods: the storage token (`exportCode()`, `link({ code })`, `#burrow=<token>` links)
-  and passkeys with PRF-wrapped keyslots (`protect("passkey")`, `link({ provider: "passkey" })`).
-- `store.token` / `onToken`: where this device's token came from (`generated`, `code`, `link`,
-  `passkey`, custom) and whether it was remembered from an earlier visit.
+- Unlock methods: the storage token (`exportCode()`, `link({ code })`) and passkeys with
+  PRF-wrapped keyslots (`protect("passkey")`, `link({ provider: "passkey" })`).
+- `store.token` / `onToken`: where this device's token came from (`generated`, `code`, `passkey`,
+  custom) and whether it was remembered from an earlier visit.
 - `unlink({ discardLocal })` with the same `would-orphan` guard as `link()`.
 - `syncNow()` rejects with the sync error when a pass fails; `exportJSON()` /
   `importJSON()` with the `{ burrow: 1, app, exportedAt, items }` format; `inspect()`.
@@ -50,6 +50,9 @@ labels, and the storage-token encoding are public contract: changing them is a m
 - Setting a key to the value it already has is still a write (it takes a new timestamp and
   syncs), so the last writer wins across devices; only the `onChanged` event is skipped.
 - `exportCode()` no longer marks the token as protected; `protect("sync-code")` does.
+- `burrow()` no longer adopts a `#burrow=<token>` link from the page URL, and the demo no longer
+  offers one: a fragment is ignored and left in place (token fixation, history leaks; D-41). A
+  token remembered as `"link"` still loads.
 
 ### Fixed (found during development)
 - A sync pass could drop a key written while it was reading the cache.

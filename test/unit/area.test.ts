@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryBackend } from "../../src/backends/memory.js";
+import { IdbCache } from "../../src/cache/indexeddb.js";
 import { deriveAppKeys, docId } from "../../src/codec/derive.js";
 import { decodeSyncCode } from "../../src/codec/synccode.js";
 import { BackendError, BurrowError } from "../../src/errors.js";
@@ -748,20 +749,26 @@ describe("§6 link, protect, unlink", () => {
     expect(fired).toBe(1);
   });
 
-  it("KP-13 a #burrow=<code> fragment links the device and is stripped from the URL", async () => {
+  it("KP-13 (not implemented, D-41) a #burrow=<code> fragment is ignored and left in the URL", async () => {
     const w = fresh();
     const a = await w.device().open();
     await a.set({ k: "shared" });
     await a.syncNow();
-    const D = w.device();
     const code = await a.exportCode();
-    D.location = {
-      href: `https://example.test/app#burrow=${code}`,
-      hash: `#burrow=${code}`,
-    };
-    const b = await D.open();
-    expect(await b.get()).toEqual({ k: "shared" });
-    expect(D.location!.href).toBe("https://example.test/app");
+    const href = `https://example.test/app#burrow=${code}`;
+    const replaceState = vi.fn();
+    vi.stubGlobal("location", { href, hash: `#burrow=${code}` });
+    vi.stubGlobal("history", { replaceState });
+    try {
+      const b = await w.device().open();
+      expect(b.token.source).toBe("generated");
+      expect(await b.exportCode()).not.toBe(code);
+      expect(await b.get()).toEqual({});
+      expect(location.href).toBe(href);
+      expect(replaceState).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("rememberDevice: false keeps the secret in memory only", async () => {
@@ -848,15 +855,22 @@ describe("token source (demo journeys)", () => {
     });
   });
 
-  it("a #burrow= link records 'link'", async () => {
+  it("a token remembered as 'link' by a pre-release build still loads and reports 'link'", async () => {
     const w = fresh();
-    const code = await (await w.device().open()).exportCode();
+    const a = await w.device().open();
+    await a.set({ k: "kept" });
+    await a.syncNow();
     const D = w.device();
-    D.location = {
-      href: `https://example.test/#burrow=${code}`,
-      hash: `#burrow=${code}`,
-    };
-    expect((await D.open()).token.source).toBe("link");
+    const b = await D.open();
+    await b.link({ code: await a.exportCode() });
+    b.close();
+    const cache = await IdbCache.open("test", D.idb);
+    await cache.setDevice({ tokenSource: "link" });
+    cache.close();
+    const c = await D.open();
+    expect(c.token).toMatchObject({ source: "link", remembered: true });
+    expect(await c.exportCode()).toBe(await a.exportCode());
+    expect(await c.get()).toEqual({ k: "kept" });
   });
 
   it("a provider records its own id", async () => {

@@ -71,14 +71,18 @@ test("the demo shows the token and its source, runs under its strict CSP, and sy
     "Remembered by this browser; originally pasted or typed in",
   );
 
-  // A link carries the token too.
+  // A URL carrying the token does not link a device (D-41): the page keeps its
+  // own new token and the user has to enter the token to reach the data.
   const deviceC = await browser.newContext();
   const c = await deviceC.newPage();
   watch(c);
   await c.goto(`/demo/index.html#burrow=${token}`);
   await expect(c.locator("body")).toHaveAttribute("data-ready", "true");
-  await expect(c.locator("#code")).toHaveText(token);
-  await expect(c.locator("#token-source")).toContainText("Opened from a link");
+  await expect(c.locator("#code")).not.toHaveText(token);
+  await expect(c.locator("#token-source")).toContainText(
+    "Generated on this device (new)",
+  );
+  await expect(c.locator("#draft")).toHaveValue("");
 
   expect(errors).toEqual([]);
   await deviceA.close();

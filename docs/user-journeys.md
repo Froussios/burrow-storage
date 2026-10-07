@@ -23,14 +23,13 @@ still links back to the data.
 
 The **Storage token** panel is always visible. It shows:
 
-- the token in use, with **Copy token** and a **Link for your other device** (`#burrow=<token>`);
+- the token in use, with **Copy token**, so the user can keep it in a password manager;
 - where the token came from:
 
   | Source | Shown as |
   | --- | --- |
   | Generated on load (KP-1) | Generated on this device (new) |
   | Typed or pasted into **Link to existing backup** | Pasted or typed in |
-  | Opened from a `#burrow=` link (KP-13) | Opened from a link |
   | Recovered from a passkey (KP-6) | Restored from your passkey |
   | Loaded from this browser on a later visit (KP-2) | Remembered by this browser; originally … |
 
@@ -94,14 +93,16 @@ this device's token, and pulls the data.
 **Starting state:** no token. The user has their token, copied from another device's panel.
 
 **Steps:** they paste or type it into **Link to existing backup** and click **Link this
-device**. Alternatively, they open the **Link for your other device** URL.
+device**. The demo offers no link that carries the token: opening the page with `#burrow=<token>`
+in the URL leaves it on its own token (KP-13 is not implemented, [decisions.md](decisions.md)
+D-41).
 
-**Outcome:** the panel shows the pasted token, *Pasted or typed in* (or *Opened from a link*).
+**Outcome:** the panel shows the pasted token, *Pasted or typed in*.
 Their existing data appears.
 
 **How:** `BurrowArea.link({ code })` checks the token's checksum before any network call, adopts it
 and pulls the data. Case, spaces and hyphens are ignored, and `O`/`0` and `I`/`L`/`1` count as
-the same. A token in the URL is removed from the address bar once read.
+the same.
 
 ## 4. Paste an invalid token
 
@@ -116,7 +117,7 @@ the same. A token in the URL is removed from the address bar once read.
 
 **Notes:** the second row looks like "my data is gone". Because the panel always shows the token
 in use, the user can compare it with the one they meant to paste. A future version could warn
-"This backup is empty. Is the token right?" when a link finds no data.
+"This backup is empty. Is the token right?" when linking finds no data.
 
 ## 5. Return with a token
 

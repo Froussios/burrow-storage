@@ -57,10 +57,6 @@ export interface Env {
   /** Receives visibilitychange/pagehide; null outside a browser. */
   win: EventTarget | null;
   doc: { visibilityState: DocumentVisibilityState } | null;
-  location: { hash: string; href: string } | null;
-  history: {
-    replaceState(data: unknown, unused: string, url?: string): void;
-  } | null;
   defaultBackend(): Promise<Backend | null>;
 }
 
@@ -255,7 +251,6 @@ export class Core implements BurrowArea {
       );
     }
     this.#start();
-    await this.#readFragment();
   }
 
   /**
@@ -1270,20 +1265,13 @@ export class Core implements BurrowArea {
     return this.#secret!.use((s) => encodeSyncCode(s));
   }
 
-  link(
+  async link(
     options: { provider?: string; code?: string; discardLocal?: boolean } = {},
-  ): Promise<void> {
-    return this.#link(options, "code");
-  }
-
-  async #link(
-    options: { provider?: string; code?: string; discardLocal?: boolean },
-    codeSource: TokenSource,
   ): Promise<void> {
     this.#alive();
     let secret: Uint8Array | null = null;
     let via: Protection = "none";
-    let source: TokenSource = codeSource;
+    let source: TokenSource = "code";
     if (options.code !== undefined) {
       // KP-12: bad-code before any network call
       secret = (await decodeSyncCode(options.code)).secret;
@@ -1416,29 +1404,6 @@ export class Core implements BurrowArea {
     });
     this.#broadcast({ t: "identity" });
     this.close();
-  }
-
-  /**
-   * KP-13: a sync code in the URL fragment (#burrow=<code>) links this device.
-   */
-  async #readFragment(): Promise<void> {
-    const loc = this.#env.location;
-    const m = loc?.hash.match(/[#&]burrow=([^&]+)/);
-    if (!loc || !m) return;
-    const rest = loc.hash.replace(/[#&]?burrow=[^&]+/, "").replace(/^#?&?/, "");
-    this.#env.history?.replaceState(
-      null,
-      "",
-      loc.href.split("#")[0] + (rest ? "#" + rest : ""),
-    );
-    try {
-      await this.#link({ code: decodeURIComponent(m[1]!) }, "link");
-    } catch (e) {
-      this.#setStatus(
-        "error",
-        e instanceof BurrowError ? e : new BurrowError("bad-code"),
-      );
-    }
   }
 
   // ---------------------------------------------------- export / import

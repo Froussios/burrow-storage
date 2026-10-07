@@ -82,8 +82,6 @@ export function browserEnv(ns = "page"): Env {
     locks: g.navigator?.locks ?? null,
     win: g.window ?? null,
     doc: g.document ?? null,
-    location: g.location ?? null,
-    history: g.history ?? null,
     defaultBackend,
   };
 }

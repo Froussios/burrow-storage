@@ -70,6 +70,7 @@
   const SOURCES = {
     generated: "generated on this device",
     code: "pasted or typed in",
+    // Tokens adopted from a #burrow= link before links were removed (D-41).
     link: "opened from a link",
     passkey: "restored from your passkey",
   };
@@ -94,9 +95,6 @@
   const showToken = async () => {
     const code = await store.exportCode();
     $("code").textContent = code;
-    const link = new URL(location.href);
-    link.hash = "burrow=" + code;
-    $("code-link").href = link.href;
     $("token-source").textContent = describeToken(store.token);
     $("token-backup").textContent =
       store.protection === "passkey"
