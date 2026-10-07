@@ -327,13 +327,13 @@ also keep its strict CSP, log no console errors, request nothing outside its own
 store, and show a token. Two fresh browser contexts must then sync both ways: one writes, the other
 links with its token and reads the write, then changes the theme, and the first sees the change.
 
-A failure fails the workflow run, but the deployment stays live; there is no automatic rollback.
-The deploy is not gated on `ci.yml`: the head is deployed as it is, and the smoke test is the
-check. Runs are serialised (`cancel-in-progress: false`), so each smoke test sees its own deploy.
-Each run writes a few KB (one token's manifest and two items) to `burrow-storage-shared`. These
-documents are never deleted (D-33, #22), and the runs share Spark's daily quotas with every other
-use of the project. CI runs the same spec against the assembled `site/` under the emulator, so the
-test itself is checked before a merge.
+A failure fails the workflow run, but the deployment stays live; there is no automatic rollback. The
+deploy is not gated on `ci.yml`: the head is deployed as it is, and the smoke test is the check.
+Runs are serialised (`cancel-in-progress: false`), so each smoke test sees its own deploy. Each run
+writes a few KB (one token's manifest and two items) to `burrow-storage-shared`, and a failed test
+that Playwright retries writes another set. These documents are never deleted (D-33, #22), and the
+runs share Spark's daily quotas with every other use of the project. CI runs the same spec against
+the assembled `site/` under the emulator, so the test itself is checked before a merge.
 
 ## Part B: planning decisions and their status
 

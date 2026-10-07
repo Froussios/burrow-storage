@@ -19,6 +19,8 @@ const fail = (msg) => { console.error(`build-demo: ${msg}`); process.exit(1); };
 
 for (const [dir, f] of FILES) if (!existsSync(join(root, dir, f))) fail(`${dir}/${f} is missing${dir === "dist" ? "; run npm run build first" : ""}`);
 
+// On pull_request runs GITHUB_SHA is the test merge commit, which only exists in that run, so the
+// footer link 404s there; deploys run on push to main, where it is the pushed commit.
 const commit = process.env.GITHUB_SHA || execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
 if (!/^[0-9a-f]{40}$/.test(commit)) fail(`not a commit id: ${commit}`);
 const repo = process.env.GITHUB_REPOSITORY
