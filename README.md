@@ -3,6 +3,9 @@
 **Per-user data for static sites that survives a browser reset and follows the user to their other
 devices. No login. No server to write or run. Nothing readable in the store.**
 
+**[Try the live demo](https://froussios.github.io/burrow-storage/)**: type something, then open the
+page on another device and paste the storage token it shows.
+
 ```js
 // In an ES module. With no store configured, the data simply stays on this device.
 import { burrow } from "burrow-storage";

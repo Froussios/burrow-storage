@@ -314,6 +314,10 @@ The bundles are deployed beside the page, so the CSP is unchanged: `script-src '
 Firestore API only; if referrer restrictions are added (D-23), they must include
 `https://froussios.github.io/*`.
 
+The repository's Pages source must be **GitHub Actions** (Settings → Pages → Build and deployment).
+With "Deploy from a branch", GitHub renders the README at the same URL instead of the demo, and
+`pages.yml` fails at `configure-pages`.
+
 ### D-40 Each demo deploy is smoke-tested against the live store (#24)
 
 After the deploy job, `pages.yml` runs `test/smoke/demo.spec.ts` on Chromium against the deployed
