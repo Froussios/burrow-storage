@@ -1,10 +1,13 @@
-// KP-11/12: the sync code. version (1 byte) || root secret (32) || checksum (2) = 35 bytes =
-// 56 Crockford base32 characters, shown in 14 groups of 4.
+// KP-11/12: the sync code. version (1 byte) || root secret (32) || checksum (2)
+// = 35 bytes = 56 Crockford base32 characters, shown in 14 groups of 4.
 import { concat, sha256 } from "../bytes.js";
 import { BurrowError } from "../errors.js";
 
 const ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-/** 0x01: random root secret (KP-1). 0x02: secret derived from a passphrase via PBKDF2 (ENC-3). */
+/**
+ * 0x01: random root secret (KP-1). 0x02: secret derived from a passphrase via
+ * PBKDF2 (ENC-3).
+ */
 export const CODE_VERSION_RANDOM = 0x01;
 export const CODE_VERSION_PASSPHRASE = 0x02;
 const SECRET_BYTES = 32;
@@ -49,7 +52,9 @@ function fromBase32(s: string): Uint8Array {
   return Uint8Array.from(out);
 }
 
-/** Case-insensitive; ignores hyphens and whitespace; reads O as 0 and I/L as 1. */
+/**
+ * Case-insensitive; ignores hyphens and whitespace; reads O as 0 and I/L as 1.
+ */
 export function normaliseCode(input: string): string {
   return input
     .toUpperCase()
@@ -74,7 +79,9 @@ export async function encodeSyncCode(
   }
 }
 
-/** Returns the root secret. Rejects bad-code before any network call (KP-12). */
+/**
+ * Returns the root secret. Rejects bad-code before any network call (KP-12).
+ */
 export async function decodeSyncCode(
   input: string,
 ): Promise<{ secret: Uint8Array; version: number }> {

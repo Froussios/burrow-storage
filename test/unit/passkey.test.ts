@@ -1,5 +1,6 @@
-// KP-5..9, SEC-7, ENC-11: the passkey provider against a scripted WebAuthn authenticator.
-// Browser coverage with a real (virtual) authenticator lives in test/e2e/passkey.spec.ts.
+// KP-5..9, SEC-7, ENC-11: the passkey provider against a scripted WebAuthn
+// authenticator. Browser coverage with a real (virtual) authenticator lives in
+// test/e2e/passkey.spec.ts.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryBackend } from "../../src/backends/memory.js";
 import {
@@ -18,7 +19,10 @@ import { World } from "../support/devices.js";
 
 const CRED_KEY = "passkey.credentialId";
 
-/** Copy into a fresh ArrayBuffer: the provider zeroises the PRF output it receives. */
+/**
+ * Copy into a fresh ArrayBuffer: the provider zeroises the PRF output it
+ * receives.
+ */
 const fresh = (b: Uint8Array): ArrayBuffer => b.slice().buffer;
 const notAllowed = () =>
   new DOMException(
@@ -34,16 +38,23 @@ type GetOpts = CredentialRequestOptions & {
 };
 
 /**
- * A scripted platform authenticator. Each credential has a fixed 32-byte seed; its PRF output for
- * a salt is SHA-256(seed || salt), so outputs are deterministic and differ per credential.
+ * A scripted platform authenticator. Each credential has a fixed 32-byte seed;
+ * its PRF output for a salt is SHA-256(seed || salt), so outputs are
+ * deterministic and differ per credential.
  */
 class FakeAuthenticator {
   readonly creds = new Map<string, Uint8Array>(); // b64url(rawId) -> seed
-  /** What create() reports: PRF results inline, only `enabled`, or `enabled: false`. */
+  /**
+   * What create() reports: PRF results inline, only `enabled`, or
+   * `enabled: false`.
+   */
   createMode: "results" | "enabled-only" | "disabled" = "results";
   /** Override get(): resolve null, reject, or omit PRF results. */
   getMode: "ok" | "null" | "cancel" | "no-prf" = "ok";
-  /** Credential picked by a discoverable get() (empty allowCredentials). Default: the last created. */
+  /**
+   * Credential picked by a discoverable get() (empty allowCredentials).
+   * Default: the last created.
+   */
   chosen?: string;
   readonly createCalls: CreateOpts[] = [];
   readonly getCalls: GetOpts[] = [];
@@ -57,7 +68,9 @@ class FakeAuthenticator {
     return sha256(concat(seed, s));
   }
 
-  /** PRF output this authenticator gives for credential `id` with Burrow's salt. */
+  /**
+   * PRF output this authenticator gives for credential `id` with Burrow's salt.
+   */
   async expectedPrf(id: string): Promise<Uint8Array> {
     return this.prf(this.creds.get(id)!, utf8(PRF_SALT_V1));
   }
@@ -113,7 +126,8 @@ class FakeAuthenticator {
           )
           .find((i) => this.creds.has(i))
       : this.chosen;
-    if (!id || !this.creds.has(id)) throw notAllowed(); // no matching credential on this authenticator
+    // no matching credential on this authenticator
+    if (!id || !this.creds.has(id)) throw notAllowed();
     const rawId = fromB64url(id);
     if (this.getMode === "no-prf") return this.#credential(rawId, {});
     const first = (
@@ -125,7 +139,10 @@ class FakeAuthenticator {
   });
 }
 
-/** Install the authenticator as navigator.credentials and a matching PublicKeyCredential. */
+/**
+ * Install the authenticator as navigator.credentials and a matching
+ * PublicKeyCredential.
+ */
 function install(
   auth: FakeAuthenticator,
   platform: { uv?: boolean; caps?: Record<string, boolean> | null } = {},
@@ -217,7 +234,8 @@ describe("KP-7 available()", () => {
   it("KP-7 true with a UV platform authenticator and PRF (or no capability report)", async () => {
     install(auth);
     expect(await p.available()).toBe(true);
-    install(auth, { caps: {} }); // extension:prf unknown: falls back to the UV check
+    // extension:prf unknown: falls back to the UV check
+    install(auth, { caps: {} });
     expect(await p.available()).toBe(true);
     install(auth, { caps: null }); // browser without getClientCapabilities
     expect(await p.available()).toBe(true);
@@ -243,7 +261,8 @@ describe("KP-5/KP-6 enrol and recover", () => {
     const keep = secret.slice();
     await enrol(secret);
     expect(auth.create).toHaveBeenCalledOnce();
-    expect(auth.get).not.toHaveBeenCalled(); // PRF came back at creation: no second prompt
+    // PRF came back at creation: no second prompt
+    expect(auth.get).not.toHaveBeenCalled();
 
     // ENC-11: one ordinary envelope at slotId, derived from the PRF output.
     const slot = await deriveSlotKeys(await auth.expectedPrf(auth.chosen!));
@@ -290,7 +309,8 @@ describe("KP-5/KP-6 enrol and recover", () => {
     await enrol(secret);
     expect(auth.create).toHaveBeenCalledOnce();
     expect(auth.get).toHaveBeenCalledOnce();
-    // The follow-up assertion targets the credential just created and asks for UV and the salt.
+    // The follow-up assertion targets the credential just created and asks for
+    // UV and the salt.
     const pk = auth.getCalls[0]!.publicKey;
     expect(pk.userVerification).toBe("required");
     expect(pk.allowCredentials).toHaveLength(1);
@@ -351,8 +371,9 @@ describe("KP-5/KP-6 enrol and recover", () => {
     const slot = await deriveSlotKeys(await auth.expectedPrf(id));
     expect(backend.store.get(slot.slotId)!.rev).toBe(0);
 
-    // A new token enrolled under a credential whose PRF output is the same (the authenticator hands
-    // back the existing credential), so the slot id is the same and the write must follow the chain.
+    // A new token enrolled under a credential whose PRF output is the same (the
+    // authenticator hands back the existing credential), so the slot id is the
+    // same and the write must follow the chain.
     auth.createMode = "enabled-only";
     auth.create.mockImplementation(async (opts) => {
       auth.createCalls.push(opts);
@@ -362,7 +383,8 @@ describe("KP-5/KP-6 enrol and recover", () => {
       } as unknown as PublicKeyCredential;
     });
     const second = randomBytes(32);
-    await enrol(second); // MemoryBackend refuses a put that breaks the tok/next chain
+    // MemoryBackend refuses a put that breaks the tok/next chain
+    await enrol(second);
     expect(backend.store.size).toBe(1);
     expect(backend.store.get(slot.slotId)!.rev).toBe(1);
     await enrol(second);
@@ -432,7 +454,8 @@ describe("KP-6/KP-8 recover outcomes", () => {
 
   it("KP-6 recover() returns null when no keyslot exists for the PRF output", async () => {
     await enrol(randomBytes(32));
-    expect(await recover(new MemoryBackend(), memStore())).toBeNull(); // a backend without the slot
+    // a backend without the slot
+    expect(await recover(new MemoryBackend(), memStore())).toBeNull();
     // A different passkey whose PRF output has no slot behind it.
     auth.creds.set("other-credential-id-xx", new Uint8Array(32).fill(0x99));
     auth.chosen = "other-credential-id-xx";
@@ -530,7 +553,8 @@ describe("KP-9 cached credential id", () => {
     const secret = randomBytes(32);
     await enrol(secret);
     const id = auth.chosen!;
-    auth.chosen = undefined; // a discoverable request would fail: only allowCredentials can succeed
+    // a discoverable request would fail: only allowCredentials can succeed
+    auth.chosen = undefined;
     expect(await recover()).toEqual(secret);
     const allow = auth.getCalls[0]!.publicKey.allowCredentials!;
     expect(allow).toHaveLength(1);

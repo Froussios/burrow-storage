@@ -1,10 +1,12 @@
-// BE-6: in-memory backend that enforces the same document rules as firebase/firestore.rules,
-// including the tok/next write chain (writeAuth: true). Used by tests and the conformance suite.
+// BE-6: in-memory backend that enforces the same document rules as
+// firebase/firestore.rules, including the tok/next write chain (writeAuth:
+// true). Used by tests and the conformance suite.
 import { sha256hex } from "../bytes.js";
 import { BackendError } from "../errors.js";
 import type { Backend, Envelope } from "../types.js";
 
-// Subscribers live with the document map, so every backend sharing a store (device) is notified.
+// Subscribers live with the document map, so every backend sharing a store
+// (device) is notified.
 const hubs = new WeakMap<
   Map<string, Envelope>,
   Map<string, Set<(env: Envelope) => void>>
@@ -12,7 +14,10 @@ const hubs = new WeakMap<
 
 const FIELDS = new Set(["v", "iv", "ct", "rev", "ts", "tok", "next", "z"]);
 
-/** Mirror of the rules' shape(): returns false for anything the store must refuse. */
+/**
+ * Mirror of the rules' shape(): returns false for anything the store must
+ * refuse.
+ */
 export function wellFormed(id: string, d: Envelope): boolean {
   return (
     id.length === 43 &&
@@ -90,7 +95,8 @@ export class MemoryBackend implements Backend {
     if (!wellFormed(id, doc))
       throw new BackendError("unauthorized", "malformed envelope");
     const hash = await sha256hex(doc.tok);
-    // BE-1: everything from here to the write is synchronous, so the check-and-set is atomic.
+    // BE-1: everything from here to the write is synchronous, so the
+    // check-and-set is atomic.
     const cur = this.store.get(id);
     if (expectedRev === null) {
       if (cur) throw new BackendError("conflict");

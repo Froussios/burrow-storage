@@ -21,9 +21,11 @@ describe("SYNC-6 pull triggers", () => {
     await settle(b);
     await a.set({ theme: "dark" });
     await settle(a);
-    expect(await b.get("theme")).toEqual({}); // no polling (syncIntervalMs 0), no listener
+    // no polling (syncIntervalMs 0), no listener
+    expect(await b.get("theme")).toEqual({});
     const real = Date.now.bind(Date);
-    vi.spyOn(Date, "now").mockImplementation(() => real() + 10_000); // past the focus throttle
+    // past the focus throttle
+    vi.spyOn(Date, "now").mockImplementation(() => real() + 10_000);
     bDev.win.dispatchEvent(new Event("focus"));
     await until(async () => (await b.get("theme")).theme === "dark");
   });

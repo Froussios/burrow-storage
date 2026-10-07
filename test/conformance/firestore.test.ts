@@ -1,5 +1,6 @@
-// The same conformance suite, against FirestoreBackend talking to the Firestore emulator
-// with firebase/firestore.rules loaded (run via `npm run test:firestore`).
+// The same conformance suite, against FirestoreBackend talking to the Firestore
+// emulator with firebase/firestore.rules loaded (run via
+// `npm run test:firestore`).
 import { afterAll, describe, expect, it } from "vitest";
 import { FirestoreBackend } from "../../src/backends/firestore.js";
 import { World } from "../support/devices.js";

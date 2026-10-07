@@ -1,6 +1,8 @@
-// Rules tests for burrow/firestore.rules. Run: cd tests && npm install && npm test
-// Covers FS-13: create at rev 0, chained update, wrong tok, skipped rev, extra field,
-// oversize ct, list attempt (incl. `in` query on ids), delete attempt.
+// Rules tests for burrow/firestore.rules.
+// Run: cd tests && npm install && npm test
+//
+// Covers FS-13: create at rev 0, chained update, wrong tok, skipped rev, extra
+// field, oversize ct, list attempt (incl. `in` query on ids), delete attempt.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
@@ -32,7 +34,8 @@ const b64url = (buf) =>
     .replace(/=+$/, "");
 const newId = () => b64url(randomBytes(32)); // 43 chars
 
-// emulators:exec exports FIRESTORE_EMULATOR_HOST; fall back to firebase.json's 127.0.0.1:8080.
+// emulators:exec exports FIRESTORE_EMULATOR_HOST; fall back to firebase.json's
+// 127.0.0.1:8080.
 const [host, port] = (
   process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080"
 ).split(":");

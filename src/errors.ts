@@ -1,4 +1,5 @@
-// API-13: every rejection is a BurrowError with a stable code. BE-4: adapters reject BackendError.
+// API-13: every rejection is a BurrowError with a stable code. BE-4: adapters
+// reject BackendError.
 
 export type BurrowErrorCode =
   | "no-provider"
@@ -50,8 +51,9 @@ export class BackendError extends Error {
   }
 }
 
-// SEC-8: ids are 43-char base64url strings and tokens are base64url/hex; never let them reach
-// a cause, message or log. Replace any such run with a placeholder.
+// SEC-8: ids are 43-char base64url strings and tokens are base64url/hex; never
+// let them reach a cause, message or log. Replace any such run with a
+// placeholder.
 const SECRETISH = /[A-Za-z0-9_-]{40,}/g;
 export const scrubText = (s: string): string =>
   s.replace(SECRETISH, "[redacted]");

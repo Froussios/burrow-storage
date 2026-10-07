@@ -1,5 +1,6 @@
-// KP-5..10, ENC-11, SEC-7: a passkey unlocks a keyslot holding the root secret, wrapped under a key
-// derived from the passkey's PRF output. The passkey never becomes the secret.
+// KP-5..10, ENC-11, SEC-7: a passkey unlocks a keyslot holding the root secret,
+// wrapped under a key derived from the passkey's PRF output. The passkey never
+// becomes the secret.
 import { b64url, fromB64url, randomBytes, utf8, zeroise } from "../bytes.js";
 import { PRF_SALT_V1, deriveSlotKeys, type SlotKeys } from "../codec/derive.js";
 import { type DocCipher, open, seal } from "../codec/envelope.js";
@@ -7,11 +8,17 @@ import { BackendError, BurrowError } from "../errors.js";
 import type { Backend, KeyProvider } from "../types.js";
 
 export interface PasskeyOptions {
-  /** WebAuthn rp.id. Default: the page's host. Set it to the registrable domain to share across subdomains. */
+  /**
+   * WebAuthn rp.id. Default: the page's host. Set it to the registrable domain
+   * to share across subdomains.
+   */
   rpId?: string;
   /** Relying-party display name. Default: the page's host. */
   rpName?: string;
-  /** user.name shown by the authenticator. Default: the app id. Never an email unless you choose one. */
+  /**
+   * user.name shown by the authenticator. Default: the app id. Never an email
+   * unless you choose one.
+   */
   userName?: string;
   timeoutMs?: number;
 }
@@ -120,7 +127,8 @@ export function passkey(options: PasskeyOptions = {}): KeyProvider {
       }
     },
 
-    // KP-5, SEC-7: discoverable credential, user verification required, no attestation.
+    // KP-5, SEC-7: discoverable credential, user verification required, no
+    // attestation.
     async enrol({ app, rootSecret, backend, store }) {
       let cred: PublicKeyCredential | null;
       try {
@@ -164,7 +172,8 @@ export function passkey(options: PasskeyOptions = {}): KeyProvider {
       if (!prf?.enabled && !prf?.results?.first)
         throw new BurrowError("prf-unsupported");
       const rawId = new Uint8Array(cred.rawId);
-      // Some authenticators return PRF output at creation; the rest need one assertion.
+      // Some authenticators return PRF output at creation; the rest need one
+      // assertion.
       let out = prf.results?.first
         ? bytes(prf.results.first)
         : (await evaluate(rawId))?.prf;
@@ -178,8 +187,9 @@ export function passkey(options: PasskeyOptions = {}): KeyProvider {
       } finally {
         out.fill(0);
       }
-      // KP-9: remember the passkey only once a keyslot backs it. The id is a hint for recover(), so
-      // failing to save it must not fail an enrolment whose keyslot is already written.
+      // KP-9: remember the passkey only once a keyslot backs it. The id is a
+      // hint for recover(), so failing to save it must not fail an enrolment
+      // whose keyslot is already written.
       await store?.set(CRED, b64url(rawId)).catch(() => {});
     },
 

@@ -1,6 +1,7 @@
-// Single-file browser build: global `Burrow`. The Firestore SDK is fetched on first use from
-// burrow-firestore.js next to this script (same origin, SEC-4), never from a third-party host.
-// It is a classic script, so this also works from file:// (NF-1) and under script-src 'self'.
+// Single-file browser build: global `Burrow`. The Firestore SDK is fetched on
+// first use from burrow-firestore.js next to this script (same origin, SEC-4),
+// never from a third-party host. It is a classic script, so this also works
+// from file:// (NF-1) and under script-src 'self'.
 import { setFirestoreSdkLoader } from "./backends/firestore.js";
 
 type Sdk = typeof import("./backends/firestore-sdk.js");

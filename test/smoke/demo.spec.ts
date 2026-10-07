@@ -1,11 +1,14 @@
-// #24: the demo smoke test. pages.yml runs it against the deployed demo after every deploy from
-// main, and a failure fails the run; ci.yml runs it against the assembled site/ under the
-// emulator, so a failure after a deploy points at the deployment, not at this test.
-// Configuration: playwright.smoke.config.ts.
+// #24: the demo smoke test. pages.yml runs it against the deployed demo after
+// every deploy from main, and a failure fails the run; ci.yml runs it against
+// the assembled site/ under the emulator, so a failure after a deploy points at
+// the deployment, not at this test. Configuration: playwright.smoke.config.ts.
 import { type Browser, type Page, expect, test } from "@playwright/test";
 
 const TOKEN = /^([0-9A-Z]{4}-){13}[0-9A-Z]{4}$/;
-/** The commit the page must show. Set after a deploy, so a copy of an earlier deploy fails. */
+/**
+ * The commit the page must show. Set after a deploy, so a copy of an earlier
+ * deploy fails.
+ */
 const COMMIT = process.env.BURROW_DEMO_COMMIT;
 const EMU = process.env.FIRESTORE_EMULATOR_HOST;
 const STORES = [
@@ -15,7 +18,10 @@ const STORES = [
 
 type Device = { page: Page; problems: string[] };
 
-/** A fresh browser context (no cache, no token), recording what a healthy page never does. */
+/**
+ * A fresh browser context (no cache, no token), recording what a healthy page
+ * never does.
+ */
 async function device(browser: Browser, origin: string): Promise<Device> {
   const page = await (await browser.newContext()).newPage();
   const problems: string[] = [];
@@ -37,7 +43,10 @@ async function device(browser: Browser, origin: string): Promise<Device> {
   return { page, problems };
 }
 
-/** Open the demo until it shows COMMIT; a new query on each attempt keeps caches from serving an older page. */
+/**
+ * Open the demo until it shows COMMIT; a new query on each attempt keeps caches
+ * from serving an older page.
+ */
 async function load(page: Page): Promise<void> {
   await expect(async () => {
     await page.goto(`./?smoke=${Date.now()}`);
@@ -111,7 +120,8 @@ test("two fresh browser contexts sync through the store", async ({
   const b = await device(browser, origin);
   const note = `smoke test ${COMMIT?.slice(0, 7) ?? "local"} ${new Date().toISOString()}`;
 
-  // A writes, and the write reaches the store: a new token has no manifest until its first push.
+  // A writes, and the write reaches the store: a new token has no manifest
+  // until its first push.
   await load(a.page);
   await a.page.locator("#draft").fill(note);
   await expect

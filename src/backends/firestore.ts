@@ -1,4 +1,5 @@
-// §10 reference backend: one Firestore collection on the Spark plan, guarded by firebase/firestore.rules.
+// §10 reference backend: one Firestore collection on the Spark plan, guarded by
+// firebase/firestore.rules.
 import { BackendError } from "../errors.js";
 import type { Backend, Envelope } from "../types.js";
 import { wellFormed } from "./memory.js";
@@ -7,7 +8,10 @@ type Sdk = typeof import("./firestore-sdk.js");
 type Db = ReturnType<Sdk["getFirestore"]>;
 
 export interface FirestoreConfig {
-  /** An identifier, not a secret: restrict it to your domains in the Google Cloud console (FS-12). */
+  /**
+   * An identifier, not a secret: restrict it to your domains in the Google
+   * Cloud console (FS-12).
+   */
   apiKey: string;
   projectId: string;
   appId: string;
@@ -17,7 +21,8 @@ export interface FirestoreConfig {
   emulator?: { host: string; port: number };
 }
 
-// BE-3: the SDK is loaded on first use. Script-tag builds swap this loader for a same-origin chunk.
+// BE-3: the SDK is loaded on first use. Script-tag builds swap this loader for
+// a same-origin chunk.
 let loadSdk: () => Promise<Sdk> = () => import("./firestore-sdk.js");
 /** @internal */
 export function setFirestoreSdkLoader(fn: () => Promise<Sdk>): void {
@@ -39,7 +44,10 @@ const toDoc = (env: Envelope) =>
     unknown
   >;
 
-/** BE-4: map every SDK failure onto the adapter error codes. Unknown errors are network (retried). */
+/**
+ * BE-4: map every SDK failure onto the adapter error codes. Unknown errors are
+ * network (retried).
+ */
 function mapError(e: unknown): BackendError {
   if (e instanceof BackendError) return e;
   const code = (e as { code?: string })?.code ?? "";
@@ -92,9 +100,11 @@ export class FirestoreBackend implements Backend {
   async get(id: string): Promise<Envelope | null> {
     const { sdk, db } = await this.#connect();
     try {
-      // A transactional read goes straight to the backend. getDoc/getDocFromServer can be served
-      // from the watch stream of our own onSnapshot listener on the same document, which may not
-      // yet reflect a transaction that just committed; that read would report a stale revision.
+      // A transactional read goes straight to the backend.
+      // getDoc/getDocFromServer can be served from the watch stream of our own
+      // onSnapshot listener on the same document, which may not yet reflect a
+      // transaction that just committed; that read would report a stale
+      // revision.
       const ref = sdk.doc(db, this.#collection, id);
       const snap = await sdk.runTransaction(db, (tx) => tx.get(ref));
       return snap.exists() ? toEnvelope(snap.data()) : null;
@@ -103,12 +113,18 @@ export class FirestoreBackend implements Backend {
     }
   }
 
-  /** FS-4: parallel single-document reads; an `in` query would need list, which rules deny. */
+  /**
+   * FS-4: parallel single-document reads; an `in` query would need list, which
+   * rules deny.
+   */
   getMany(ids: string[]): Promise<(Envelope | null)[]> {
     return Promise.all(ids.map((id) => this.get(id)));
   }
 
-  /** FS-8: a transaction reads, checks rev, writes; BE-1 holds because Firestore serialises it. */
+  /**
+   * FS-8: a transaction reads, checks rev, writes; BE-1 holds because Firestore
+   * serialises it.
+   */
   async put(
     id: string,
     env: Envelope,
@@ -129,7 +145,8 @@ export class FirestoreBackend implements Backend {
     } catch (e) {
       const err = mapError(e);
       if (err.code !== "unauthorized") throw err;
-      // FS-8: a denial on a stale expectedRev is a conflict; on a fresh one it is unauthorized.
+      // FS-8: a denial on a stale expectedRev is a conflict; on a fresh one it
+      // is unauthorized.
       const cur = await this.get(id).catch(() => undefined);
       if (cur !== undefined && (cur?.rev ?? null) !== expectedRev)
         throw new BackendError("conflict", undefined, { cause: e });
@@ -137,7 +154,10 @@ export class FirestoreBackend implements Backend {
     }
   }
 
-  /** FS-9 / BE-7: onSnapshot on one document (the core subscribes to the manifest only). */
+  /**
+   * FS-9 / BE-7: onSnapshot on one document (the core subscribes to the
+   * manifest only).
+   */
   subscribe(id: string, onChange: (env: Envelope) => void): () => void {
     let stop: (() => void) | null = null;
     let cancelled = false;

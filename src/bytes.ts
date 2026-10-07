@@ -1,4 +1,5 @@
-// Byte and encoding helpers shared by the codec. WebCrypto only (SEC: no third-party crypto).
+// Byte and encoding helpers shared by the codec. WebCrypto only (SEC: no
+// third-party crypto).
 
 export const subtle = (): SubtleCrypto => globalThis.crypto.subtle;
 

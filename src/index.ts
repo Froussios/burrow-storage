@@ -1,4 +1,5 @@
-// Burrow: persistent, cross-device, per-user storage for static sites. No login, no backend.
+// Burrow: persistent, cross-device, per-user storage for static sites. No
+// login, no backend.
 import { IdbCache } from "./cache/indexeddb.js";
 import { MemoryCache } from "./cache/memory.js";
 import { Core, type Env } from "./core.js";
@@ -16,7 +17,10 @@ export type { PasskeyOptions } from "./providers/passkey.js";
 export { syncCode } from "./providers/synccode.js";
 export type * from "./types.js";
 
-/** FS-3: the Firestore config from <meta name="burrow-firestore"> or window.BURROW.firestore. */
+/**
+ * FS-3: the Firestore config from <meta name="burrow-firestore"> or
+ * window.BURROW.firestore.
+ */
 export function readFirestoreConfig(): {
   apiKey: string;
   projectId: string;
@@ -84,10 +88,14 @@ export function browserEnv(ns = "page"): Env {
   };
 }
 
-// API-2: one instance per (page, app). Keyed by environment so tests can model devices and tabs.
+// API-2: one instance per (page, app). Keyed by environment so tests can model
+// devices and tabs.
 const instances = new WeakMap<Env, Map<string, Promise<Core>>>();
 
-/** @internal Create an area against an explicit environment (tests simulate devices with this). */
+/**
+ * @internal Create an area against an explicit environment (tests simulate
+ *   devices with this).
+ */
 export function createBurrow(
   config: BurrowConfig,
   env: Env,
@@ -109,8 +117,9 @@ export function createBurrow(
 let pageEnv: Env | undefined;
 
 /**
- * Open the store for one app. Resolves from the local cache with no user interaction (API-1);
- * repeated calls with the same app return the same instance (API-2).
+ * Open the store for one app. Resolves from the local cache with no user
+ * interaction (API-1); repeated calls with the same app return the same
+ * instance (API-2).
  */
 export function burrow(config: BurrowConfig): Promise<BurrowArea> {
   return createBurrow(config, (pageEnv ??= browserEnv()));

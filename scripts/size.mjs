@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// CI size check (NF table): core + memory backend ≤ 12 KB min+gzip; passkey provider ≤ 2 KB.
-// The Firestore SDK is lazy-loaded and not counted.
+// CI size check (NF table): core + memory backend ≤ 12 KB min+gzip; passkey
+// provider ≤ 2 KB. The Firestore SDK is lazy-loaded and not counted.
 import { build } from "esbuild";
 import { gzipSync } from "node:zlib";
 
@@ -36,8 +36,9 @@ async function measure(name, contents, stubs, limit) {
   return { ok, gz };
 }
 
-// The core alone: what `burrow({ app, backend: new MemoryBackend() })` pulls in, minus the passkey
-// provider (budgeted below) and the Firestore adapter (loaded on demand).
+// The core alone: what `burrow({ app, backend: new MemoryBackend() })` pulls
+// in, minus the passkey provider (budgeted below) and the Firestore adapter
+// (loaded on demand).
 const core = await measure(
   "core + memory backend",
   `export { burrow, MemoryBackend, BurrowError } from "./src/index.ts";`,

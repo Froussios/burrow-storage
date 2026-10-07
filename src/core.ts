@@ -1,4 +1,5 @@
-// Burrow core: local cache (source of truth for the UI), codec and sync engine (§4, §8).
+// Burrow core: local cache (source of truth for the UI), codec and sync engine
+// (§4, §8).
 import { hex, sha256, utf8 } from "./bytes.js";
 import { MemoryCache } from "./cache/memory.js";
 import type { AppMeta, Cache, CachedItem } from "./cache/types.js";
@@ -43,7 +44,10 @@ import type {
   StorageChanges,
 } from "./types.js";
 
-/** Host services, injectable so tests can simulate several devices in one process. */
+/**
+ * Host services, injectable so tests can simulate several devices in one
+ * process.
+ */
 export interface Env {
   /** Namespace for lock and channel names. */
   ns: string;
@@ -63,7 +67,10 @@ export interface Env {
 const APP_RE = /^[a-z0-9-]{1,64}$/;
 const CONFLICT_BACKOFF = [200, 800, 3000];
 const HIDDEN_DETACH_MS = 5 * 60_000;
-/** SYNC-6: a focus pulls only if no pass started this recently (focus fires on every window switch). */
+/**
+ * SYNC-6: a focus pulls only if no pass started this recently (focus fires on
+ * every window switch).
+ */
 const FOCUS_MIN_MS = 5_000;
 const jitter = (ms: number) => ms * (0.75 + Math.random() * 0.5);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -127,12 +134,13 @@ export class Core implements BurrowArea {
   #paused = false;
   #closed = false;
 
-  // Facade writes are visible at once and persisted in the background (API-11). A key is
-  // "unsettled" from the local write until its cache write completes; reloads skip it.
+  // Facade writes are visible at once and persisted in the background (API-11).
+  // A key is "unsettled" from the local write until its cache write completes;
+  // reloads skip it.
   #pending = new Set<string>();
   #inFlight = new Map<string, number>();
-  // Local write sequence: a read of the cache that began before a key's last local write must not
-  // overwrite that key in the mirror.
+  // Local write sequence: a read of the cache that began before a key's last
+  // local write must not overwrite that key in the mirror.
   #writeSeq = 0;
   #lastWrite = new Map<string, number>();
   #persisting: Promise<void> = Promise.resolve();
@@ -175,7 +183,10 @@ export class Core implements BurrowArea {
     this.storage = createFacade(this);
   }
 
-  /** API-1: resolves with a usable secret and a loaded mirror, with no user interaction. */
+  /**
+   * API-1: resolves with a usable secret and a loaded mirror, with no user
+   * interaction.
+   */
   static async create(
     config: BurrowConfig,
     env: Env,
@@ -247,7 +258,10 @@ export class Core implements BurrowArea {
     await this.#readFragment();
   }
 
-  /** Derive keys for the held secret, and make sure the cache belongs to it (docs/decisions.md D-8). */
+  /**
+   * Derive keys for the held secret, and make sure the cache belongs to it
+   * (docs/decisions.md D-8).
+   */
   async #adoptIdentity(): Promise<void> {
     this.#keys = await this.#secret!.use((s) => deriveAppKeys(s, this.app));
     const owner = hex(await sha256(utf8("owner:" + this.#keys.base))).slice(
@@ -273,7 +287,7 @@ export class Core implements BurrowArea {
       (this.#remember ? "none" : this.#protection);
   }
 
-  // ---------------------------------------------------------------- lifecycle
+  // ---------------------------------------------------- lifecycle
 
   #start(): void {
     const on = (
@@ -286,12 +300,14 @@ export class Core implements BurrowArea {
       this.#listeners.push([type, fn]);
     };
     const win = this.#env.win;
-    // API-11, SYNC-5: flush facade writes and push when the page is hidden or unloaded.
+    // API-11, SYNC-5: flush facade writes and push when the page is hidden or
+    // unloaded.
     on(win, "pagehide", () => void this.#hide());
     on(win, "visibilitychange", () =>
       this.#visible() ? this.#show() : void this.#hide(),
     );
-    // SYNC-6: pull on focus too, unless a pass started moments ago (e.g. by visibilitychange).
+    // SYNC-6: pull on focus too, unless a pass started moments ago (e.g. by
+    // visibilitychange).
     on(win, "focus", () => {
       if (this.#visible() && Date.now() - this.#passStartedAt >= FOCUS_MIN_MS)
         void this.#sync();
@@ -338,7 +354,8 @@ export class Core implements BurrowArea {
       !this.#keys
     )
       return;
-    // SYNC-6: subscribe to the manifest only; fetch changed items on each notification.
+    // SYNC-6: subscribe to the manifest only; fetch changed items on each
+    // notification.
     this.#unsubscribe = b.subscribe(this.#keys.base, (env) => {
       if (env.rev !== this.#meta.manifestRev) void this.#sync();
     });
@@ -370,7 +387,7 @@ export class Core implements BurrowArea {
       );
   }
 
-  // ---------------------------------------------------------------- status, logging
+  // ---------------------------------------------------- status, logging
 
   get status(): Status {
     return this.#status;
@@ -417,7 +434,7 @@ export class Core implements BurrowArea {
     };
   }
 
-  // ---------------------------------------------------------------- local reads and writes
+  // ---------------------------------------------------- local reads and writes
 
   #pick(keys: GetKeys): Record<string, unknown> {
     const out: Record<string, unknown> = {};
@@ -461,7 +478,10 @@ export class Core implements BurrowArea {
     return utf8(JSON.stringify({ v: 1, key, value, ts })).length;
   }
 
-  /** Validate and stamp writes. Throws TypeError / item-too-large before anything is written (ERR-1). */
+  /**
+   * Validate and stamp writes. Throws TypeError / item-too-large before
+   * anything is written (ERR-1).
+   */
   #prepare(items: [string, unknown][]): Map<string, Entry> {
     const out = new Map<string, Entry>();
     const now = Date.now();
@@ -496,7 +516,10 @@ export class Core implements BurrowArea {
     return out;
   }
 
-  /** Apply local writes to the mirror at once; persist now (await) or in the background (facade). */
+  /**
+   * Apply local writes to the mirror at once; persist now (await) or in the
+   * background (facade).
+   */
   #applyLocal(
     updates: Map<string, Entry>,
     background: boolean,
@@ -505,8 +528,9 @@ export class Core implements BurrowArea {
     const keys: string[] = [];
     for (const [k, e] of updates) {
       const old = this.#mirror.get(k);
-      // An unchanged value is still a new write: it must beat any concurrent write made elsewhere
-      // in the meantime (last writer wins). Only the onChanged event is skipped, as chrome.storage does.
+      // An unchanged value is still a new write: it must beat any concurrent
+      // write made elsewhere in the meantime (last writer wins). Only the
+      // onChanged event is skipped, as chrome.storage does.
       if (old?.rev !== undefined) e.rev = old.rev;
       this.#mirror.set(k, e);
       this.#lastWrite.set(k, ++this.#writeSeq);
@@ -621,7 +645,8 @@ export class Core implements BurrowArea {
     for (const [k, e] of this.#tombstones(removals)) updates.set(k, e);
     const { changes } = this.#applyLocal(updates, true);
     if (!Object.keys(changes).length) return;
-    // API-12: forward to onChanged (never the window `storage` event), batched per task.
+    // API-12: forward to onChanged (never the window `storage` event), batched
+    // per task.
     if (!this.#queuedChanges) {
       this.#queuedChanges = {};
       queueMicrotask(() => {
@@ -638,7 +663,8 @@ export class Core implements BurrowArea {
             ...("newValue" in c ? { newValue: c.newValue } : {}),
           }
         : c;
-      // A key set and removed (or changed and changed back) within one batch has no net change.
+      // A key set and removed (or changed and changed back) within one batch
+      // has no net change.
       if (
         JSON.stringify(m.oldValue) === JSON.stringify(m.newValue) &&
         "oldValue" in m === "newValue" in m
@@ -653,7 +679,8 @@ export class Core implements BurrowArea {
   }
 
   async #checkUnprotected(): Promise<void> {
-    // KP-14: once per device, when data exists but nothing can carry the secret elsewhere.
+    // KP-14: once per device, when data exists but nothing can carry the secret
+    // elsewhere.
     if (
       this.#closed ||
       this.#protection !== "none" ||
@@ -666,7 +693,7 @@ export class Core implements BurrowArea {
     this.onUnprotected.emit(undefined);
   }
 
-  // ---------------------------------------------------------------- multi-tab (SYNC-14)
+  // ---------------------------------------------------- multi-tab (SYNC-14)
 
   #broadcast(
     msg:
@@ -719,7 +746,9 @@ export class Core implements BurrowArea {
     }
   }
 
-  /** A view of local writes, taken before reading the cache; see #settledSince. */
+  /**
+   * A view of local writes, taken before reading the cache; see #settledSince.
+   */
   #mark(): { seq: number; unsettled: Set<string> } {
     return {
       seq: this.#writeSeq,
@@ -727,7 +756,10 @@ export class Core implements BurrowArea {
     };
   }
 
-  /** True when the mirror entry for `k` is still what a cache read started at `m` may replace. */
+  /**
+   * True when the mirror entry for `k` is still what a cache read started at
+   * `m` may replace.
+   */
   #settledSince(
     k: string,
     m: { seq: number; unsettled: Set<string> },
@@ -740,7 +772,10 @@ export class Core implements BurrowArea {
     );
   }
 
-  /** Re-read entries written by another tab. Keys with unsettled local writes are kept. */
+  /**
+   * Re-read entries written by another tab. Keys with unsettled local writes
+   * are kept.
+   */
   async #reload(keys: string[] | null): Promise<StorageChanges> {
     const mark = this.#mark();
     const fromCache = await this.#cache.loadItems();
@@ -768,12 +803,13 @@ export class Core implements BurrowArea {
       : fn();
   }
 
-  // ---------------------------------------------------------------- sync engine (§8)
+  // ---------------------------------------------------- sync engine (§8)
 
   #schedulePush(): void {
     if (!this.#backend || this.#closed) return;
     clearTimeout(this.#pushTimer);
-    this.#pushTimer = setTimeout(() => void this.#sync(), this.#debounce); // SYNC-5 debounce + coalesce
+    // SYNC-5 debounce + coalesce
+    this.#pushTimer = setTimeout(() => void this.#sync(), this.#debounce);
   }
 
   async syncNow(): Promise<void> {
@@ -785,7 +821,9 @@ export class Core implements BurrowArea {
     }
   }
 
-  /** Run one sync pass, coalescing callers onto the running one. Never rejects. */
+  /**
+   * Run one sync pass, coalescing callers onto the running one. Never rejects.
+   */
   #sync(keepalive = false): Promise<void> {
     if (!this.#backend || this.#paused || this.#closed || !this.#keys)
       return Promise.resolve();
@@ -816,12 +854,15 @@ export class Core implements BurrowArea {
     const err = fromBackend(e);
     this.#log("error", { code: err.code });
     if (err.code === "decrypt-failed") {
-      this.#paused = true; // ENC-6: pause until re-linked; the cache is untouched
+      // ENC-6: pause until re-linked; the cache is untouched
+      this.#paused = true;
       this.#setStatus("error", err);
     } else if (err.code === "conflict" || err.code === "item-too-large") {
-      this.#setStatus("error", err); // retried on the next trigger; items stay dirty
+      // retried on the next trigger; items stay dirty
+      this.#setStatus("error", err);
     } else {
-      // SYNC-9: network/quota -> exponential backoff, capped; dirty items are never dropped.
+      // SYNC-9: network/quota -> exponential backoff, capped; dirty items are
+      // never dropped.
       this.#setStatus(
         "offline",
         err.code === "quota"
@@ -881,7 +922,10 @@ export class Core implements BurrowArea {
     return versionOf(e);
   }
 
-  /** Merge remote entries into cache and mirror; local wins when newer. Returns visible changes. */
+  /**
+   * Merge remote entries into cache and mirror; local wins when newer. Returns
+   * visible changes.
+   */
   async #applyRemote(
     remote: Map<string, Entry>,
     changes: StorageChanges,
@@ -909,7 +953,8 @@ export class Core implements BurrowArea {
       },
     );
     for (const [k, e] of written) {
-      if (!this.#settledSince(k, mark)) continue; // a newer local write wins; its flush rewrites the cache
+      // a newer local write wins; its flush rewrites the cache
+      if (!this.#settledSince(k, mark)) continue;
       const before = this.#mirror.get(k);
       if (e) this.#mirror.set(k, e);
       else this.#mirror.delete(k);
@@ -917,7 +962,10 @@ export class Core implements BurrowArea {
     }
   }
 
-  /** SYNC-7: fetch specific item documents directly; ids are computable without the manifest. */
+  /**
+   * SYNC-7: fetch specific item documents directly; ids are computable without
+   * the manifest.
+   */
   async #fetchKeys(keys: string[]): Promise<void> {
     await this.#lock("sync", async () => {
       const ids = await Promise.all(keys.map((k) => docId(this.#keys!, k)));
@@ -948,19 +996,25 @@ export class Core implements BurrowArea {
       keys: Object.keys(changes),
       source: "remote",
     });
-    if (!this.#suppressEmit) this.#emitChanges(changes, "remote"); // SYNC-13: once per pass
+    // SYNC-13: once per pass
+    if (!this.#suppressEmit) this.#emitChanges(changes, "remote");
   }
 
-  /** One sync pass: pull the manifest, fetch newer items, push dirty items, write the manifest last. */
+  /**
+   * One sync pass: pull the manifest, fetch newer items, push dirty items,
+   * write the manifest last.
+   */
   async #pass(keepalive: boolean): Promise<void> {
     const t0 = Date.now();
     const b = this.#backend!;
     const keys = this.#keys!;
     await this.#flush();
-    this.#emitChanges(await this.#reload(null), "local"); // writes from other tabs, if any slipped by
+    // writes from other tabs, if any slipped by
+    this.#emitChanges(await this.#reload(null), "local");
     this.#setStatus("syncing");
     const changes: StorageChanges = {};
-    // Item documents written this pass, kept across manifest retries so they are not rewritten.
+    // Item documents written this pass, kept across manifest retries so they
+    // are not rewritten.
     const ok = new Map<string, { key: string; ver: Versioned; rev: number }>();
 
     for (let attempt = 0; ; attempt++) {
@@ -1000,7 +1054,8 @@ export class Core implements BurrowArea {
       }
       await this.#applyRemote(remote, changes);
       let pruned = 0;
-      // Synced keys missing from an existing manifest were pruned tombstones: drop them.
+      // Synced keys missing from an existing manifest were pruned tombstones:
+      // drop them.
       if (menv) {
         const gone = [...this.#mirror]
           .filter(([k, e]) => !e.dirty && !(k in dir))
@@ -1016,7 +1071,8 @@ export class Core implements BurrowArea {
           pruned++;
         }
       }
-      // ERR-3: a merge line for each manifest read that brought remote entries or pruned keys.
+      // ERR-3: a merge line for each manifest read that brought remote entries
+      // or pruned keys.
       if (remote.size || pruned)
         this.#log("merge", { attempt, remote: remote.size, pruned });
       this.#log("pull", {
@@ -1087,7 +1143,8 @@ export class Core implements BurrowArea {
         for (const [k, e] of written)
           if (e) {
             const m = this.#mirror.get(k);
-            // A facade write that has not reached the cache yet keeps its own value and dirty flag.
+            // A facade write that has not reached the cache yet keeps its own
+            // value and dirty flag.
             this.#mirror.set(k, m && m.ts !== e.ts ? { ...m, rev: e.rev } : e);
           }
         break;
@@ -1110,7 +1167,10 @@ export class Core implements BurrowArea {
     this.#finishRemote(changes);
   }
 
-  /** SYNC-8: read-merge-write one item document. Uses the cached rev, re-reads on conflict. */
+  /**
+   * SYNC-8: read-merge-write one item document. Uses the cached rev, re-reads
+   * on conflict.
+   */
   async #pushItem(
     key: string,
     e: Entry,
@@ -1161,7 +1221,7 @@ export class Core implements BurrowArea {
     }
   }
 
-  // ---------------------------------------------------------------- unlock methods (§6)
+  // ---------------------------------------------------- unlock methods (§6)
 
   async protect(providerId?: string): Promise<void> {
     this.#alive();
@@ -1225,7 +1285,8 @@ export class Core implements BurrowArea {
     let via: Protection = "none";
     let source: TokenSource = codeSource;
     if (options.code !== undefined) {
-      secret = (await decodeSyncCode(options.code)).secret; // KP-12: bad-code before any network call
+      // KP-12: bad-code before any network call
+      secret = (await decodeSyncCode(options.code)).secret;
       via = "code";
     } else {
       // API-7 / KP-3: try each configured provider's recover() in order.
@@ -1285,8 +1346,9 @@ export class Core implements BurrowArea {
     }
     const before = new Map(this.#mirror);
     const holder = await SecretHolder.wrap(secret);
-    // A pass that started under the old secret must finish before the identity changes, and no
-    // pass may start until it has: passes read the keys once, inside the sync lock.
+    // A pass that started under the old secret must finish before the identity
+    // changes, and no pass may start until it has: passes read the keys once,
+    // inside the sync lock.
     await this.#drain();
     await this.#lock("sync", async () => {
       await this.#lock("secret", async () => {
@@ -1302,7 +1364,8 @@ export class Core implements BurrowArea {
           tokenSource: source,
           tokenSince: this.#token.since!,
         });
-      await this.#cache.setMeta({ owner: "" }); // the cache now belongs to nobody; #adoptIdentity resets it
+      // the cache now belongs to nobody; #adoptIdentity resets it
+      await this.#cache.setMeta({ owner: "" });
       await this.#adoptIdentity();
       this.#paused = false;
     });
@@ -1340,7 +1403,8 @@ export class Core implements BurrowArea {
         throw new BurrowError("would-orphan");
     }
     await this.#drain();
-    // API-8: like clearing a session cookie. The cache and remote documents stay.
+    // API-8: like clearing a session cookie. The cache and remote documents
+    // stay.
     this.#secret?.forget();
     this.#secret = null;
     await this.#cache.setDevice({
@@ -1354,7 +1418,9 @@ export class Core implements BurrowArea {
     this.close();
   }
 
-  /** KP-13: a sync code in the URL fragment (#burrow=<code>) links this device. */
+  /**
+   * KP-13: a sync code in the URL fragment (#burrow=<code>) links this device.
+   */
   async #readFragment(): Promise<void> {
     const loc = this.#env.location;
     const m = loc?.hash.match(/[#&]burrow=([^&]+)/);
@@ -1375,7 +1441,7 @@ export class Core implements BurrowArea {
     }
   }
 
-  // ---------------------------------------------------------------- export / import
+  // ---------------------------------------------------- export / import
 
   async exportJSON(): Promise<string> {
     this.#alive();

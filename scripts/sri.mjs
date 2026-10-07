@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// SEC-6: Subresource Integrity hashes for the browser bundles; written to dist/sri.json and printed
-// as ready-to-paste <script> tags for the release notes and README.
+// SEC-6: Subresource Integrity hashes for the browser bundles; written to
+// dist/sri.json and printed as ready-to-paste <script> tags for the release
+// notes and README.
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 

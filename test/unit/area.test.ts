@@ -62,7 +62,8 @@ describe("API-1/API-2 entry point", () => {
       asked.push(kind);
       throw new DOMException("The user denied permission", "InvalidStateError");
     };
-    const a = await d.open({ backend: undefined }, env); // local-only: nothing can move status on
+    // local-only: nothing can move status on
+    const a = await d.open({ backend: undefined }, env);
     expect(asked).toEqual(["indexeddb"]);
     expect(a.status).toBe("offline");
     expect(a.inspect()).toMatchObject({
@@ -85,8 +86,9 @@ describe("API-1/API-2 entry point", () => {
     env.openCache = async () => {
       throw new Error("IndexedDB unavailable");
     };
-    // The fallback cache is the page's own memory cache, shared by every test in this file: use
-    // an app id of its own so earlier fallback tests' items do not show up here.
+    // The fallback cache is the page's own memory cache, shared by every test
+    // in this file: use an app id of its own so earlier fallback tests' items
+    // do not show up here.
     const app = "sync4-idle";
     const a = await d.open({ app }, env);
     expect(["offline", "syncing", "idle"]).toContain(a.status);
@@ -337,7 +339,9 @@ describe("§8 sync between devices", () => {
   });
 
   it("SYNC-9 item write succeeds, manifest write fails: the next pass writes the manifest and no item again", async () => {
-    /** Fails puts to one id (the manifest) and counts successful puts per id. */
+    /**
+     * Fails puts to one id (the manifest) and counts successful puts per id.
+     */
     class ManifestFails extends MemoryBackend {
       failId: string | null = null;
       readonly ok = new Map<string, number>();
@@ -372,7 +376,8 @@ describe("§8 sync between devices", () => {
     be.ok.clear();
 
     be.failId = keys.base;
-    await a.set({ old: 2, new: "n" }); // one item at a known rev, one never pushed before
+    // one item at a known rev, one never pushed before
+    await a.set({ old: 2, new: "n" });
     await expect(a.syncNow()).rejects.toMatchObject({ code: "backend" });
     expect(a.status).toBe("offline");
     expect(Object.fromEntries(be.ok)).toEqual({ [idOld]: 1, [idNew]: 1 });
@@ -506,7 +511,8 @@ describe("§8 sync between devices", () => {
     await a.syncNow();
     await b.syncNow();
     const real = Date.now();
-    vi.spyOn(Date, "now").mockReturnValue(real - 3_600_000); // b's clock is an hour behind
+    // b's clock is an hour behind
+    vi.spyOn(Date, "now").mockReturnValue(real - 3_600_000);
     await b.set({ k: "b-later" });
     await b.syncNow();
     vi.restoreAllMocks();
@@ -518,7 +524,8 @@ describe("§8 sync between devices", () => {
     const w = fresh();
     const A = w.device(),
       B = w.device();
-    (B.backend.capabilities as { subscribe: boolean }).subscribe = false; // no live updates on B
+    // no live updates on B
+    (B.backend.capabilities as { subscribe: boolean }).subscribe = false;
     const a = await A.open();
     const b = await B.open();
     await b.link({ code: await a.exportCode() });
@@ -639,7 +646,8 @@ describe("§6 link, protect, unlink", () => {
     const a = await w.device().open();
     await a.set({ theme: "dark" });
     await a.syncNow();
-    const b = await w.device({ latencyMs: 80 }).open(); // its first pass is still running
+    // its first pass is still running
+    const b = await w.device({ latencyMs: 80 }).open();
     await b.link({ code: await a.exportCode() });
     expect(await b.get()).toEqual({ theme: "dark" });
   });

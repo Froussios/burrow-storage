@@ -1,4 +1,5 @@
-// Backend conformance suite (BE-1..BE-7, ENC-7/8). Every adapter MUST pass it unchanged.
+// Backend conformance suite (BE-1..BE-7, ENC-7/8). Every adapter MUST pass it
+// unchanged.
 import { describe, expect, it } from "vitest";
 import { b64url, randomBytes, utf8 } from "../../src/bytes.js";
 import { deriveAppKeys } from "../../src/codec/derive.js";

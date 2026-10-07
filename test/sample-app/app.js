@@ -1,5 +1,6 @@
-// A small, idiomatic localStorage app (todos, a theme, a visit counter, a draft).
-// The acceptance test renames the storage identifier by find-and-replace and changes nothing else.
+// A small, idiomatic localStorage app (todos, a theme, a visit counter, a
+// draft). The acceptance test renames the storage identifier by
+// find-and-replace and changes nothing else.
 
 export function loadTodos() {
   return JSON.parse(localStorage.getItem("todos") || "[]");

@@ -1,9 +1,10 @@
 #!/usr/bin/env node
-// Assembles the deployable demo in site/ (#24): the demo page, script and style, with the two
-// bundles from dist/ beside them, so the page's `script-src 'self'` covers them. The page's build
-// footer is stamped with the commit and the build time, so testers know which head they are on.
-// Run after `npm run build`. Uses GITHUB_SHA and GITHUB_REPOSITORY when set (GitHub Actions),
-// otherwise git and package.json.
+// Assembles the deployable demo in site/ (#24): the demo page, script and
+// style, with the two bundles from dist/ beside them, so the page's
+// `script-src 'self'` covers them. The page's build footer is stamped with the
+// commit and the build time, so testers know which head they are on. Run after
+// `npm run build`. Uses GITHUB_SHA and GITHUB_REPOSITORY when set (GitHub
+// Actions), otherwise git and package.json.
 import { execFileSync } from "node:child_process";
 import {
   copyFileSync,
@@ -39,8 +40,9 @@ for (const [dir, f] of FILES)
       `${dir}/${f} is missing${dir === "dist" ? "; run npm run build first" : ""}`,
     );
 
-// On pull_request runs GITHUB_SHA is the test merge commit, which only exists in that run, so the
-// footer link 404s there; deploys run on push to main, where it is the pushed commit.
+// On pull_request runs GITHUB_SHA is the test merge commit, which only exists
+// in that run, so the footer link 404s there; deploys run on push to main,
+// where it is the pushed commit.
 const commit =
   process.env.GITHUB_SHA ||
   execFileSync("git", ["rev-parse", "HEAD"], {

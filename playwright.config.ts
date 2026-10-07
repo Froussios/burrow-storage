@@ -1,7 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// Browser tests run under the Firestore emulator: `npm run test:e2e` (scripts/emulator.mjs
-// exports FIRESTORE_EMULATOR_HOST to Playwright, its web server and the tests).
+// Browser tests run under the Firestore emulator: `npm run test:e2e`
+// (scripts/emulator.mjs exports FIRESTORE_EMULATOR_HOST to Playwright, its web
+// server and the tests).
 const port = Number(process.env.E2E_PORT ?? 4173);
 
 export default defineConfig({

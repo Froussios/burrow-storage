@@ -50,7 +50,8 @@ describe("ENC-1/ENC-2 derivation matches the committed vectors", () => {
     expect(await commitment(k.macKey, vectors.docId.theme, 7)).toBe(
       vectors.next.theme7,
     );
-    // The commitment is what the Firestore rule recomputes with hashing.sha256(tok).
+    // The commitment is what the Firestore rule recomputes with
+    // hashing.sha256(tok).
     expect(hex(await sha256(utf8(vectors.tok.base1)))).toBe(vectors.next.base0);
   });
 
@@ -59,7 +60,8 @@ describe("ENC-1/ENC-2 derivation matches the committed vectors", () => {
     expect(await docId(k, vectors.unicodeKey)).toBe(
       vectors.docId[vectors.unicodeKey as keyof typeof vectors.docId],
     );
-    // No normalisation: the decomposed spelling of the same Greek text is a different key.
+    // No normalisation: the decomposed spelling of the same Greek text is a
+    // different key.
     expect(await docId(k, vectors.unicodeKey.normalize("NFD"))).not.toBe(
       vectors.docId[vectors.unicodeKey as keyof typeof vectors.docId],
     );
@@ -375,7 +377,8 @@ describe("KP-11/KP-12 sync code", () => {
   });
 
   it("KP-12 an unknown version byte with a valid checksum is bad-code", async () => {
-    // Build the 35 bytes by hand: version || secret || sha256(version || secret)[0:2], base32.
+    // Build the 35 bytes by hand: version || secret || sha256(version ||
+    // secret)[0:2], base32.
     const A = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
     const encode = async (version: number) => {
       const body = new Uint8Array([version, ...root]);
@@ -389,7 +392,8 @@ describe("KP-11/KP-12 sync code", () => {
         out += A[parseInt(bits.slice(i, i + 5).padEnd(5, "0"), 2)];
       return out.match(/.{4}/g)!.join("-");
     };
-    expect(await encode(CODE_VERSION_RANDOM)).toBe(vectors.syncCode); // the hand encoder is right
+    // the hand encoder is right
+    expect(await encode(CODE_VERSION_RANDOM)).toBe(vectors.syncCode);
     expect(
       (await decodeSyncCode(await encode(CODE_VERSION_PASSPHRASE))).version,
     ).toBe(CODE_VERSION_PASSPHRASE);

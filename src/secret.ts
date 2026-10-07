@@ -1,10 +1,12 @@
-// KP-1/KP-2/ENC-10: the root secret. Held wrapped under a non-extractable AES-KW key, in memory
-// and (unless rememberDevice is false) in IndexedDB. Unwrapped only for the length of one use.
+// KP-1/KP-2/ENC-10: the root secret. Held wrapped under a non-extractable
+// AES-KW key, in memory and (unless rememberDevice is false) in IndexedDB.
+// Unwrapped only for the length of one use.
 import { randomBytes, subtle, zeroise } from "./bytes.js";
 import type { Cache } from "./cache/types.js";
 
 const KW = { name: "AES-KW", length: 256 } as const;
-// The wrapping vehicle: an HMAC key holding the raw secret, extractable only so it can be wrapped.
+// The wrapping vehicle: an HMAC key holding the raw secret, extractable only so
+// it can be wrapped.
 const VEHICLE = { name: "HMAC", hash: "SHA-256", length: 256 } as const;
 
 export class SecretHolder {
@@ -58,7 +60,9 @@ export class SecretHolder {
     await cache.setDevice({ kw: this.#kw, wrapped: this.#wrapped });
   }
 
-  /** Unwraps for the duration of `fn` and zeroises the copy afterwards (SEC-1). */
+  /**
+   * Unwraps for the duration of `fn` and zeroises the copy afterwards (SEC-1).
+   */
   async use<T>(fn: (secret: Uint8Array) => Promise<T>): Promise<T> {
     if (!this.#kw || !this.#wrapped) throw new Error("secret was forgotten");
     const k = await subtle().unwrapKey(

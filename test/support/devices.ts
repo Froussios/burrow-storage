@@ -1,5 +1,6 @@
-// Simulated devices and tabs for integration tests: each device has its own IndexedDB (or memory
-// cache), lock namespace and broadcast channels; all of them share one MemoryBackend store.
+// Simulated devices and tabs for integration tests: each device has its own
+// IndexedDB (or memory cache), lock namespace and broadcast channels; all of
+// them share one MemoryBackend store.
 import { IDBFactory } from "fake-indexeddb";
 import { MemoryBackend } from "../../src/backends/memory.js";
 import { IdbCache } from "../../src/cache/indexeddb.js";
@@ -49,7 +50,10 @@ export class Device {
     this.kind = opts.cache ?? "indexeddb";
   }
 
-  /** A new tab (page) on this device: shares IndexedDB, locks and channels with its other tabs. */
+  /**
+   * A new tab (page) on this device: shares IndexedDB, locks and channels with
+   * its other tabs.
+   */
   env(): Env {
     return {
       ns: this.ns,

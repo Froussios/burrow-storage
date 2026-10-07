@@ -1,12 +1,16 @@
 #!/usr/bin/env node
-// Typechecks the code examples in the user-facing docs against the built declarations (dist/*.d.ts),
-// so README and guide snippets cannot drift from src/types.ts. Run after `npm run build`.
+// Typechecks the code examples in the user-facing docs against the built
+// declarations (dist/*.d.ts), so README and guide snippets cannot drift from
+// src/types.ts. Run after `npm run build`.
 //
 // Each ```ts / ```js block in the files below is classified:
-//   - usage example            → compiled as a module (js blocks with JS-level strictness)
-//   - member signature listing → must match the same members of BurrowArea exactly
-//   - interface/type/class listing → each declared name must match the exported type of that name
-//     (a `declare class` listing only has to be a subset of the real class)
+//   - usage example            → compiled as a module (js blocks with JS-level
+//     strictness)
+//   - member signature listing → must match the same members of BurrowArea
+//     exactly
+//   - interface/type/class listing → each declared name must match the exported
+//     type of that name (a `declare class` listing only has to be a subset of
+//     the real class)
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -23,7 +27,8 @@ const DOCS = [
   "docs/extending.md",
 ];
 
-// Type names exported by burrow-storage that listings may reference without declaring.
+// Type names exported by burrow-storage that listings may reference without
+// declaring.
 const EXPORTED = [
   "Envelope",
   "Manifest",
@@ -125,8 +130,9 @@ function declarations(body) {
   const doc = (n) => `D.${n}` + (GENERIC[n] ? "<unknown>" : "");
   const known = (n) =>
     EXPORTED.includes(n) || FIRESTORE.includes(n) || n in GENERIC;
-  // Interfaces and types are compared structurally in both directions; a documented class only
-  // has to list members the real class has (its private fields cannot be written down).
+  // Interfaces and types are compared structurally in both directions; a
+  // documented class only has to list members the real class has (its private
+  // fields cannot be written down).
   const checks = [
     ...declared
       .filter(known)
@@ -163,7 +169,8 @@ for (const file of DOCS) {
     const [, lang, body] = m;
     const line = text.slice(0, m.index).split("\n").length;
     const head = firstLine(body).trim();
-    // Examples that import from the repository itself (e.g. the conformance suite) are repo-internal.
+    // Examples that import from the repository itself (e.g. the conformance
+    // suite) are repo-internal.
     if (/from\s+["']\.\.?\//.test(body)) continue;
     let kind, code;
     if (/^(interface|type|declare class)\s/.test(head)) {
@@ -204,7 +211,8 @@ writeFileSync(
   join(out, "tsconfig.ts.json"),
   JSON.stringify({ compilerOptions: base, include: ["ts/*.ts"] }),
 );
-// ```js examples are JavaScript: no strict null checks, catch variables are `any`.
+// ```js examples are JavaScript: no strict null checks, catch variables are
+// `any`.
 writeFileSync(
   join(out, "tsconfig.js.json"),
   JSON.stringify({

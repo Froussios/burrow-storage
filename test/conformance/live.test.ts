@@ -1,6 +1,7 @@
-// Gate 2 (M5): the conformance suite and the brief's three checks against a LIVE store: the one
-// in BURROW_FIRESTORE (`{"apiKey","projectId","appId"}`), else the demo's. Writes go to ids derived
-// from throwaway secrets; documents cannot be deleted (FS-6). Run deliberately: `npm run test:live`.
+// Gate 2 (M5): the conformance suite and the brief's three checks against a
+// LIVE store: the one in BURROW_FIRESTORE (`{"apiKey","projectId","appId"}`),
+// else the demo's. Writes go to ids derived from throwaway secrets; documents
+// cannot be deleted (FS-6). Run deliberately: `npm run test:live`.
 import { readFileSync } from "node:fs";
 import { initializeApp, deleteApp } from "firebase/app";
 import {

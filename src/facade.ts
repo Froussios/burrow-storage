@@ -1,5 +1,6 @@
-// API-9..12: a synchronous DOM Storage over the in-memory mirror, so `localStorage` call sites
-// swap with no other change. Writes are visible at once and persisted in the background.
+// API-9..12: a synchronous DOM Storage over the in-memory mirror, so
+// `localStorage` call sites swap with no other change. Writes are visible at
+// once and persisted in the background.
 
 /** The slice of the core the facade needs. */
 export interface FacadeHost {
@@ -17,7 +18,8 @@ const METHODS = new Set([
   "clear",
 ]);
 
-// Storage holds strings. A value written through the async API is shown as its JSON text.
+// Storage holds strings. A value written through the async API is shown as its
+// JSON text.
 const asString = (v: unknown): string | null =>
   v === undefined ? null : typeof v === "string" ? v : JSON.stringify(v);
 
@@ -50,7 +52,10 @@ class BurrowStorage {
   }
 }
 
-/** Storage also exposes items as properties (`s.theme`, `s["theme"] = "dark"`, `delete s.theme`). */
+/**
+ * Storage also exposes items as properties (`s.theme`, `s["theme"] = "dark"`,
+ * `delete s.theme`).
+ */
 export function createFacade(host: FacadeHost): Storage {
   const target = new BurrowStorage(host);
   const own = (p: string | symbol): p is string =>

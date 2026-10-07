@@ -1,12 +1,19 @@
-// §7 document format: AES-256-GCM with id/app/rev bound as AAD (ENC-5), optional deflate-raw (ENC-4).
+// §7 document format: AES-256-GCM with id/app/rev bound as AAD (ENC-5),
+// optional deflate-raw (ENC-4).
 import { b64url, fromB64url, randomBytes, subtle, utf8 } from "../bytes.js";
 import { BurrowError } from "../errors.js";
 import type { Envelope } from "../types.js";
 import { commitment, token } from "./derive.js";
 
-/** Rules cap `ct` at 1,000,000 base64url chars (= 750,000 ciphertext bytes, incl. the 16-byte tag). */
+/**
+ * Rules cap `ct` at 1,000,000 base64url chars (= 750,000 ciphertext bytes,
+ * incl. the 16-byte tag).
+ */
 export const MAX_CT_CHARS = 1_000_000;
-/** Largest plaintext that always fits under MAX_CT_CHARS, even incompressible (docs/decisions.md D-4). */
+/**
+ * Largest plaintext that always fits under MAX_CT_CHARS, even incompressible
+ * (docs/decisions.md D-4).
+ */
 export const HARD_MAX_PLAINTEXT = 749_000;
 
 export interface DocCipher {
@@ -14,7 +21,10 @@ export interface DocCipher {
   readonly key: CryptoKey;
   /** HMAC key for the write-token chain (macKey, or slotMac for a keyslot). */
   readonly mac: CryptoKey;
-  /** The AAD prefix: id || app for manifests and items, slotId || "slot" for a keyslot (ENC-5). */
+  /**
+   * The AAD prefix: id || app for manifests and items, slotId || "slot" for a
+   * keyslot (ENC-5).
+   */
   readonly aad: string;
 }
 
@@ -96,8 +106,9 @@ export async function open(
 }
 
 /**
- * API-4: values must be JSON. Throws TypeError for anything JSON.stringify would silently
- * change (undefined, functions, Date, Map, NaN, class instances, cycles).
+ * API-4: values must be JSON. Throws TypeError for anything JSON.stringify
+ * would silently change (undefined, functions, Date, Map, NaN, class instances,
+ * cycles).
  */
 export function assertJson(
   value: unknown,

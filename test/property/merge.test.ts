@@ -1,4 +1,5 @@
-// SYNC-10..13 property tests: convergence, tombstones and clock skew over random op sequences.
+// SYNC-10..13 property tests: convergence, tombstones and clock skew over
+// random op sequences.
 import fc from "fast-check";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Core } from "../../src/core.js";
@@ -167,7 +168,8 @@ async function runScenario(ops: Op[], skews: number[]) {
           await areas[o.dev]!.set({ [o.key]: o.value });
           lastOp.set(o.key, { t: "set", value: o.value });
         } else {
-          // Like chrome.storage, removing a key this device cannot see is a no-op.
+          // Like chrome.storage, removing a key this device cannot see is a
+          // no-op.
           const visible = o.key in (await areas[o.dev]!.get(o.key));
           await areas[o.dev]!.remove(o.key);
           if (visible) lastOp.set(o.key, { t: "remove" });
@@ -244,9 +246,10 @@ describe("multi-device convergence (MemoryBackend)", () => {
 
   it("SYNC-10 across tombstone expiry (clock spans > 30 days) devices converge and deletes stay deleted", async () => {
     const DAY = 86_400_000;
-    // Random waits of up to 8 days between operations, plus one jump past the 30-day tombstone TTL
-    // somewhere in the middle, so tombstones written before it are pruned from the manifest while
-    // devices that were offline (or simply did not sync) still hold the deleted keys.
+    // Random waits of up to 8 days between operations, plus one jump past the
+    // 30-day tombstone TTL somewhere in the middle, so tombstones written
+    // before it are pruned from the manifest while devices that were offline
+    // (or simply did not sync) still hold the deleted keys.
     const wait = fc.record({
       t: fc.constant("wait" as const),
       ms: fc.integer({ min: 1, max: 8 * DAY }),
@@ -278,7 +281,8 @@ describe("multi-device convergence (MemoryBackend)", () => {
         expect(elapsed).toBeGreaterThan(TOMBSTONE_TTL_MS);
         expect(dirty).toEqual([0, 0, 0]);
         for (const s of states) expect(s).toEqual(states[0]);
-        // Last write per key wins; a key whose last operation was a remove is absent everywhere.
+        // Last write per key wins; a key whose last operation was a remove is
+        // absent everywhere.
         const expected: Record<string, number> = {};
         for (const [k, o] of lastOp) if (o.t === "set") expected[k] = o.value;
         expect(states[0]).toEqual(expected);
@@ -289,9 +293,10 @@ describe("multi-device convergence (MemoryBackend)", () => {
 
   it("SYNC-10 a device offline for more than 30 days does not resurrect a key deleted elsewhere", async () => {
     const DAY = 86_400_000;
-    // C holds k (synced) and goes offline; A deletes k; 31+ days later A syncs again (pruning the
-    // tombstone from the manifest) and only then does C come back. Variants: C also wrote k offline
-    // before the delete (older than the delete: must lose) or after the gap (newer: must win).
+    // C holds k (synced) and goes offline; A deletes k; 31+ days later A syncs
+    // again (pruning the tombstone from the manifest) and only then does C come
+    // back. Variants: C also wrote k offline before the delete (older than the
+    // delete: must lose) or after the gap (newer: must win).
     for (const cWrites of ["none", "before", "after"] as const) {
       const ops: Op[] = [
         { t: "set", dev: 0, key: "k1", value: 1 },

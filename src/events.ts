@@ -1,7 +1,8 @@
 /**
- * A typed event channel. It is a real EventTarget (`addEventListener(type, e => e.detail)`) and
- * also offers the chrome.storage.onChanged listener shape (`addListener(fn)`), so either style of
- * call site works unchanged.
+ * A typed event channel. It is a real EventTarget
+ * (`addEventListener(type, e => e.detail)`) and also offers the
+ * chrome.storage.onChanged listener shape (`addListener(fn)`), so either style
+ * of call site works unchanged.
  */
 export class BurrowEvent<T> extends EventTarget {
   readonly type: string;

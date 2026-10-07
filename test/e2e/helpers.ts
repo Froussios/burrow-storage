@@ -3,7 +3,10 @@ import type { BrowserContext, Page } from "@playwright/test";
 export const EMU = process.env.FIRESTORE_EMULATOR_HOST ?? "";
 if (!EMU) throw new Error("run under the emulator: npm run test:e2e");
 
-/** Open the harness page (burrow.min.js + emulator config) and an area for `app`. */
+/**
+ * Open the harness page (burrow.min.js + emulator config) and an area for
+ * `app`.
+ */
 export async function openArea(
   context: BrowserContext,
   app = "e2e",

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// FS-10: `npx burrow-setup firestore` prints the exact steps to create the shared Burrow store on
-// Firebase's Spark plan. `--run` performs them with scripts/setup.sh (needs gcloud and a browser login).
+// FS-10: `npx burrow-setup firestore` prints the exact steps to create the
+// shared Burrow store on Firebase's Spark plan. `--run` performs them with
+// scripts/setup.sh (needs gcloud and a browser login).
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";

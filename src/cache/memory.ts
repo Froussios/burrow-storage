@@ -1,6 +1,9 @@
 import type { AppMeta, Cache, CachedItem, DeviceMeta } from "./types.js";
 
-/** Holds what a device would keep in IndexedDB. One per simulated device; the page has one. */
+/**
+ * Holds what a device would keep in IndexedDB. One per simulated device; the
+ * page has one.
+ */
 export class MemoryDevice {
   readonly device: DeviceMeta = {};
   readonly apps = new Map<
@@ -31,7 +34,8 @@ export class MemoryCache implements Cache {
   }
 
   async putItems(entries: Iterable<[string, CachedItem | null]>) {
-    // Copy everything first so a value that cannot be cloned leaves the batch unwritten.
+    // Copy everything first so a value that cannot be cloned leaves the batch
+    // unwritten.
     const list = [...entries].map(([k, v]) => [k, v && copy(v)] as const);
     for (const [k, v] of list)
       v ? this.#app.items.set(k, v) : this.#app.items.delete(k);
@@ -44,7 +48,8 @@ export class MemoryCache implements Cache {
       cur: CachedItem | undefined,
     ) => CachedItem | null | undefined,
   ) {
-    // Compute and copy every change before applying any, so the batch is all or nothing.
+    // Compute and copy every change before applying any, so the batch is all or
+    // nothing.
     const changes: [string, CachedItem | null][] = [];
     for (const k of keys) {
       const cur = this.#app.items.get(k);

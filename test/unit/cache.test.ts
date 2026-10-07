@@ -33,8 +33,9 @@ function cacheSuite(name: string, factory: () => Make) {
       const make = factory();
       const c = await make("a");
       await c.putItems([["keep", { value: "old", ts: 1 }]]);
-      // A function is not structured-cloneable (DataCloneError). Core never produces one (values
-      // pass assertJson first), but any failure mid-batch must leave the cache as it was.
+      // A function is not structured-cloneable (DataCloneError). Core never
+      // produces one (values pass assertJson first), but any failure mid-batch
+      // must leave the cache as it was.
       const bad = { value: () => 1, ts: 3 } as unknown as CachedItem;
       await expect(
         c.putItems([
@@ -125,7 +126,8 @@ describe("IdbCache across connections", () => {
     const idb = new IDBFactory();
     const a = await IdbCache.open("a", idb);
     await a.putItems([["k", { value: 1, ts: 1 }]]);
-    const b = await IdbCache.open("b", idb); // bumps the version; `a` closes and reconnects lazily
+    // bumps the version; `a` closes and reconnects lazily
+    const b = await IdbCache.open("b", idb);
     await b.putItems([["k", { value: 2, ts: 1 }]]);
     expect((await a.loadItems()).get("k")?.value).toBe(1);
     await a.putItems([["j", { value: 3, ts: 1 }]]);

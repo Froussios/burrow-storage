@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-// Regenerates test/vectors.json from an independent implementation (node:crypto, not WebCrypto),
-// so the committed vectors cross-check src/codec/derive.ts. Output must never change for v1 (ENC-2).
-// New vectors may be added; they are inserted so that no existing line of the JSON changes.
+// Regenerates test/vectors.json from an independent implementation
+// (node:crypto, not WebCrypto), so the committed vectors cross-check
+// src/codec/derive.ts. Output must never change for v1 (ENC-2). New vectors may
+// be added; they are inserted so that no existing line of the JSON changes.
 import { createCipheriv, createHash, createHmac, hkdfSync } from "node:crypto";
 import { writeFileSync } from "node:fs";
 
@@ -26,7 +27,8 @@ const kek = expand(prf, "burrow/slot/v1", "kek");
 const slotMac = expand(prf, "burrow/slot/v1", "auth");
 const slotId = id(sha(expand(prf, "burrow/slot/v1", "slot")));
 
-// Sync code: version || secret || sha256(version || secret)[0:2], Crockford base32, groups of 4.
+// Sync code: version || secret || sha256(version || secret)[0:2], Crockford
+// base32, groups of 4.
 const A = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 function syncCode(secret, version = 1) {
   const body = Buffer.concat([Buffer.of(version), secret]);
@@ -41,10 +43,12 @@ function syncCode(secret, version = 1) {
 
 const itemId = docId("theme");
 
-// A key outside ASCII: precomposed Greek, a CJK character, an astral-plane emoji and spaces.
+// A key outside ASCII: precomposed Greek, a CJK character, an astral-plane
+// emoji and spaces.
 const UNICODE_KEY = "κλειδί 鍵 🔑";
 
-// The write-token chain of one document, n = 0..5: tok(id, n) and the commitment next(id, n).
+// The write-token chain of one document, n = 0..5: tok(id, n) and the
+// commitment next(id, n).
 const chainOf = (key, i) =>
   Array.from({ length: 6 }, (_, n) => ({
     n,
@@ -52,17 +56,19 @@ const chainOf = (key, i) =>
     next: next(key, i, n),
   }));
 
-// A second root secret: SHA-256 of a fixed label, unrelated in structure to the first.
+// A second root secret: SHA-256 of a fixed label, unrelated in structure to the
+// first.
 const root2 = sha(Buffer.from("burrow test vector root 2"));
 const pathKey2 = expand(root2, "burrow/v1", "path" + app);
 const macKey2 = expand(root2, "burrow/v1", "auth" + app);
 const base2 = id(sha(pathKey2));
 const docId2 = (k) => id(hmac(pathKey2, "item" + k));
 
-// A decrypt-only envelope: the item document for "theme" under the first root secret, rev 3,
-// AES-256-GCM with AAD = id || app || String(rev). Real envelopes use a fresh random iv per write
-// (ENC-5); this one uses a FIXED iv so the output stays stable. The plaintext is under 64 bytes,
-// so seal() would not compress it either (no `z`).
+// A decrypt-only envelope: the item document for "theme" under the first root
+// secret, rev 3, AES-256-GCM with AAD = id || app || String(rev). Real
+// envelopes use a fresh random iv per write (ENC-5); this one uses a FIXED iv
+// so the output stays stable. The plaintext is under 64 bytes, so seal() would
+// not compress it either (no `z`).
 const encKey = expand(rootSecret, "burrow/v1", "enc" + app);
 const envRev = 3;
 const envTs = 1_700_000_000_000;
@@ -101,7 +107,8 @@ const v = {
     prfHex: prf.toString("hex"),
     slotId,
     tok0: tok(slotMac, slotId, 0),
-    // kek is exercised indirectly: AES-GCM(kek) round trips; record its fingerprint only.
+    // kek is exercised indirectly: AES-GCM(kek) round trips; record its
+    // fingerprint only.
     kekSha256: sha(kek).toString("hex"),
   },
   syncCode: syncCode(rootSecret),

@@ -1,7 +1,8 @@
 import { defineConfig } from "tsup";
 
-// In the script-tag build the adapter loads the SDK from burrow-firestore.js at runtime
-// (src/iife.ts), so the static `import("./firestore-sdk.js")` must not pull Firebase in.
+// In the script-tag build the adapter loads the SDK from burrow-firestore.js at
+// runtime (src/iife.ts), so the static `import("./firestore-sdk.js")` must not
+// pull Firebase in.
 const stubSdk = {
   name: "stub-firestore-sdk",
   setup(build: { onResolve: Function; onLoad: Function }) {
@@ -42,8 +43,9 @@ export default defineConfig([
     esbuildPlugins: [stubSdk],
   },
   {
-    // Self-hosted Firestore SDK for script-tag users (SEC-4: no third-party script hosts). A classic
-    // script setting a global, so it also loads from file:// where module imports are blocked (NF-1).
+    // Self-hosted Firestore SDK for script-tag users (SEC-4: no third-party
+    // script hosts). A classic script setting a global, so it also loads from
+    // file:// where module imports are blocked (NF-1).
     entry: { "burrow-firestore": "src/backends/firestore-sdk.ts" },
     format: ["iife"],
     globalName: "BurrowFirestoreSdk",

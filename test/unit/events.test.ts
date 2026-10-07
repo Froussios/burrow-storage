@@ -1,12 +1,14 @@
-// API-5 / ERR-2: BurrowEvent is both a chrome.storage-style listener channel and a real EventTarget.
+// API-5 / ERR-2: BurrowEvent is both a chrome.storage-style listener channel
+// and a real EventTarget.
 import { describe, expect, it } from "vitest";
 import { BurrowEvent } from "../../src/events.js";
 
 /**
- * Run `fn` with uncaught exceptions captured instead of failing the run. Node's EventTarget reports
- * an exception thrown by a listener as an uncaught exception on the next tick (the DOM reports it
- * to window.onerror); either way dispatch continues with the next listener. Vitest's own handlers
- * are set aside for the duration and restored afterwards.
+ * Run `fn` with uncaught exceptions captured instead of failing the run. Node's
+ * EventTarget reports an exception thrown by a listener as an uncaught
+ * exception on the next tick (the DOM reports it to window.onerror); either way
+ * dispatch continues with the next listener. Vitest's own handlers are set
+ * aside for the duration and restored afterwards.
  */
 async function catchUncaught(fn: () => void): Promise<unknown[]> {
   const caught: unknown[] = [];
@@ -123,7 +125,8 @@ describe("BurrowEvent", () => {
       ev.emit(4);
       returned = true;
     });
-    // emit() itself does not throw: the core's caller is never interrupted by a page's listener.
+    // emit() itself does not throw: the core's caller is never interrupted by a
+    // page's listener.
     expect(returned).toBe(true);
     expect(seen).toEqual([4, 40]);
     expect(caught).toEqual([boom]);

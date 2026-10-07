@@ -1,8 +1,10 @@
 #!/usr/bin/env node
-// Static file server for the demo and the browser tests. Serves the repo root; files missing
-// from demo/ fall back to dist/ (burrow.min.js, burrow-firestore.js), as a deployed demo has them;
-// site/ is the assembled demo (scripts/build-demo.mjs). With FIRESTORE_EMULATOR_HOST set, the
-// Firestore config and CSP of the pages in demo/ and site/ point at the emulator.
+// Static file server for the demo and the browser tests. Serves the repo root;
+// files missing from demo/ fall back to dist/ (burrow.min.js,
+// burrow-firestore.js), as a deployed demo has them; site/ is the assembled
+// demo (scripts/build-demo.mjs). With FIRESTORE_EMULATOR_HOST set, the
+// Firestore config and CSP of the pages in demo/ and site/ point at the
+// emulator.
 import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize, resolve, sep } from "node:path";

@@ -1,4 +1,5 @@
-// API-13 / BE-4 / SEC-8: error codes, and nothing secret in an error's message or cause.
+// API-13 / BE-4 / SEC-8: error codes, and nothing secret in an error's message
+// or cause.
 import { describe, expect, it } from "vitest";
 import { b64url, hex, randomBytes } from "../../src/bytes.js";
 import {

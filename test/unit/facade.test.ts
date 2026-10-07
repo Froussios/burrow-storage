@@ -39,7 +39,8 @@ describe("API-9..12 Storage facade", () => {
     a.close();
     const b = await world.devices[0]!.open();
     expect(b.storage.getItem("k")).toBe("v");
-    expect(b.storage.getItem("j")).toBe('{"x":1}'); // non-string values written via set() read as JSON
+    // non-string values written via set() read as JSON
+    expect(b.storage.getItem("j")).toBe('{"x":1}');
   });
 
   it("API-11 facade writes are visible at once and reach the cache and the async API", async () => {
@@ -68,7 +69,8 @@ describe("API-9..12 Storage facade", () => {
     let cache: Cache | undefined;
     const openCache = env.openCache;
     env.openCache = async (app, kind) => (cache = await openCache(app, kind));
-    const b = await d.open({ debounceMs: 1e9 }, env); // no push, so no sync pass writes these keys
+    // no push, so no sync pass writes these keys
+    const b = await d.open({ debounceMs: 1e9 }, env);
     await b.syncNow(); // let the first pass finish
     const write = vi.spyOn(cache!, "updateItems");
     const put = vi.spyOn(cache!, "putItems");
@@ -91,7 +93,8 @@ describe("API-9..12 Storage facade", () => {
 
   it("API-11 pending facade writes are flushed on visibilitychange to hidden and pushed", async () => {
     const d = world.device();
-    const b = await d.open({ debounceMs: 1e9 }); // no debounced push: only hiding the page pushes
+    // no debounced push: only hiding the page pushes
+    const b = await d.open({ debounceMs: 1e9 });
     await b.syncNow();
     expect(b.inspect().manifestRev).toBeNull();
     b.storage.setItem("late", "1");
@@ -153,7 +156,8 @@ describe("API-9..12 Storage facade", () => {
   });
 });
 
-// Acceptance: replacing localStorage with store.storage requires no other change.
+// Acceptance: replacing localStorage with store.storage requires no other
+// change.
 describe("sample app: localStorage -> store.storage by find-and-replace", () => {
   const source = readFileSync(
     new URL("../sample-app/app.js", import.meta.url),

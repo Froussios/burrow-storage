@@ -1,4 +1,5 @@
-// Browser integration (all engines): persistence, second device, tabs, unload flush, offline.
+// Browser integration (all engines): persistence, second device, tabs, unload
+// flush, offline.
 import { expect, test } from "@playwright/test";
 import { EMU, openArea, withStore } from "./helpers.js";
 

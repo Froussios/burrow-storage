@@ -2,9 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { deriveAppKeys, deriveSlotKeys } from "../../src/codec/derive.js";
 import { SecretHolder } from "../../src/secret.js";
 
-// SEC-1: Uint8Array copies of key material are zeroised once imported into a CryptoKey. Each test
-// records every raw buffer handed to importKey and checks it reads all zeros after the call, while
-// the caller's own buffer is left alone.
+// SEC-1: Uint8Array copies of key material are zeroised once imported into a
+// CryptoKey. Each test records every raw buffer handed to importKey and checks
+// it reads all zeros after the call, while the caller's own buffer is left
+// alone.
 function recordImports(): Uint8Array[] {
   const seen: Uint8Array[] = [];
   const real = crypto.subtle.importKey.bind(crypto.subtle);

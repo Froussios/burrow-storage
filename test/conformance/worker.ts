@@ -1,16 +1,20 @@
-// A WorkerBackend stub: a tiny HTTP document store (the shape a Cloudflare Worker or similar
-// edge function would have) and a Backend that talks to it through a fetch-compatible function.
-// It exists to show the conformance suite is backend-agnostic (requirements brief, Acceptance
-// criteria: "Swapping FirestoreBackend for MemoryBackend and for a WorkerBackend stub passes the
-// same conformance suite unchanged.") and as a worked example of the REST shape in
-// docs/extending.md. It enforces the same rules as MemoryBackend, which mirror
-// firebase/firestore.rules.
+// A WorkerBackend stub: a tiny HTTP document store (the shape a Cloudflare
+// Worker or similar edge function would have) and a Backend that talks to it
+// through a fetch-compatible function. It exists to show the conformance suite
+// is backend-agnostic (requirements brief, Acceptance criteria: "Swapping
+// FirestoreBackend for MemoryBackend and for a WorkerBackend stub passes the
+// same conformance suite unchanged.") and as a worked example of the REST shape
+// in docs/extending.md. It enforces the same rules as MemoryBackend, which
+// mirror firebase/firestore.rules.
 import { wellFormed } from "../../src/backends/memory.js";
 import { sha256hex } from "../../src/bytes.js";
 import { BackendError } from "../../src/errors.js";
 import type { Backend, Envelope } from "../../src/types.js";
 
-/** Same limits as MemoryBackend: the whole request, and the ciphertext field (FS rules). */
+/**
+ * Same limits as MemoryBackend: the whole request, and the ciphertext field (FS
+ * rules).
+ */
 export const MAX_ENVELOPE_BYTES = 1_048_576;
 const MAX_CT_CHARS = 1_000_000;
 
@@ -25,9 +29,10 @@ const status = (code: number): Response => new Response(null, { status: code });
 
 /**
  * The "worker": GET /doc/{id} and PUT /doc/{id} over `store`.
- * PUT carries `If-None-Match: *` for a create or `If-Match: <rev>` for an update.
- * 200 (GET), 201 (created), 204 (updated), 404, 409 conflict, 403 chain or shape failure,
- * 413 too large, 405 / 428 for requests a conforming client never sends.
+ * PUT carries `If-None-Match: *` for a create or `If-Match: <rev>` for an
+ * update. 200 (GET), 201 (created), 204 (updated), 404, 409 conflict, 403 chain
+ * or shape failure, 413 too large, 405 / 428 for requests a conforming client
+ * never sends.
  */
 export function createWorker(
   store: Map<string, Envelope> = new Map(),
@@ -79,7 +84,8 @@ export function createWorker(
     if (!wellFormed(id, doc)) return status(403);
     const hash = await sha256hex(doc.tok);
 
-    // BE-1: from here to the write everything is synchronous, so the compare-and-set is atomic.
+    // BE-1: from here to the write everything is synchronous, so the
+    // compare-and-set is atomic.
     const cur = store.get(id);
     if (create) {
       if (cur) return status(409);
@@ -95,9 +101,15 @@ export function createWorker(
 }
 
 export interface WorkerBackendOptions {
-  /** fetch-compatible transport. Default: an in-process worker from `createWorker()`. */
+  /**
+   * fetch-compatible transport. Default: an in-process worker from
+   * `createWorker()`.
+   */
   fetch?: FetchLike;
-  /** Base URL of the worker. Default: a placeholder origin for the in-process worker. */
+  /**
+   * Base URL of the worker. Default: a placeholder origin for the in-process
+   * worker.
+   */
   baseUrl?: string;
 }
 

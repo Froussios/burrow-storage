@@ -1,4 +1,5 @@
-// KP-5..10 with Chromium's virtual authenticator (PRF): enrol, full site-data reset, recover.
+// KP-5..10 with Chromium's virtual authenticator (PRF): enrol, full site-data
+// reset, recover.
 import { type CDPSession, type Page, expect, test } from "@playwright/test";
 import { openArea, withStore } from "./helpers.js";
 
@@ -45,7 +46,8 @@ test("passkey: enrol, wipe all site data, recover the same data with one passkey
   expect(await withStore(page, (s) => s.protection)).toBe("passkey");
   const code = await withStore(page, (s) => s.exportCode());
 
-  // A full browser data reset for this site: IndexedDB, cookies, storage — everything.
+  // A full browser data reset for this site: IndexedDB, cookies, storage —
+  // everything.
   await cdp.send("Storage.clearDataForOrigin", {
     origin: new URL(page.url()).origin,
     storageTypes: "all",
@@ -136,6 +138,7 @@ test("KP-7 without a PRF authenticator the passkey provider is unavailable and p
     ),
   );
   expect(["prf-unsupported", "no-provider"]).toContain(err);
-  await withStore(page, (s) => s.protect()); // first available provider: the sync code
+  // first available provider: the sync code
+  await withStore(page, (s) => s.protect());
   expect(await withStore(page, (s) => s.protection)).toBe("code");
 });

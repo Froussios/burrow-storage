@@ -1,10 +1,14 @@
 import { defineConfig, devices } from "@playwright/test";
 
 // The demo smoke test (test/smoke, #24), on Chromium.
-// After a deploy, against the deployed page (pages.yml does this, and fails the run on a failure):
-//   BURROW_DEMO_URL=https://froussios.github.io/burrow-storage/ BURROW_DEMO_COMMIT=<sha> npm run test:smoke
-// Before one, against the assembled site/ under the Firestore emulator (ci.yml does this):
-//   npm run build && node scripts/build-demo.mjs && node scripts/emulator.mjs "npm run test:smoke"
+// After a deploy, against the deployed page (pages.yml does this, and fails the
+// run on a failure):
+//   BURROW_DEMO_URL=https://froussios.github.io/burrow-storage/ \
+//     BURROW_DEMO_COMMIT=<sha> npm run test:smoke
+// Before one, against the assembled site/ under the Firestore emulator (ci.yml
+// does this):
+//   npm run build && node scripts/build-demo.mjs &&
+//     node scripts/emulator.mjs "npm run test:smoke"
 const url = process.env.BURROW_DEMO_URL;
 const port = Number(process.env.E2E_PORT ?? 4173);
 if (!url && !process.env.FIRESTORE_EMULATOR_HOST) {

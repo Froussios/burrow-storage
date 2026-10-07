@@ -1,4 +1,5 @@
-// KP-11..13: the sync code. enrol() is the export itself (exportCode() shows it); recover() decodes.
+// KP-11..13: the sync code. enrol() is the export itself (exportCode() shows
+// it); recover() decodes.
 import { decodeSyncCode } from "../codec/synccode.js";
 import type { KeyProvider } from "../types.js";
 

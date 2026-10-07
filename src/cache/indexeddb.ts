@@ -1,5 +1,6 @@
-// SYNC-1: one IndexedDB database per origin named "burrow", one object store per app, so clearing
-// one app never touches another. "_meta" holds per-app sync state, "_device" the wrapped secret.
+// SYNC-1: one IndexedDB database per origin named "burrow", one object store
+// per app, so clearing one app never touches another. "_meta" holds per-app
+// sync state, "_device" the wrapped secret.
 import type { AppMeta, Cache, CachedItem, DeviceMeta } from "./types.js";
 
 const DB = "burrow";
@@ -27,7 +28,8 @@ function openDb(
     };
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
-    // Another tab still holds the old version open; it closes on versionchange and we proceed.
+    // Another tab still holds the old version open; it closes on versionchange
+    // and we proceed.
     r.onblocked = () => {};
   });
 }
@@ -43,7 +45,10 @@ export class IdbCache implements Cache {
     this.#store = storeFor(app);
   }
 
-  /** Opens (creating the app's store if needed). Rejects if IndexedDB is unusable (SYNC-4). */
+  /**
+   * Opens (creating the app's store if needed). Rejects if IndexedDB is
+   * unusable (SYNC-4).
+   */
   static async open(
     app: string,
     idb: IDBFactory | null = globalThis.indexedDB ?? null,
@@ -83,7 +88,8 @@ export class IdbCache implements Cache {
   }
 
   #watch(db: IDBDatabase): IDBDatabase {
-    // Another tab adding an app's store bumps the version: let it, and reconnect lazily.
+    // Another tab adding an app's store bumps the version: let it, and
+    // reconnect lazily.
     db.onversionchange = () => {
       db.close();
       this.#db = null;
@@ -107,7 +113,8 @@ export class IdbCache implements Cache {
     try {
       out = await fn(t);
     } catch (e) {
-      // A batch is all or nothing: requests already queued must not commit (cache/types.ts).
+      // A batch is all or nothing: requests already queued must not commit
+      // (cache/types.ts).
       try {
         t.abort();
       } catch {

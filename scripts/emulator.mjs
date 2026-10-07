@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Runs a command under the Firestore emulator using firebase/firebase.json.
-// BURROW_EMULATOR_PORT overrides the port (default 8080 from firebase.json) when it is taken locally.
-// emulators:exec exports FIRESTORE_EMULATOR_HOST to the child, which the tests read.
+// BURROW_EMULATOR_PORT overrides the port (default 8080 from firebase.json)
+// when it is taken locally. emulators:exec exports FIRESTORE_EMULATOR_HOST to
+// the child, which the tests read.
 import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync, rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";

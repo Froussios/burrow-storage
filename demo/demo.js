@@ -1,5 +1,6 @@
-// The Burrow demo: a theme and a text draft that follow the user across devices.
-// The draft uses the localStorage-compatible facade; everything else uses the async API.
+// The Burrow demo: a theme and a text draft that follow the user across
+// devices. The draft uses the localStorage-compatible facade; everything else
+// uses the async API.
 (async () => {
   const $ = (id) => document.getElementById(id);
   const say = (text) => {
@@ -21,7 +22,8 @@
     applyTheme(s.getItem("theme"));
   });
 
-  // Draft: saved on every keystroke; the facade write is synchronous and persisted behind the scenes.
+  // Draft: saved on every keystroke; the facade write is synchronous and
+  // persisted behind the scenes.
   const draft = $("draft");
   draft.value = s.getItem("draft") ?? "";
   draft.addEventListener("input", () => s.setItem("draft", draft.value));
@@ -177,7 +179,8 @@
     URL.revokeObjectURL(a.href);
   });
 
-  // Forget the token on this device, like logging out (API-8). The next visit starts a new token.
+  // Forget the token on this device, like logging out (API-8). The next visit
+  // starts a new token.
   $("forget").addEventListener("click", async () => {
     if (
       !confirm(
