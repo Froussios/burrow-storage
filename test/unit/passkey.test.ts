@@ -1,8 +1,16 @@
-// KP-5..9, SEC-7, ENC-11: the passkey provider against a scripted WebAuthn authenticator.
-// Browser coverage with a real (virtual) authenticator lives in test/e2e/passkey.spec.ts.
+// KP-5..9, SEC-7, ENC-11: the passkey provider against a scripted WebAuthn
+// authenticator. Browser coverage with a real (virtual) authenticator lives in
+// test/e2e/passkey.spec.ts.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryBackend } from "../../src/backends/memory.js";
-import { b64url, concat, fromB64url, randomBytes, sha256, utf8 } from "../../src/bytes.js";
+import {
+  b64url,
+  concat,
+  fromB64url,
+  randomBytes,
+  sha256,
+  utf8,
+} from "../../src/bytes.js";
 import { PRF_SALT_V1, deriveSlotKeys } from "../../src/codec/derive.js";
 import { BackendError, BurrowError } from "../../src/errors.js";
 import { passkey } from "../../src/providers/passkey.js";
@@ -11,58 +19,98 @@ import { World } from "../support/devices.js";
 
 const CRED_KEY = "passkey.credentialId";
 
-/** Copy into a fresh ArrayBuffer: the provider zeroises the PRF output it receives. */
+/**
+ * Copy into a fresh ArrayBuffer: the provider zeroises the PRF output it
+ * receives.
+ */
 const fresh = (b: Uint8Array): ArrayBuffer => b.slice().buffer;
-const notAllowed = () => new DOMException("The operation either timed out or was not allowed.", "NotAllowedError");
+const notAllowed = () =>
+  new DOMException(
+    "The operation either timed out or was not allowed.",
+    "NotAllowedError",
+  );
 
-type CreateOpts = CredentialCreationOptions & { publicKey: PublicKeyCredentialCreationOptions };
-type GetOpts = CredentialRequestOptions & { publicKey: PublicKeyCredentialRequestOptions };
+type CreateOpts = CredentialCreationOptions & {
+  publicKey: PublicKeyCredentialCreationOptions;
+};
+type GetOpts = CredentialRequestOptions & {
+  publicKey: PublicKeyCredentialRequestOptions;
+};
 
 /**
- * A scripted platform authenticator. Each credential has a fixed 32-byte seed; its PRF output for
- * a salt is SHA-256(seed || salt), so outputs are deterministic and differ per credential.
+ * A scripted platform authenticator. Each credential has a fixed 32-byte seed;
+ * its PRF output for a salt is SHA-256(seed || salt), so outputs are
+ * deterministic and differ per credential.
  */
 class FakeAuthenticator {
   readonly creds = new Map<string, Uint8Array>(); // b64url(rawId) -> seed
-  /** What create() reports: PRF results inline, only `enabled`, or `enabled: false`. */
+  /**
+   * What create() reports: PRF results inline, only `enabled`, or
+   * `enabled: false`.
+   */
   createMode: "results" | "enabled-only" | "disabled" = "results";
   /** Override get(): resolve null, reject, or omit PRF results. */
   getMode: "ok" | "null" | "cancel" | "no-prf" = "ok";
-  /** Credential picked by a discoverable get() (empty allowCredentials). Default: the last created. */
+  /**
+   * Credential picked by a discoverable get() (empty allowCredentials).
+   * Default: the last created.
+   */
   chosen?: string;
   readonly createCalls: CreateOpts[] = [];
   readonly getCalls: GetOpts[] = [];
   #n = 0;
 
   async prf(seed: Uint8Array, salt: BufferSource): Promise<Uint8Array> {
-    const s = salt instanceof ArrayBuffer ? new Uint8Array(salt) : new Uint8Array(salt.buffer, salt.byteOffset, salt.byteLength);
+    const s =
+      salt instanceof ArrayBuffer
+        ? new Uint8Array(salt)
+        : new Uint8Array(salt.buffer, salt.byteOffset, salt.byteLength);
     return sha256(concat(seed, s));
   }
 
-  /** PRF output this authenticator gives for credential `id` with Burrow's salt. */
+  /**
+   * PRF output this authenticator gives for credential `id` with Burrow's salt.
+   */
   async expectedPrf(id: string): Promise<Uint8Array> {
     return this.prf(this.creds.get(id)!, utf8(PRF_SALT_V1));
   }
 
-  #credential(rawId: Uint8Array, prf: Record<string, unknown>): PublicKeyCredential {
+  #credential(
+    rawId: Uint8Array,
+    prf: Record<string, unknown>,
+  ): PublicKeyCredential {
     return {
-      type: "public-key", id: b64url(rawId), rawId: fresh(rawId), authenticatorAttachment: "platform",
+      type: "public-key",
+      id: b64url(rawId),
+      rawId: fresh(rawId),
+      authenticatorAttachment: "platform",
       getClientExtensionResults: () => ({ prf }),
     } as unknown as PublicKeyCredential;
   }
 
-  create = vi.fn(async (opts: CreateOpts): Promise<PublicKeyCredential | null> => {
-    this.createCalls.push(opts);
-    const rawId = new Uint8Array(16).fill(++this.#n);
-    const seed = new Uint8Array(32).fill(0x40 + this.#n);
-    const id = b64url(rawId);
-    this.creds.set(id, seed);
-    this.chosen = id;
-    if (this.createMode === "disabled") return this.#credential(rawId, { enabled: false });
-    if (this.createMode === "enabled-only") return this.#credential(rawId, { enabled: true });
-    const first = (opts.publicKey.extensions as { prf?: { eval?: { first: BufferSource } } }).prf?.eval?.first;
-    return this.#credential(rawId, { enabled: true, results: { first: fresh(await this.prf(seed, first!)) } });
-  });
+  create = vi.fn(
+    async (opts: CreateOpts): Promise<PublicKeyCredential | null> => {
+      this.createCalls.push(opts);
+      const rawId = new Uint8Array(16).fill(++this.#n);
+      const seed = new Uint8Array(32).fill(0x40 + this.#n);
+      const id = b64url(rawId);
+      this.creds.set(id, seed);
+      this.chosen = id;
+      if (this.createMode === "disabled")
+        return this.#credential(rawId, { enabled: false });
+      if (this.createMode === "enabled-only")
+        return this.#credential(rawId, { enabled: true });
+      const first = (
+        opts.publicKey.extensions as {
+          prf?: { eval?: { first: BufferSource } };
+        }
+      ).prf?.eval?.first;
+      return this.#credential(rawId, {
+        enabled: true,
+        results: { first: fresh(await this.prf(seed, first!)) },
+      });
+    },
+  );
 
   get = vi.fn(async (opts: GetOpts): Promise<PublicKeyCredential | null> => {
     this.getCalls.push(opts);
@@ -70,32 +118,65 @@ class FakeAuthenticator {
     if (this.getMode === "cancel") throw notAllowed();
     const allow = opts.publicKey.allowCredentials ?? [];
     const id = allow.length
-      ? allow.map((c) => b64url(new Uint8Array(c.id as ArrayBuffer | Uint8Array<ArrayBuffer>))).find((i) => this.creds.has(i))
+      ? allow
+          .map((c) =>
+            b64url(
+              new Uint8Array(c.id as ArrayBuffer | Uint8Array<ArrayBuffer>),
+            ),
+          )
+          .find((i) => this.creds.has(i))
       : this.chosen;
-    if (!id || !this.creds.has(id)) throw notAllowed(); // no matching credential on this authenticator
+    // no matching credential on this authenticator
+    if (!id || !this.creds.has(id)) throw notAllowed();
     const rawId = fromB64url(id);
     if (this.getMode === "no-prf") return this.#credential(rawId, {});
-    const first = (opts.publicKey.extensions as { prf?: { eval?: { first: BufferSource } } }).prf?.eval?.first;
-    return this.#credential(rawId, { results: { first: fresh(await this.prf(this.creds.get(id)!, first!)) } });
+    const first = (
+      opts.publicKey.extensions as { prf?: { eval?: { first: BufferSource } } }
+    ).prf?.eval?.first;
+    return this.#credential(rawId, {
+      results: { first: fresh(await this.prf(this.creds.get(id)!, first!)) },
+    });
   });
 }
 
-/** Install the authenticator as navigator.credentials and a matching PublicKeyCredential. */
-function install(auth: FakeAuthenticator, platform: { uv?: boolean; caps?: Record<string, boolean> | null } = {}) {
+/**
+ * Install the authenticator as navigator.credentials and a matching
+ * PublicKeyCredential.
+ */
+function install(
+  auth: FakeAuthenticator,
+  platform: { uv?: boolean; caps?: Record<string, boolean> | null } = {},
+) {
   const PKC = {
-    isUserVerifyingPlatformAuthenticatorAvailable: vi.fn(async () => platform.uv ?? true),
-    ...(platform.caps === null ? {} : { getClientCapabilities: vi.fn(async () => platform.caps ?? { "extension:prf": true }) }),
+    isUserVerifyingPlatformAuthenticatorAvailable: vi.fn(
+      async () => platform.uv ?? true,
+    ),
+    ...(platform.caps === null
+      ? {}
+      : {
+          getClientCapabilities: vi.fn(
+            async () => platform.caps ?? { "extension:prf": true },
+          ),
+        }),
   };
   vi.stubGlobal("PublicKeyCredential", PKC);
   Object.defineProperty(globalThis.navigator, "credentials", {
-    value: { create: auth.create, get: auth.get }, configurable: true, writable: true,
+    value: { create: auth.create, get: auth.get },
+    configurable: true,
+    writable: true,
   });
   return PKC;
 }
 
 function memStore(): ProviderStore & { map: Map<string, string> } {
   const map = new Map<string, string>();
-  return { map, get: async (n) => map.get(n), set: async (n, v) => { map.set(n, v); } };
+  return {
+    map,
+    get: async (n) => map.get(n),
+    set: async (n, v) => {
+      map.set(n, v);
+    },
+  };
 }
 
 let auth: FakeAuthenticator;
@@ -144,14 +225,17 @@ describe("KP-7 available()", () => {
 
   it("KP-7 false when the capability probe throws", async () => {
     const PKC = install(auth);
-    PKC.isUserVerifyingPlatformAuthenticatorAvailable.mockRejectedValueOnce(new Error("boom"));
+    PKC.isUserVerifyingPlatformAuthenticatorAvailable.mockRejectedValueOnce(
+      new Error("boom"),
+    );
     expect(await p.available()).toBe(false);
   });
 
   it("KP-7 true with a UV platform authenticator and PRF (or no capability report)", async () => {
     install(auth);
     expect(await p.available()).toBe(true);
-    install(auth, { caps: {} }); // extension:prf unknown: falls back to the UV check
+    // extension:prf unknown: falls back to the UV check
+    install(auth, { caps: {} });
     expect(await p.available()).toBe(true);
     install(auth, { caps: null }); // browser without getClientCapabilities
     expect(await p.available()).toBe(true);
@@ -168,14 +252,17 @@ describe("KP-7 available()", () => {
 });
 
 describe("KP-5/KP-6 enrol and recover", () => {
-  beforeEach(() => { install(auth); });
+  beforeEach(() => {
+    install(auth);
+  });
 
   it("KP-5 enrol with PRF results from create() writes a keyslot that KP-6 recover() unwraps", async () => {
     const secret = randomBytes(32);
     const keep = secret.slice();
     await enrol(secret);
     expect(auth.create).toHaveBeenCalledOnce();
-    expect(auth.get).not.toHaveBeenCalled(); // PRF came back at creation: no second prompt
+    // PRF came back at creation: no second prompt
+    expect(auth.get).not.toHaveBeenCalled();
 
     // ENC-11: one ordinary envelope at slotId, derived from the PRF output.
     const slot = await deriveSlotKeys(await auth.expectedPrf(auth.chosen!));
@@ -197,15 +284,23 @@ describe("KP-5/KP-6 enrol and recover", () => {
     const pk = auth.createCalls[0]!.publicKey;
     expect(pk.rp).toEqual({ id: "example.com", name: "Example" });
     expect(pk.user.name).toBe("notes");
-    expect(pk.authenticatorSelection).toMatchObject({ residentKey: "required", requireResidentKey: true, userVerification: "required" });
+    expect(pk.authenticatorSelection).toMatchObject({
+      residentKey: "required",
+      requireResidentKey: true,
+      userVerification: "required",
+    });
     expect(pk.attestation).toBe("none");
-    const first = (pk.extensions as { prf: { eval: { first: Uint8Array } } }).prf.eval.first;
+    const first = (pk.extensions as { prf: { eval: { first: Uint8Array } } })
+      .prf.eval.first;
     expect(new TextDecoder().decode(first)).toBe(PRF_SALT_V1);
   });
 
   it("KP-5 user.name defaults to the app id", async () => {
     await enrol(randomBytes(32));
-    expect(auth.createCalls[0]!.publicKey.user).toMatchObject({ name: "test", displayName: "test" });
+    expect(auth.createCalls[0]!.publicKey.user).toMatchObject({
+      name: "test",
+      displayName: "test",
+    });
   });
 
   it("KP-5 create() with prf.enabled but no results takes exactly one follow-up get() for the PRF output", async () => {
@@ -214,11 +309,16 @@ describe("KP-5/KP-6 enrol and recover", () => {
     await enrol(secret);
     expect(auth.create).toHaveBeenCalledOnce();
     expect(auth.get).toHaveBeenCalledOnce();
-    // The follow-up assertion targets the credential just created and asks for UV and the salt.
+    // The follow-up assertion targets the credential just created and asks for
+    // UV and the salt.
     const pk = auth.getCalls[0]!.publicKey;
     expect(pk.userVerification).toBe("required");
     expect(pk.allowCredentials).toHaveLength(1);
-    expect(b64url(new Uint8Array(pk.allowCredentials![0]!.id as Uint8Array<ArrayBuffer>))).toBe(auth.chosen);
+    expect(
+      b64url(
+        new Uint8Array(pk.allowCredentials![0]!.id as Uint8Array<ArrayBuffer>),
+      ),
+    ).toBe(auth.chosen);
     const slot = await deriveSlotKeys(await auth.expectedPrf(auth.chosen!));
     expect(backend.store.has(slot.slotId)).toBe(true);
     expect(await recover(backend, memStore())).toEqual(secret);
@@ -227,7 +327,10 @@ describe("KP-5/KP-6 enrol and recover", () => {
   it("KP-5 enrol rejects no-provider when the follow-up get() is dismissed, and writes nothing", async () => {
     auth.createMode = "enabled-only";
     auth.getMode = "cancel";
-    await expect(enrol(randomBytes(32))).rejects.toMatchObject({ name: "BurrowError", code: "no-provider" });
+    await expect(enrol(randomBytes(32))).rejects.toMatchObject({
+      name: "BurrowError",
+      code: "no-provider",
+    });
     expect(backend.store.size).toBe(0);
   });
 
@@ -242,15 +345,23 @@ describe("KP-5/KP-6 enrol and recover", () => {
 
   it("KP-5 enrol rejects no-provider when the create() prompt is dismissed", async () => {
     auth.create.mockRejectedValueOnce(notAllowed());
-    await expect(enrol(randomBytes(32))).rejects.toMatchObject({ code: "no-provider" });
+    await expect(enrol(randomBytes(32))).rejects.toMatchObject({
+      code: "no-provider",
+    });
     auth.create.mockResolvedValueOnce(null);
-    await expect(enrol(randomBytes(32))).rejects.toMatchObject({ code: "no-provider" });
+    await expect(enrol(randomBytes(32))).rejects.toMatchObject({
+      code: "no-provider",
+    });
     expect(backend.store.size).toBe(0);
   });
 
   it("KP-5 enrol rejects prf-unsupported when create() fails for another reason", async () => {
-    auth.create.mockRejectedValueOnce(new DOMException("nope", "NotSupportedError"));
-    await expect(enrol(randomBytes(32))).rejects.toMatchObject({ code: "prf-unsupported" });
+    auth.create.mockRejectedValueOnce(
+      new DOMException("nope", "NotSupportedError"),
+    );
+    await expect(enrol(randomBytes(32))).rejects.toMatchObject({
+      code: "prf-unsupported",
+    });
   });
 
   it("KP-5/ENC-11 re-enrol over an existing keyslot continues its write-token chain", async () => {
@@ -260,16 +371,20 @@ describe("KP-5/KP-6 enrol and recover", () => {
     const slot = await deriveSlotKeys(await auth.expectedPrf(id));
     expect(backend.store.get(slot.slotId)!.rev).toBe(0);
 
-    // A new token enrolled under a credential whose PRF output is the same (the authenticator hands
-    // back the existing credential), so the slot id is the same and the write must follow the chain.
+    // A new token enrolled under a credential whose PRF output is the same (the
+    // authenticator hands back the existing credential), so the slot id is the
+    // same and the write must follow the chain.
     auth.createMode = "enabled-only";
     auth.create.mockImplementation(async (opts) => {
       auth.createCalls.push(opts);
-      return { rawId: fresh(fromB64url(id)),
-        getClientExtensionResults: () => ({ prf: { enabled: true } }) } as unknown as PublicKeyCredential;
+      return {
+        rawId: fresh(fromB64url(id)),
+        getClientExtensionResults: () => ({ prf: { enabled: true } }),
+      } as unknown as PublicKeyCredential;
     });
     const second = randomBytes(32);
-    await enrol(second); // MemoryBackend refuses a put that breaks the tok/next chain
+    // MemoryBackend refuses a put that breaks the tok/next chain
+    await enrol(second);
     expect(backend.store.size).toBe(1);
     expect(backend.store.get(slot.slotId)!.rev).toBe(1);
     await enrol(second);
@@ -279,7 +394,8 @@ describe("KP-5/KP-6 enrol and recover", () => {
 
   it("KP-5 enrol retries a keyslot write that loses a race, then succeeds", async () => {
     const put = backend.put.bind(backend);
-    const spy = vi.spyOn(backend, "put")
+    const spy = vi
+      .spyOn(backend, "put")
       .mockRejectedValueOnce(new BackendError("conflict"))
       .mockRejectedValueOnce(new BackendError("conflict"))
       .mockImplementation(put);
@@ -291,7 +407,10 @@ describe("KP-5/KP-6 enrol and recover", () => {
 
   it("KP-5 enrol rejects conflict after three lost races", async () => {
     vi.spyOn(backend, "put").mockRejectedValue(new BackendError("conflict"));
-    await expect(enrol(randomBytes(32))).rejects.toMatchObject({ name: "BurrowError", code: "conflict" });
+    await expect(enrol(randomBytes(32))).rejects.toMatchObject({
+      name: "BurrowError",
+      code: "conflict",
+    });
     expect(backend.put).toHaveBeenCalledTimes(3);
   });
 
@@ -305,7 +424,9 @@ describe("KP-5/KP-6 enrol and recover", () => {
 });
 
 describe("KP-6/KP-8 recover outcomes", () => {
-  beforeEach(() => { install(auth); });
+  beforeEach(() => {
+    install(auth);
+  });
 
   it("KP-8 recover() without a user gesture returns null and does not prompt", async () => {
     await enrol(randomBytes(32));
@@ -333,7 +454,8 @@ describe("KP-6/KP-8 recover outcomes", () => {
 
   it("KP-6 recover() returns null when no keyslot exists for the PRF output", async () => {
     await enrol(randomBytes(32));
-    expect(await recover(new MemoryBackend(), memStore())).toBeNull(); // a backend without the slot
+    // a backend without the slot
+    expect(await recover(new MemoryBackend(), memStore())).toBeNull();
     // A different passkey whose PRF output has no slot behind it.
     auth.creds.set("other-credential-id-xx", new Uint8Array(32).fill(0x99));
     auth.chosen = "other-credential-id-xx";
@@ -357,19 +479,27 @@ describe("KP-6/KP-8 recover outcomes", () => {
     await enrol(randomBytes(32));
     const slot = await deriveSlotKeys(await auth.expectedPrf(auth.chosen!));
     backend.store.get(slot.slotId)!.rev = 7;
-    await expect(recover(backend, memStore())).rejects.toMatchObject({ code: "decrypt-failed" });
+    await expect(recover(backend, memStore())).rejects.toMatchObject({
+      code: "decrypt-failed",
+    });
   });
 
   it("KP-6 recover() rejects prf-unsupported when the assertion carries no PRF result", async () => {
     await enrol(randomBytes(32));
     auth.getMode = "no-prf";
-    await expect(recover(backend, memStore())).rejects.toMatchObject({ code: "prf-unsupported" });
+    await expect(recover(backend, memStore())).rejects.toMatchObject({
+      code: "prf-unsupported",
+    });
   });
 
   it("KP-6 recover() rejects prf-unsupported when get() fails for a reason other than dismissal", async () => {
     await enrol(randomBytes(32));
-    auth.get.mockRejectedValueOnce(new DOMException("bad rp id", "SecurityError"));
-    await expect(recover(backend, memStore())).rejects.toMatchObject({ code: "prf-unsupported" });
+    auth.get.mockRejectedValueOnce(
+      new DOMException("bad rp id", "SecurityError"),
+    );
+    await expect(recover(backend, memStore())).rejects.toMatchObject({
+      code: "prf-unsupported",
+    });
   });
 
   it("KP-6 get() asks for user verification and evaluates PRF with the library salt", async () => {
@@ -377,14 +507,21 @@ describe("KP-6/KP-8 recover outcomes", () => {
     await enrol(randomBytes(32));
     await recover(backend, memStore());
     const pk = auth.getCalls[0]!.publicKey;
-    expect(pk).toMatchObject({ rpId: "example.com", userVerification: "required", timeout: 5_000 });
-    const first = (pk.extensions as { prf: { eval: { first: Uint8Array } } }).prf.eval.first;
+    expect(pk).toMatchObject({
+      rpId: "example.com",
+      userVerification: "required",
+      timeout: 5_000,
+    });
+    const first = (pk.extensions as { prf: { eval: { first: Uint8Array } } })
+      .prf.eval.first;
     expect(new TextDecoder().decode(first)).toBe(PRF_SALT_V1);
   });
 });
 
 describe("KP-9 cached credential id", () => {
-  beforeEach(() => { install(auth); });
+  beforeEach(() => {
+    install(auth);
+  });
 
   it("KP-9 enrol caches the credential id in the provider store", async () => {
     await enrol(randomBytes(32));
@@ -393,12 +530,19 @@ describe("KP-9 cached credential id", () => {
 
   it("KP-9 enrol caches no credential id when the keyslot write fails", async () => {
     backend.failWith = "network";
-    await expect(enrol(randomBytes(32))).rejects.toMatchObject({ code: "network" });
+    await expect(enrol(randomBytes(32))).rejects.toMatchObject({
+      code: "network",
+    });
     expect(store.map.has(CRED_KEY)).toBe(false);
   });
 
   it("KP-9 a failure to save the credential id does not fail an enrolment whose keyslot is written", async () => {
-    const failing: ProviderStore = { get: async () => undefined, set: async () => { throw new Error("quota"); } };
+    const failing: ProviderStore = {
+      get: async () => undefined,
+      set: async () => {
+        throw new Error("quota");
+      },
+    };
     const secret = randomBytes(32);
     await enrol(secret, backend, failing);
     expect(backend.store.size).toBe(1);
@@ -409,12 +553,15 @@ describe("KP-9 cached credential id", () => {
     const secret = randomBytes(32);
     await enrol(secret);
     const id = auth.chosen!;
-    auth.chosen = undefined; // a discoverable request would fail: only allowCredentials can succeed
+    // a discoverable request would fail: only allowCredentials can succeed
+    auth.chosen = undefined;
     expect(await recover()).toEqual(secret);
     const allow = auth.getCalls[0]!.publicKey.allowCredentials!;
     expect(allow).toHaveLength(1);
     expect(allow[0]!.type).toBe("public-key");
-    expect(b64url(new Uint8Array(allow[0]!.id as Uint8Array<ArrayBuffer>))).toBe(id);
+    expect(
+      b64url(new Uint8Array(allow[0]!.id as Uint8Array<ArrayBuffer>)),
+    ).toBe(id);
   });
 
   it("KP-9 without a cached id recover makes a discoverable request, then caches the id it got", async () => {
@@ -436,7 +583,9 @@ describe("KP-9 cached credential id", () => {
   it("KP-9 works without a provider store", async () => {
     const secret = randomBytes(32);
     await p.enrol({ app: "test", rootSecret: secret, backend });
-    expect(await p.recover({ app: "test", interactive: true, backend })).toEqual(secret);
+    expect(
+      await p.recover({ app: "test", interactive: true, backend }),
+    ).toEqual(secret);
     expect(auth.getCalls[0]!.publicKey.allowCredentials).toEqual([]);
   });
 });
@@ -468,7 +617,9 @@ describe("KP-3 through the StorageArea", () => {
     install(auth, { uv: false });
     world = new World();
     const a = await world.device().open({ keyProvider: passkey() });
-    await expect(a.protect("passkey")).rejects.toMatchObject({ code: "prf-unsupported" });
+    await expect(a.protect("passkey")).rejects.toMatchObject({
+      code: "prf-unsupported",
+    });
     expect(auth.create).not.toHaveBeenCalled();
   });
 });

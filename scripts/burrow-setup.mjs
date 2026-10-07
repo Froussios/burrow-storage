@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// FS-10: `npx burrow-setup firestore` prints the exact steps to create the shared Burrow store on
-// Firebase's Spark plan. `--run` performs them with scripts/setup.sh (needs gcloud and a browser login).
+// FS-10: `npx burrow-setup firestore` prints the exact steps to create the
+// shared Burrow store on Firebase's Spark plan. `--run` performs them with
+// scripts/setup.sh (needs gcloud and a browser login).
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -10,7 +11,9 @@ const [target, ...flags] = process.argv.slice(2);
 const project = process.env.PROJECT ?? "<your-project-id>";
 
 if (target !== "firestore") {
-  console.log("usage: npx burrow-setup firestore [--run]\n\nEnv: PROJECT, LOCATION, REFERRERS (see below).");
+  console.log(
+    "usage: npx burrow-setup firestore [--run]\n\nEnv: PROJECT, LOCATION, REFERRERS (see below).",
+  );
   process.exit(target ? 1 : 0);
 }
 
@@ -53,9 +56,15 @@ Automate steps 1-5 with: npx burrow-setup firestore --run   (needs gcloud; opens
 
 if (flags.includes("--run")) {
   if (!process.env.PROJECT || !process.env.LOCATION) {
-    console.error("--run needs PROJECT (your new project id) and LOCATION (e.g. us-central1) in the environment.");
+    console.error(
+      "--run needs PROJECT (your new project id) and LOCATION (e.g. us-central1) in the environment.",
+    );
     process.exit(1);
   }
-  const r = spawnSync("bash", [join(pkg, "scripts", "setup.sh")], { cwd: join(pkg, "firebase"), stdio: "inherit", env: { ...process.env, PROJECT: project } });
+  const r = spawnSync("bash", [join(pkg, "scripts", "setup.sh")], {
+    cwd: join(pkg, "firebase"),
+    stdio: "inherit",
+    env: { ...process.env, PROJECT: project },
+  });
   process.exit(r.status ?? 1);
 }

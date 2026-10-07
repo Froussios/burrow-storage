@@ -20,6 +20,7 @@ jobs:
       - run: npm ci
       - run: mkdir -p node_modules/.cache
       - run: npm run typecheck
+      - run: npm run format:check
       - run: npm test
       - run: npm run build
       - run: npm run size
@@ -48,7 +49,7 @@ jobs:
       - uses: actions/setup-node@v5
         with: { node-version: 24, cache: npm }
       - uses: actions/setup-java@v5
-        with: { distribution: temurin, java-version: "21" }   # the Firestore emulator
+        with: { distribution: temurin, java-version: "21" } # the Firestore emulator
       - run: npm ci
       - run: npx playwright install --with-deps chromium firefox webkit
       - run: npm run build

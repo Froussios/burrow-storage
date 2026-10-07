@@ -1,0 +1,6 @@
+# Prettier also honours .gitignore (dist/, test-results/, node_modules/, ...).
+package-lock.json
+firebase/tests/package-lock.json
+# Prose is wrapped by hand; docs/history/requirements.md is a snapshot of an
+# external doc.
+*.md

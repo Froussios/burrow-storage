@@ -11,8 +11,14 @@ function cacheSuite(name: string, factory: () => Make) {
     it("stores items, meta and device state", async () => {
       const make = factory();
       const c = await make("a");
-      await c.putItems([["k", { value: { x: 1 }, ts: 5, dirty: true }], ["t", { ts: 6, deleted: true, rev: 2 }]]);
-      expect(Object.fromEntries(await c.loadItems())).toEqual({ k: { value: { x: 1 }, ts: 5, dirty: true }, t: { ts: 6, deleted: true, rev: 2 } });
+      await c.putItems([
+        ["k", { value: { x: 1 }, ts: 5, dirty: true }],
+        ["t", { ts: 6, deleted: true, rev: 2 }],
+      ]);
+      expect(Object.fromEntries(await c.loadItems())).toEqual({
+        k: { value: { x: 1 }, ts: 5, dirty: true },
+        t: { ts: 6, deleted: true, rev: 2 },
+      });
       await c.putItems([["k", null]]);
       expect([...(await c.loadItems()).keys()]).toEqual(["t"]);
       await c.setMeta({ manifestRev: 3 });
@@ -27,27 +33,53 @@ function cacheSuite(name: string, factory: () => Make) {
       const make = factory();
       const c = await make("a");
       await c.putItems([["keep", { value: "old", ts: 1 }]]);
-      // A function is not structured-cloneable (DataCloneError). Core never produces one (values
-      // pass assertJson first), but any failure mid-batch must leave the cache as it was.
+      // A function is not structured-cloneable (DataCloneError). Core never
+      // produces one (values pass assertJson first), but any failure mid-batch
+      // must leave the cache as it was.
       const bad = { value: () => 1, ts: 3 } as unknown as CachedItem;
-      await expect(c.putItems([["first", { value: 1, ts: 2 }], ["keep", { value: "new", ts: 2 }], ["bad", bad], ["last", { value: 2, ts: 4 }]])).rejects.toThrow();
-      expect(Object.fromEntries(await c.loadItems())).toEqual({ keep: { value: "old", ts: 1 } });
+      await expect(
+        c.putItems([
+          ["first", { value: 1, ts: 2 }],
+          ["keep", { value: "new", ts: 2 }],
+          ["bad", bad],
+          ["last", { value: 2, ts: 4 }],
+        ]),
+      ).rejects.toThrow();
+      expect(Object.fromEntries(await c.loadItems())).toEqual({
+        keep: { value: "old", ts: 1 },
+      });
       // The cache is still usable afterwards.
       await c.putItems([["after", { value: 3, ts: 5 }]]);
-      expect([...(await c.loadItems()).keys()].sort()).toEqual(["after", "keep"]);
+      expect([...(await c.loadItems()).keys()].sort()).toEqual([
+        "after",
+        "keep",
+      ]);
     });
 
     it("SYNC-2 updateItems is atomic too: a failing record mid-batch writes nothing", async () => {
       const make = factory();
       const c = await make("a");
-      await c.putItems([["x", { value: 1, ts: 1 }], ["y", { value: 1, ts: 1 }]]);
-      await expect(c.updateItems(["x", "y"], (k, cur) => (k === "y" ? ({ value: () => 2, ts: 2 } as unknown as CachedItem) : { ...cur!, value: 2, ts: 2 }))).rejects.toThrow();
-      expect(Object.fromEntries(await c.loadItems())).toEqual({ x: { value: 1, ts: 1 }, y: { value: 1, ts: 1 } });
+      await c.putItems([
+        ["x", { value: 1, ts: 1 }],
+        ["y", { value: 1, ts: 1 }],
+      ]);
+      await expect(
+        c.updateItems(["x", "y"], (k, cur) =>
+          k === "y"
+            ? ({ value: () => 2, ts: 2 } as unknown as CachedItem)
+            : { ...cur!, value: 2, ts: 2 },
+        ),
+      ).rejects.toThrow();
+      expect(Object.fromEntries(await c.loadItems())).toEqual({
+        x: { value: 1, ts: 1 },
+        y: { value: 1, ts: 1 },
+      });
     });
 
     it("keeps apps apart: clearing one never touches another", async () => {
       const make = factory();
-      const a = await make("a"), b = await make("b");
+      const a = await make("a"),
+        b = await make("b");
       await a.putItems([["k", { value: 1, ts: 1 }]]);
       await b.putItems([["k", { value: 2, ts: 1 }]]);
       await a.clearItems();
@@ -64,8 +96,14 @@ function cacheSuite(name: string, factory: () => Make) {
 
     it("KP-2 persists a non-extractable CryptoKey", async () => {
       const make = factory();
-      const kw = await crypto.subtle.generateKey({ name: "AES-KW", length: 256 }, false, ["wrapKey", "unwrapKey"]);
-      await (await make("a")).setDevice({ kw, wrapped: new Uint8Array([1, 2, 3]) });
+      const kw = await crypto.subtle.generateKey(
+        { name: "AES-KW", length: 256 },
+        false,
+        ["wrapKey", "unwrapKey"],
+      );
+      await (
+        await make("a")
+      ).setDevice({ kw, wrapped: new Uint8Array([1, 2, 3]) });
       const dev = await (await make("a")).getDevice();
       expect(dev.kw?.extractable).toBe(false);
       expect(dev.kw?.algorithm.name).toBe("AES-KW");
@@ -74,15 +112,22 @@ function cacheSuite(name: string, factory: () => Make) {
   });
 }
 
-cacheSuite("memory", () => { const d = new MemoryDevice(); return async (app) => new MemoryCache(app, d); });
-cacheSuite("indexeddb", () => { const idb = new IDBFactory(); return (app) => IdbCache.open(app, idb); });
+cacheSuite("memory", () => {
+  const d = new MemoryDevice();
+  return async (app) => new MemoryCache(app, d);
+});
+cacheSuite("indexeddb", () => {
+  const idb = new IDBFactory();
+  return (app) => IdbCache.open(app, idb);
+});
 
 describe("IdbCache across connections", () => {
   it("a new app's store is added while another connection is open (other tab)", async () => {
     const idb = new IDBFactory();
     const a = await IdbCache.open("a", idb);
     await a.putItems([["k", { value: 1, ts: 1 }]]);
-    const b = await IdbCache.open("b", idb); // bumps the version; `a` closes and reconnects lazily
+    // bumps the version; `a` closes and reconnects lazily
+    const b = await IdbCache.open("b", idb);
     await b.putItems([["k", { value: 2, ts: 1 }]]);
     expect((await a.loadItems()).get("k")?.value).toBe(1);
     await a.putItems([["j", { value: 3, ts: 1 }]]);

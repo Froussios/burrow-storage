@@ -1,12 +1,19 @@
 <!doctype html>
-<meta charset="utf-8">
+<meta charset="utf-8" />
 <title>Burrow test harness</title>
 <script>
   // The emulator address comes from the test (?emu=host:port).
   const emu = new URLSearchParams(location.search).get("emu");
   if (emu) {
     const [host, port] = emu.split(":");
-    window.BURROW = { firestore: { apiKey: "emulator", projectId: "burrow-rules-test", appId: "1:0:web:0", emulator: { host, port: Number(port) } } };
+    window.BURROW = {
+      firestore: {
+        apiKey: "emulator",
+        projectId: "burrow-rules-test",
+        appId: "1:0:web:0",
+        emulator: { host, port: Number(port) },
+      },
+    };
   }
 </script>
 <script src="/dist/burrow.min.js"></script>

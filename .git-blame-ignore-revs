@@ -1,0 +1,8 @@
+# Mechanical reformats, skipped by GitHub blame and by
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# Set up Prettier at 80 columns and reformat the repo
+184569c78c005ba0caf5bcf22abdfd2a2fb760be
+
+# Wrap all comments at 80 columns
+eff6a829b011723fd63bb2c925b06133443fb6ef

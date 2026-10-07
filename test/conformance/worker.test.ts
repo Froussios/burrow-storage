@@ -1,5 +1,6 @@
-// Requirements brief, Acceptance criteria: "Swapping FirestoreBackend for MemoryBackend and for a
-// WorkerBackend stub passes the same conformance suite unchanged."
+// Requirements brief, Acceptance criteria: "Swapping FirestoreBackend for
+// MemoryBackend and for a WorkerBackend stub passes the same conformance suite
+// unchanged."
 import { backendConformance } from "./suite.js";
 import { WorkerBackend } from "./worker.js";
 

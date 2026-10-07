@@ -1,9 +1,15 @@
 import type { AppMeta, Cache, CachedItem, DeviceMeta } from "./types.js";
 
-/** Holds what a device would keep in IndexedDB. One per simulated device; the page has one. */
+/**
+ * Holds what a device would keep in IndexedDB. One per simulated device; the
+ * page has one.
+ */
 export class MemoryDevice {
   readonly device: DeviceMeta = {};
-  readonly apps = new Map<string, { items: Map<string, CachedItem>; meta: AppMeta }>();
+  readonly apps = new Map<
+    string,
+    { items: Map<string, CachedItem>; meta: AppMeta }
+  >();
 }
 
 const pageDevice = new MemoryDevice();
@@ -23,16 +29,27 @@ export class MemoryCache implements Cache {
     this.#app = a;
   }
 
-  async loadItems() { return new Map([...this.#app.items].map(([k, v]) => [k, copy(v)])); }
-
-  async putItems(entries: Iterable<[string, CachedItem | null]>) {
-    // Copy everything first so a value that cannot be cloned leaves the batch unwritten.
-    const list = [...entries].map(([k, v]) => [k, v && copy(v)] as const);
-    for (const [k, v] of list) v ? this.#app.items.set(k, v) : this.#app.items.delete(k);
+  async loadItems() {
+    return new Map([...this.#app.items].map(([k, v]) => [k, copy(v)]));
   }
 
-  async updateItems(keys: string[], fn: (key: string, cur: CachedItem | undefined) => CachedItem | null | undefined) {
-    // Compute and copy every change before applying any, so the batch is all or nothing.
+  async putItems(entries: Iterable<[string, CachedItem | null]>) {
+    // Copy everything first so a value that cannot be cloned leaves the batch
+    // unwritten.
+    const list = [...entries].map(([k, v]) => [k, v && copy(v)] as const);
+    for (const [k, v] of list)
+      v ? this.#app.items.set(k, v) : this.#app.items.delete(k);
+  }
+
+  async updateItems(
+    keys: string[],
+    fn: (
+      key: string,
+      cur: CachedItem | undefined,
+    ) => CachedItem | null | undefined,
+  ) {
+    // Compute and copy every change before applying any, so the batch is all or
+    // nothing.
     const changes: [string, CachedItem | null][] = [];
     for (const k of keys) {
       const cur = this.#app.items.get(k);
@@ -47,13 +64,24 @@ export class MemoryCache implements Cache {
     return out;
   }
 
-  async clearItems() { this.#app.items.clear(); }
-  async getMeta() { return copy(this.#app.meta); }
-  async setMeta(patch: Partial<AppMeta>) { Object.assign(this.#app.meta, copy(patch)); }
-  async getDevice() { return { ...this.#dev.device }; }
+  async clearItems() {
+    this.#app.items.clear();
+  }
+  async getMeta() {
+    return copy(this.#app.meta);
+  }
+  async setMeta(patch: Partial<AppMeta>) {
+    Object.assign(this.#app.meta, copy(patch));
+  }
+  async getDevice() {
+    return { ...this.#dev.device };
+  }
 
   async setDevice(patch: Partial<DeviceMeta>) {
-    for (const [k, v] of Object.entries(patch) as [keyof DeviceMeta, unknown][]) {
+    for (const [k, v] of Object.entries(patch) as [
+      keyof DeviceMeta,
+      unknown,
+    ][]) {
       if (v === undefined) delete this.#dev.device[k];
       else (this.#dev.device as Record<string, unknown>)[k] = v;
     }

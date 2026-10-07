@@ -2,7 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { World, settle, until } from "../support/devices.js";
 
 let world: World;
-afterEach(() => { world?.close(); vi.restoreAllMocks(); });
+afterEach(() => {
+  world?.close();
+  vi.restoreAllMocks();
+});
 
 describe("SYNC-6 pull triggers", () => {
   it("SYNC-6 a page focus pulls changes made on another device", async () => {
@@ -10,15 +13,19 @@ describe("SYNC-6 pull triggers", () => {
     const a = await world.device().open();
     const bDev = world.device();
     // Without a live listener, only a trigger brings remote changes in.
-    Object.defineProperty(bDev.backend, "capabilities", { value: { ...bDev.backend.capabilities, subscribe: false } });
+    Object.defineProperty(bDev.backend, "capabilities", {
+      value: { ...bDev.backend.capabilities, subscribe: false },
+    });
     const b = await bDev.open();
     await b.link({ code: await a.exportCode() });
     await settle(b);
     await a.set({ theme: "dark" });
     await settle(a);
-    expect(await b.get("theme")).toEqual({}); // no polling (syncIntervalMs 0), no listener
+    // no polling (syncIntervalMs 0), no listener
+    expect(await b.get("theme")).toEqual({});
     const real = Date.now.bind(Date);
-    vi.spyOn(Date, "now").mockImplementation(() => real() + 10_000); // past the focus throttle
+    // past the focus throttle
+    vi.spyOn(Date, "now").mockImplementation(() => real() + 10_000);
     bDev.win.dispatchEvent(new Event("focus"));
     await until(async () => (await b.get("theme")).theme === "dark");
   });
@@ -54,7 +61,9 @@ describe("ERR-3 debug lines", () => {
     await a.set({ k1: "secret value", k2: 2 });
     await settle(a);
     const lines: unknown[][] = [];
-    vi.spyOn(console, "debug").mockImplementation((...args: unknown[]) => { lines.push(args); });
+    vi.spyOn(console, "debug").mockImplementation((...args: unknown[]) => {
+      lines.push(args);
+    });
     const b = await world.device().open({ debug: true });
     await b.link({ code: await a.exportCode() });
     await settle(b);

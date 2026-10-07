@@ -60,6 +60,8 @@ then a smoke test against it), `release.yml` (npm publish with provenance on `v*
 ```
 npm ci
 npm run typecheck      # tsc --noEmit
+npm run format         # prettier --write ., then scripts/wrap-comments.mjs wraps comments at 80
+npm run format:check   # both in check mode (runs in CI)
 npm test               # vitest: test/unit, test/property, test/conformance/memory.test.ts
 npm run test:watch
 npm run build          # tsup → dist/index.js, dist/firestore.js, dist/burrow.min.js, dist/burrow-firestore.js
