@@ -4,20 +4,21 @@
 // Every key carries a version `{ ts, h?, deleted? }`. When two devices
 // disagree about a key, the version that sorts higher under `compare()` wins,
 // everywhere, so all replicas converge on the same value without coordinating.
-// The rules, with their ids in docs/requirements.md:
+// The rules, with their ids in docs/history/requirements.md:
 //
 //   SYNC-10  Greater `ts` wins. Equal `ts` is broken by a hash of the value
 //            (see `compare`, docs/decisions.md D-5). A delete is not an
 //            absence: it is a tombstone entry that competes like a value and
 //            is kept for 30 days, so a device that was offline and still holds
 //            the old value cannot bring it back.
-//   SYNC-11  Clocks between devices drift. A local write is stamped above
-//            anything this device has already seen, so it is never silently
-//            lost to a remote entry from a fast clock.
+//   SYNC-11  Clocks between devices drift. A local write is stamped above the
+//            version it replaces and above the greatest `ts` seen in any pull
+//            (see `nextTs`), so it is not lost to a remote entry from a fast
+//            clock.
 //   SYNC-12  `remove()` / `clear()` write tombstones (the store side of this
 //            lives in core.ts).
 //
-// Design detail: docs/architecture.md §7.3. Everything here is pure (no I/O,
+// Design detail: docs/architecture.md §7. Everything here is pure (no I/O,
 // clock passed in) so it can be property-tested for commutativity and
 // convergence.
 import { hex, sha256, utf8 } from "../bytes.js";
