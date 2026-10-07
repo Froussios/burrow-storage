@@ -58,8 +58,8 @@ device generates the first time your site runs and remembers, the way a browser 
 Everything follows from the token. It derives the ids under which the user's documents are stored,
 the key that encrypts them, and the key that authorises writes to them. The store holds no
 identity, because the ids are unguessable and the content is opaque. To use the same data on
-another device, the user carries the token across (typed, pasted or as a link) or unlocks a
-passkey backup of it, and that device derives the same ids and keys.
+another device, the user carries the token across (typed or pasted, ideally from a password
+manager) or unlocks a passkey backup of it, and that device derives the same ids and keys.
 
 ### How it compares
 
@@ -107,7 +107,6 @@ runs there. Everyone else in the chain handles ciphertext.
 | Anyone with a copy of the database | Ciphertext they can neither decrypt nor attribute to a user | Nothing |
 | Anyone who learns one document id | That document's ciphertext | Nothing: each write needs a one-time write token derived from the storage token |
 | Anyone who reads your page's Firebase config | Nothing more | Create junk documents at unused ids, spending your free quota and storage |
-| Anyone who gets the user to open a `#burrow=` link they made | What the user writes afterwards | Switch the user's device to a token they hold, without a prompt ([details](#reaching-the-data-from-another-device)) |
 
 This protects users from the store and whoever runs it. It does not protect them from the site
 itself: your page's code holds the token, so users trust the code you serve, as they do with any
@@ -269,7 +268,7 @@ Full reference with every signature and error: [docs/api.md](docs/api.md).
 
 | Member | What it does |
 | --- | --- |
-| `burrow(config)` | Opens the store for one `app`. Resolves from the local cache, usually within a few milliseconds, with no user interaction; a `#burrow=` link in the URL makes it wait for that link to be adopted and synced. Calling it again with the same `app` on the same page returns the same instance. |
+| `burrow(config)` | Opens the store for one `app`. Resolves from the local cache, usually within a few milliseconds, with no user interaction. Calling it again with the same `app` on the same page returns the same instance. |
 | `get(keys?, { fresh? })` | `chrome.storage` shapes: nothing (all keys), `"key"`, `["a","b"]`, or `{ key: default }`. `fresh: true` fetches from the store first. |
 | `set(items)` | Any JSON values. Resolves once written locally. Non-JSON values (`Date`, `Map`, functions, `undefined`, `NaN`) are rejected with a `TypeError`. |
 | `remove(keys)`, `clear()` | Delete keys everywhere; a tombstone carries the delete to other devices. |
@@ -297,22 +296,18 @@ fails.
 ## Reaching the data from another device
 
 The first device generates the storage token on first use and remembers it. Another device obtains
-the same token in one of three ways:
+the same token in one of two ways:
 
 | Way | First device | Other device |
 | --- | --- | --- |
 | Storage token | `BurrowArea.exportCode()` | `BurrowArea.link({ code })` |
-| Link | A URL ending in `#burrow=<token>` | `burrow()` adopts it on load |
 | Passkey backup | `BurrowArea.protect("passkey")` | `BurrowArea.link({ provider: "passkey" })` |
 
 - **Storage token.** 56 characters, such as
   `07DV-1XKY-2X98-DRCP-DJV6-FC2E-459V-AJTY-26K2-XJFQ-9BXZ-QRNF-X0F5-Z1XS` (made up; it fails its
   checksum). Case, spaces and hyphens are ignored, and `O`/`0` and `I`/`L`/`1` read the same. A
-  bad checksum rejects with `bad-code` before any network call.
-- **Link.** Adopted on **every** page load, without asking, then removed from the address bar.
-  Whoever crafts a link with *their own* token can switch a device to it and read what the user
-  writes next. Sites that do not offer links should drop the fragment before calling `burrow()`
-  ([how](docs/sync-and-tokens.md#links)).
+  bad checksum rejects with `bad-code` before any network call. The natural place to keep it is a
+  password manager.
 - **Passkey backup.** Stores the token in a *keyslot* document, encrypted under a key that only
   the passkey can derive (WebAuthn PRF). Needs HTTPS or `localhost` and PRF support, which still
   varies; without it `protect("passkey")` rejects with `prf-unsupported`.
@@ -383,22 +378,21 @@ is ciphertext under a key derived from it:
 - **On the device:** the token is wrapped with AES-KW under a non-extractable WebCrypto key that is
   stored beside it in IndexedDB. That stops a script from exporting the token, but not someone
   who copies the browser profile. Cached items are plaintext, as with `localStorage`.
-- **Leaving the device:** the token leaves only when the user carries it, as text, as a link, or
-  inside a passkey keyslot.
+- **Leaving the device:** the token leaves only when the user carries it, as text, or inside a
+  passkey keyslot.
 
 Out of scope, as for `localStorage`: a malicious script on your own origin, and the code your site
 serves. Ship a strict CSP and use SRI for the script tag. Burrow needs no `eval`, no inline script
 and no third-party host, and the demo runs under `default-src 'none'`. [SECURITY.md](SECURITY.md)
 has the derivation, the formats, the threat table, and the plain list of what Burrow does *not*
-protect against: copied browser profiles, links from strangers, junk filling the store, and
-timing metadata.
+protect against: copied browser profiles, junk filling the store, and timing metadata.
 
 ## Documentation
 
 | | |
 | --- | --- |
 | [docs/api.md](docs/api.md) | Full API reference: config, methods, events, errors, types |
-| [docs/sync-and-tokens.md](docs/sync-and-tokens.md) | Storage tokens, passkey backups, links, `rememberDevice`, what to show users |
+| [docs/sync-and-tokens.md](docs/sync-and-tokens.md) | Storage tokens, passkey backups, `rememberDevice`, what to show users |
 | [docs/storage-standards.md](docs/storage-standards.md) | Setting up, and how Burrow differs from Web Storage and `chrome.storage` |
 | [docs/firestore-setup.md](docs/firestore-setup.md) | Creating and running the store: rules, costs, quotas, abuse |
 | [docs/extending.md](docs/extending.md) | Writing a backend for another store, or a custom unlock method |
