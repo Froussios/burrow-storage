@@ -33,6 +33,8 @@ export interface Env {
 const APP_RE = /^[a-z0-9-]{1,64}$/;
 const CONFLICT_BACKOFF = [200, 800, 3000];
 const HIDDEN_DETACH_MS = 5 * 60_000;
+/** SYNC-6: a focus pulls only if no pass started this recently (focus fires on every window switch). */
+const FOCUS_MIN_MS = 5_000;
 const jitter = (ms: number) => ms * (0.75 + Math.random() * 0.5);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -100,6 +102,7 @@ export class Core implements BurrowArea {
 
   #running: Promise<void> | null = null;
   #rerun = false;
+  #passStartedAt = 0;
   #suppressEmit = false;
   #pushTimer: ReturnType<typeof setTimeout> | undefined;
   #pollTimer: ReturnType<typeof setInterval> | undefined;
@@ -195,8 +198,8 @@ export class Core implements BurrowArea {
     // API-11, SYNC-5: flush facade writes and push when the page is hidden or unloaded.
     on(win, "pagehide", () => void this.#hide());
     on(win, "visibilitychange", () => this.#visible() ? this.#show() : void this.#hide());
-    // SYNC-6: pull on focus too; a pass already started by visibilitychange covers it.
-    on(win, "focus", () => { if (this.#visible() && !this.#running) void this.#sync(); });
+    // SYNC-6: pull on focus too, unless a pass started moments ago (e.g. by visibilitychange).
+    on(win, "focus", () => { if (this.#visible() && Date.now() - this.#passStartedAt >= FOCUS_MIN_MS) void this.#sync(); });
     this.#channel = this.#env.channel(`burrow:${this.app}`);
     if (this.#channel) this.#channel.onmessage = (e) => void this.#onMessage(e.data);
     if (this.#interval > 0) this.#pollTimer = setInterval(() => { if (this.#visible()) void this.#sync(); }, this.#interval);
@@ -534,6 +537,7 @@ export class Core implements BurrowArea {
     this.#running = (async () => {
       do {
         this.#rerun = false;
+        this.#passStartedAt = Date.now();
         try {
           await this.#lock("sync", () => this.#pass(keepalive));
           this.#retryDelay = 0;
@@ -675,7 +679,6 @@ export class Core implements BurrowArea {
         const env = envs[i];
         if (env) remote.set(fetch[i]!, await this.#openItem(fetch[i]!, ids[i]!, env));
       }
-      const before = Object.keys(changes).length;
       await this.#applyRemote(remote, changes);
       let pruned = 0;
       // Synced keys missing from an existing manifest were pruned tombstones: drop them.
@@ -690,8 +693,8 @@ export class Core implements BurrowArea {
           pruned++;
         }
       }
-      // ERR-3: one merge line when remote entries were considered against the local copy.
-      if (remote.size || pruned) this.#log("merge", { remote: remote.size, applied: Object.keys(changes).length - before, pruned });
+      // ERR-3: a merge line for each manifest read that brought remote entries or pruned keys.
+      if (remote.size || pruned) this.#log("merge", { attempt, remote: remote.size, pruned });
       this.#log("pull", { rev: menv?.rev ?? null, fetched: fetch.length, ms: Date.now() - t0 });
 
       // 3. push dirty items, each on its own chain, in parallel

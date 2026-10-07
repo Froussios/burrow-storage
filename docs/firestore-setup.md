@@ -101,6 +101,7 @@ Spark, per day, shared by every app and user on the project: **50 000 reads, 20 
 | Operation | Reads | Writes |
 | --- | --- | --- |
 | A sync pass with nothing new | 1 (the manifest) | 0 |
+| The page becoming visible or regaining focus | One sync pass; a focus within five seconds of the last pass costs nothing | 0 |
 | Pulling *k* changed items | 1 + *k* | 0 |
 | Pushing *n* changed items | *n* + 2, plus 1 for each key this device has not synced before | *n* + 1 |
 | Live listener on the manifest | 1 each time it attaches, then 1 per manifest change, this device's own pushes included | 0 |
@@ -112,11 +113,11 @@ which read the document before writing it. A push reads the manifest twice: once
 pulls, and again inside the transaction that writes it. The listener attaches when the page
 loads, and again when it becomes visible after more than five hidden minutes.
 
-Writes are debounced (`debounceMs`, 1.5 s) and coalesced, so a user typing into a draft field
-costs one write per pause, not per keystroke. Polling runs every `syncIntervalMs` (30 s) while a
-tab is visible: about 120 reads an hour, or 2 900 a day for an always-visible tab. The daily
-50 000 reads therefore cover roughly 400 hours of open, visible tabs across all your sites. Raise
-the interval, or set it to 0 and rely on the listener plus visibility triggers, for sites with
+Writes are debounced (`debounceMs`, 1.5 s) and coalesced, so a user typing into a draft field costs
+one write per pause, not per keystroke. Polling runs every `syncIntervalMs` (30 s) while a tab is
+visible: about 120 reads an hour, or 2 900 a day for an always-visible tab. The daily 50 000 reads
+therefore cover roughly 400 hours of open, visible tabs across all your sites. Raise the interval,
+or set it to 0 and rely on the listener plus the visibility and focus triggers, for sites with
 long-lived tabs.
 
 When a ceiling is hit the store answers `resource-exhausted`; Burrow sets `status` to `"offline"`

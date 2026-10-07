@@ -397,6 +397,14 @@ describe("KP-9 cached credential id", () => {
     expect(store.map.has(CRED_KEY)).toBe(false);
   });
 
+  it("KP-9 a failure to save the credential id does not fail an enrolment whose keyslot is written", async () => {
+    const failing: ProviderStore = { get: async () => undefined, set: async () => { throw new Error("quota"); } };
+    const secret = randomBytes(32);
+    await enrol(secret, backend, failing);
+    expect(backend.store.size).toBe(1);
+    expect(await recover(backend, memStore())).toEqual(secret);
+  });
+
   it("KP-9 recover passes the cached id as allowCredentials", async () => {
     const secret = randomBytes(32);
     await enrol(secret);

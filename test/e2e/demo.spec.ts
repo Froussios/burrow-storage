@@ -74,8 +74,9 @@ test("API-8 forgetting the device starts a new token on reload, and the old toke
   await expect(page.locator("#status")).toHaveText("synced", { timeout: 15_000 });
   const before = (await page.locator("#code").textContent())!;
   page.on("dialog", (d) => void d.accept());
+  const reloaded = page.waitForEvent("load");
   await page.locator("#forget").click();
-  await page.waitForURL("**/demo/index.html");
+  await reloaded;
   await expect(page.locator("body")).toHaveAttribute("data-ready", "true");
   await expect(page.locator("#code")).toHaveText(TOKEN);
   await expect(page.locator("#code")).not.toHaveText(before);

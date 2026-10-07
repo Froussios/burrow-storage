@@ -1,6 +1,6 @@
 // KP-5..10, ENC-11, SEC-7: a passkey unlocks a keyslot holding the root secret, wrapped under a key
 // derived from the passkey's PRF output. The passkey never becomes the secret.
-import { b64url, fromB64url, randomBytes, utf8 } from "../bytes.js";
+import { b64url, fromB64url, randomBytes, utf8, zeroise } from "../bytes.js";
 import { PRF_SALT_V1, deriveSlotKeys, type SlotKeys } from "../codec/derive.js";
 import { type DocCipher, open, seal } from "../codec/envelope.js";
 import { BackendError, BurrowError } from "../errors.js";
@@ -36,7 +36,7 @@ async function writeSlot(backend: Backend, s: SlotKeys, rootSecret: Uint8Array):
     try {
       env = await seal(slotCipher(s), s.slotId, rev, plain, Date.now());
     } finally {
-      plain.fill(0); // SEC-1
+      zeroise(plain); // SEC-1
     }
     try {
       await backend.put(s.slotId, env, cur ? cur.rev : null);
@@ -126,7 +126,9 @@ export function passkey(options: PasskeyOptions = {}): KeyProvider {
       } finally {
         out.fill(0);
       }
-      await store?.set(CRED, b64url(rawId)); // KP-9, only once a keyslot backs this passkey
+      // KP-9: remember the passkey only once a keyslot backs it. The id is a hint for recover(), so
+      // failing to save it must not fail an enrolment whose keyslot is already written.
+      await store?.set(CRED, b64url(rawId)).catch(() => {});
     },
 
     // KP-6: one passkey prompt per new device.

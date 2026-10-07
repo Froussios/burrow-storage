@@ -129,7 +129,12 @@
         say(e.code === "would-orphan" ? "Kept this device as it was." : `Could not forget this device (${e.code ?? e.name}).`);
         return;
       }
-      await store.unlink({ discardLocal: true });
+      try {
+        await store.unlink({ discardLocal: true });
+      } catch (e2) {
+        say(`Could not forget this device (${e2.code ?? e2.name}).`);
+        return;
+      }
     }
     location.reload();
   });

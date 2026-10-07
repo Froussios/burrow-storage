@@ -81,7 +81,7 @@ test("oversize ct is rejected", async () => {
   await assertFails(setDoc(doc(db(), "burrow", newId()), { ...envelope(0, "t0", "t1"), ct: "A".repeat(1000001) }));
 });
 
-test("an iv that is not 16 characters is rejected", async () => {
+test("FS-2 an iv that is not 16 characters is rejected", async () => {
   for (const iv of [b64url(randomBytes(8)), b64url(randomBytes(16)), ""]) {
     await assertFails(setDoc(doc(db(), "burrow", newId()), { ...envelope(0, "t0", "t1"), iv }));
   }

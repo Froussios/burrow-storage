@@ -80,10 +80,10 @@ rejected promise, and an instance closed by `unlink()`, are removed so the next 
    app's items and reset its meta. Load the mirror from the cache. Read `protection` from the
    device store.
 5. Warn once if the backend declares `writeAuth: false`.
-6. `#start()`: listen for `pagehide` and `visibilitychange`; open `BroadcastChannel("burrow:" +
-   app)`; start the poll timer (`syncIntervalMs > 0`, fires only while visible); subscribe to the
-   manifest if the backend can; kick off the first sync (not awaited); schedule the
-   `onUnprotected` check.
+6. `#start()`: listen for `pagehide`, `visibilitychange` and `focus`; open
+   `BroadcastChannel("burrow:" + app)`; start the poll timer (`syncIntervalMs > 0`, fires only while
+   visible); subscribe to the manifest if the backend can; kick off the first sync (not awaited);
+   schedule the `onUnprotected` check.
 7. `#readFragment()`: if `location.hash` carries `burrow=<token>`, remove it with
    `history.replaceState` and run `link()` with `source: "link"`; a failure sets `status` to
    `"error"`. `burrow()` resolves after this.
@@ -169,12 +169,13 @@ when the page is hidden.
 ### 6.1 Triggers and coalescing
 
 `#sync()` is called by: `#start()` at start-up; the debounce timer after a local write; the poll
-timer (visible only); `visibilitychange` → visible; the backend's manifest subscription when the
-revision changed; `syncNow()`; `link()` (including a `#burrow=` link read at start-up); `get(null,
-{ fresh: true })`; and `#hide()` with `keepalive = true` when dirty items exist. Calls while a
-pass is running set `#rerun` and share the running promise; the loop repeats until nothing
-requested another pass. A pass runs under the Web Lock `burrow:<ns>:<app>:sync`, so two tabs of
-the same app never push at once. `#sync()` never rejects; failures go to `#failed()`.
+timer (visible only); `visibilitychange` → visible; window `focus` while visible, unless a pass
+started in the last five seconds; the backend's manifest subscription when the revision changed;
+`syncNow()`; `link()` (including a `#burrow=` link read at start-up); `get(null, { fresh: true })`;
+and `#hide()` with `keepalive = true` when dirty items exist. Calls while a pass is running set
+`#rerun` and share the running promise; the loop repeats until nothing requested another pass. A
+pass runs under the Web Lock `burrow:<ns>:<app>:sync`, so two tabs of the same app never push at
+once. `#sync()` never rejects; failures go to `#failed()`.
 
 ### 6.2 One pass (`#pass`)
 
@@ -281,10 +282,10 @@ because `link({ code })` decodes directly). `passkey(options)`:
 - `enrol()`: `credentials.create` with a discoverable credential, user verification, ES256/RS256,
   no attestation, the PRF extension with salt `burrow/prf/v1`, `user.name` = app id (or
   `userName`), `rp.id` only when `rpId` is given. A dismissed prompt is `no-provider`; other
-  errors are `prf-unsupported`. The credential id is saved under `p:passkey.credentialId`. If the
-  authenticator did not return the PRF output at creation, one `credentials.get` follows. The
-  keyslot is written at `slotId` with `writeSlot()` (read, then put at `rev + 1`, three tries on
-  conflict).
+  errors are `prf-unsupported`. If the authenticator did not return the PRF output at creation,
+  one `credentials.get` follows. The keyslot is written at `slotId` with `writeSlot()` (read, then
+  put at `rev + 1`, three tries on conflict). Only then is the credential id saved under
+  `p:passkey.credentialId`; a failure to save it does not fail the enrolment.
 - `recover()`: `credentials.get` with the cached credential id when there is one (otherwise the
   browser's account picker), derive the slot keys, `get(slotId)`, `open()`; a missing slot or a
   dismissed prompt is `null`.
