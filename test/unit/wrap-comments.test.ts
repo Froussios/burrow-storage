@@ -1,8 +1,20 @@
 // scripts/wrap-comments.mjs: comment wrapping for `npm run format`.
+//
+// Every case formats twice: output that is formatted again must not change, or
+// `npm run format` and `format:check` would disagree.
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { wrapComments } from "../../scripts/wrap-comments.mjs";
 
-const wrap = (text: string, width = 40) => wrapComments(text, { width });
+/** Wraps `text`, then wraps the result again and asserts nothing changed. */
+function wrap(text: string, width = 40, fileName = "file.ts") {
+  const once = wrapComments(text, { width, fileName });
+  const twice = wrapComments(once.text, { width, fileName });
+  expect(twice.text, "a second pass changed the output").toBe(once.text);
+  return once;
+}
 const src = (...lines: string[]) => lines.join("\n");
 const longest = (text: string) =>
   Math.max(...text.split("\n").map((l) => [...l].length));
@@ -140,7 +152,7 @@ describe("wrap-comments", () => {
     expect(wrap(input).text).toBe(input);
   });
 
-  it("leaves lines that fit untouched and is idempotent", () => {
+  it("leaves lines that fit untouched", () => {
     const input = src(
       "// short",
       "//   aligned   on purpose",
@@ -148,10 +160,6 @@ describe("wrap-comments", () => {
       "const s = 1;",
     );
     expect(wrap(input).text).toBe(input);
-    const once = wrap(
-      src("// one two three four five six seven eight nine ten eleven"),
-    ).text;
-    expect(wrap(once).text).toBe(once);
   });
 
   it("rewrites an overflowing one-line doc comment as a block", () => {
@@ -257,5 +265,74 @@ describe("wrap-comments", () => {
     expect(problems).toEqual([
       { line: 1, message: expect.stringMatching(/own line/), fatal: true },
     ]);
+  });
+
+  it("is stable on generated comments of every shape, at any width", () => {
+    const word = fc.oneof(
+      { weight: 6, arbitrary: fc.stringMatching(/^[a-z]{1,10}[.,;:]?$/) },
+      fc.constantFrom("A", "I", "D-5", "SYNC-10", "(see", "it)", "≥", "→"),
+      fc.stringMatching(/^[a-z]{2,8}$/).map((w) => `https://ex.com/${w}/x`),
+      fc.stringMatching(/^[a-z]{1,8}$/).map((w) => `docs/${w}.md`),
+      fc
+        .array(fc.stringMatching(/^[a-z]{1,6}$/), {
+          minLength: 1,
+          maxLength: 4,
+        })
+        .map((ws) => `\`${ws.join(" ")}\``),
+      fc.stringMatching(/^[a-z]{30,90}$/),
+    );
+    const prose = fc
+      .array(word, { minLength: 1, maxLength: 24 })
+      .map((ws) => ws.join(" "));
+    const line = fc.oneof(
+      { weight: 8, arbitrary: prose },
+      { weight: 3, arbitrary: fc.constant("") },
+      prose.map((p) => `- ${p}`),
+      prose.map((p) => `1. ${p}`),
+      prose.map((p) => `SYNC-12  ${p}`),
+      prose.map((p) => `            ${p}`),
+      prose.map((p) => `@param x ${p}`),
+      fc.constantFrom("```", "```ts", "---------- section", "| a | b |"),
+    );
+    const comment = fc.oneof(
+      fc
+        .tuple(fc.nat(8), fc.array(line, { minLength: 1, maxLength: 8 }))
+        .map(([n, ls]) => {
+          const pad = " ".repeat(n);
+          return ls.map((l) => (l ? `${pad}// ${l}` : `${pad}//`));
+        }),
+      fc
+        .tuple(fc.nat(8), fc.array(line, { minLength: 1, maxLength: 8 }))
+        .map(([n, ls]) => {
+          const pad = " ".repeat(n);
+          const body = ls.map((l) => (l ? `${pad} * ${l}` : `${pad} *`));
+          return [`${pad}/**`, ...body, `${pad} */`];
+        }),
+      fc
+        .tuple(fc.nat(8), prose)
+        .map(([n, p]) => [`${" ".repeat(n)}/** ${p} */`]),
+      prose.map((p) => [`const y = 1; // ${p}`]),
+    );
+    const file = fc
+      .array(comment, { minLength: 1, maxLength: 5 })
+      .map((cs) =>
+        cs.flatMap((c, i) => [...c, `const x${i} = ${i};`]).join("\n"),
+      );
+
+    fc.assert(
+      fc.property(file, fc.integer({ min: 20, max: 100 }), (text, width) => {
+        wrap(text, width);
+      }),
+      { numRuns: 500 },
+    );
+  });
+
+  it("is stable on every source file in the repository, at several widths", () => {
+    const files = execFileSync("git", ["ls-files", "-z"], { encoding: "utf8" })
+      .split("\0")
+      .filter((f) => /\.[cm]?[jt]s$/.test(f));
+    expect(files.length).toBeGreaterThan(50);
+    for (const f of files)
+      for (const width of [80, 60, 40]) wrap(readFileSync(f, "utf8"), width, f);
   });
 });
