@@ -1,9 +1,9 @@
 # Decisions
 
-The judgement calls behind the code, in two parts. **Part A** (D-1 … D-28, with a hyphen) is the
+The judgement calls behind the code, in two parts. **Part A** (D-1 … D-38, with a hyphen) is the
 log kept while implementing; each entry names the requirement it touches in
 [history/requirements.md](history/requirements.md) ("the brief") and the choice made where the
-brief was silent or self-contradictory. **Part B** (D1 … D18, no hyphen) is the earlier planning
+brief was silent or self-contradictory. **Part B** (D1 … D20, no hyphen) is the earlier planning
 log, kept so its numbering stays meaningful, with the status of each item against the code.
 
 Where a planning decision and an implementation decision disagree, the implementation decision is
@@ -15,9 +15,11 @@ and labels, the storage-token encoding) is a major release with a migration.
 ### D-1 The rules' SHA-256 was verified before the write chain relied on it
 
 The brief left open whether Firestore's `hashing.sha256(string).toHexString()` matches the
-SHA-256 hex that Node and WebCrypto compute. It does, in lowercase. The rules tests
-(`firebase/tests/rules.test.mjs`) proved it in the emulator before the client depended on the
-chain, and a round trip against a live project (`npm run test:live`) confirmed it in production.
+SHA-256 hex that Node and WebCrypto compute. It hashes the same UTF-8 bytes, but `toHexString()`
+returns uppercase hex, so the rules compare `.lower()` of it with the stored `next`
+([history/platform-notes.md](history/platform-notes.md) row 1). The rules tests
+(`firebase/tests/rules.test.mjs`) proved the chain in the emulator before the client depended on
+it, and a round trip against a live project (`npm run test:live`) confirmed it in production.
 
 ### D-2 Emulator port is configurable (FS-13)
 
@@ -212,6 +214,85 @@ User-facing text (demo, README, guides) says *storage token*; the API keeps its 
 and the docs say once that `code` in the API means the token. Chosen by the owner before the
 repository went public; a rename of the API would be a breaking change for no functional gain.
 
+### D-29 Polling is a fixed interval (SYNC-6)
+
+SYNC-6 asks for a pull every `syncIntervalMs` while the page is visible, and on focus, visibility
+and `syncNow()`. The plan (WP-07) added adaptive polling, doubling the interval up to 300 s while
+nothing changes. It was not built: a fixed interval keeps the cost predictable (one read per
+interval per visible tab, docs/firestore-setup.md), the manifest listener already delivers live
+changes, and hidden tabs do not poll. A site that wants fewer reads raises the interval or sets it
+to 0 and relies on the listener and the triggers.
+
+### D-30 No `storage`-event fallback for tab messages (SYNC-14)
+
+SYNC-14 names a fallback to `storage` events on a sentinel `localStorage` key when
+`BroadcastChannel` is missing. It is not implemented: every current browser has `BroadcastChannel`
+(Safari since 15.4, in 2022). Where it is missing, the channel is `null` (`src/index.ts`): tabs do
+not update each other's mirror until they reload or pull, and sync passes are still serialised by
+`navigator.locks`.
+
+### D-31 The unload push is best-effort; no keepalive flush (D16)
+
+The plan's keepalive flush (D16: on `pagehide`, write envelopes up to 32 KB with
+`fetch(..., { keepalive: true })`) is dropped, not deferred. The Firestore adapter writes through
+SDK transactions, which cannot be sent as keepalive requests. On `pagehide` and when hidden, Burrow
+flushes the facade to IndexedDB and starts a normal push; if the page closes first, the items stay
+dirty in the cache and go out on the next visit (SYNC-9). `capabilities.keepalive` and
+`put(..., { keepalive })` stay in the `Backend` interface for adapters that can honour them.
+
+### D-32 `link({ code })` does not require existing data (design review T4)
+
+The design review proposed rejecting a well-formed token that has no manifest with `bad-code`, to
+catch a valid but wrong token. It is not adopted. A token whose first device has not synced yet
+(offline, or within the debounce) would be refused, and the 16-bit checksum already rejects typos
+before any network call (KP-12). A token with no data is adopted as a new, empty identity; the
+demo shows the token in use, so a wrong one is visible (architecture §13, sync-and-tokens.md).
+
+### D-33 No reaper script (design review Q4, FS-6)
+
+Clients cannot delete documents (FS-6), and the planned owner-run reaper (`firestore/reaper.mjs`,
+admin SDK, deleting documents older than 12 months) was not shipped. Removal is manual, with admin
+credentials, as docs/firestore-setup.md describes. Expiring unused documents is an open design
+question tracked in issue #22, which would replace a reaper with Firestore TTL or a similar
+mechanism.
+
+### D-34 Browser tests run against the Firestore emulator, not a mock (WP-14)
+
+The plan called for an in-process mock of the Firestore REST endpoints in the browser tests.
+With the SDK adapter (D1 superseded), the Playwright tests run the real SDK against the Firestore
+emulator (`npm run test:e2e`), which also enforces the real rules. Failure injection (network,
+quota, conflicts) is covered by unit tests against `MemoryBackend.failWith` instead of injected
+HTTP statuses. Acceptance criterion 8 (the conformance suite passes unchanged for Firestore,
+Memory and a Worker-style backend) runs as `test/conformance/{firestore,memory,worker}.test.ts`.
+
+### D-35 A second `burrow()` for the same app ignores its config silently (API-2)
+
+API-2 requires the same instance for the same `app` on one page. The plan added a warning when the
+second call's config differs; it is not implemented, because configs carry objects (a backend,
+providers) that cannot be compared meaningfully. docs/api.md states that the second config is
+ignored.
+
+### D-36 `FirestoreBackend` uses the default database only (FS-1)
+
+`FirestoreBackend` has no `databaseId` option; it reads and writes the project's `(default)`
+database. A named database would also need its own rules deployment, which `burrow-setup` does
+not do. Adding the option is a small change if a site needs it.
+
+### D-37 The AAD and write-token formats keep the brief's plain concatenation (ENC-5, ENC-7)
+
+The design review proposed separators (`id|app|rev` for the AAD, `id:n` for the write token).
+They were not adopted: the formats follow the brief (`id || app || String(rev)` and
+`id || String(n)`), which is public contract. Both are unambiguous in use: `id` is a fixed 43
+characters, and each app's ids and keys are derived for that app alone, so a document copied to
+another id, app or revision fails to decrypt or verify (SECURITY.md, "Formats").
+
+### D-38 The demo page loads its bundles without SRI (SEC-6)
+
+WP-15 planned an SRI script tag on the demo. The demo is deployed with the bundles it was built
+with, from its own origin, under `script-src 'self'`; an `integrity` attribute would have to be
+regenerated on every build and protects against nothing the CSP does not already exclude. SRI
+matters when a page loads Burrow from a CDN, and the README shows that form (SEC-6).
+
 ## Part B: planning decisions and their status
 
 These were proposed in the pre-implementation design review
@@ -235,6 +316,8 @@ confirmation. The implementation then went its own way on several. Status agains
 | D13 | Equal-`ts` tie-break: tombstone, then bytewise JSON | **Superseded** by the `(ts, h)` order (D-5). |
 | D14 | Clock `max(now, maxRemoteTs + 1, lastLocalTs + 1)` | **Adopted** per key: `nextTs(now, previous ts of the key, maxRemoteTs)`. |
 | D15 | Facade `getItem` stringifies non-string values | **Adopted** (D-11). |
-| D16 | Keepalive flush for envelopes ≤ 32 KB | **Not implemented.** The option is plumbed; no backend honours it. |
+| D16 | Keepalive flush for envelopes ≤ 32 KB | **Dropped** (D-31). The option stays in the `Backend` interface; no shipped backend honours it. |
 | D17 | One raw copy of the token in a closure | **Superseded.** The token is held wrapped and unwrapped per use (`SecretHolder.use`). |
 | D18 | Format, salts and token version are public contract; major version to change | **Adopted.** |
+| D19 | Classify REST errors per WP-00's measured shapes (`PATCH` on a missing document is `403`; losers of a race get `403` or `409 ABORTED`) | **Moot.** The SDK adapter maps SDK error codes instead (architecture §10); the measurements are in [history/platform-notes.md](history/platform-notes.md). |
+| D20 | `passkey().available()` requires a hostname, because on `file://` Chromium reports PRF support yet `create()` throws | **Not implemented.** Listed in architecture §13; from `file://` `protect()` rejects `prf-unsupported` instead of falling through. |

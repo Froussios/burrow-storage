@@ -1,6 +1,6 @@
 // KP-5..10, ENC-11, SEC-7: a passkey unlocks a keyslot holding the root secret, wrapped under a key
 // derived from the passkey's PRF output. The passkey never becomes the secret.
-import { b64url, fromB64url, randomBytes, utf8 } from "../bytes.js";
+import { b64url, fromB64url, randomBytes, utf8, zeroise } from "../bytes.js";
 import { PRF_SALT_V1, deriveSlotKeys, type SlotKeys } from "../codec/derive.js";
 import { type DocCipher, open, seal } from "../codec/envelope.js";
 import { BackendError, BurrowError } from "../errors.js";
@@ -31,8 +31,15 @@ async function writeSlot(backend: Backend, s: SlotKeys, rootSecret: Uint8Array):
   for (let attempt = 0; attempt < 3; attempt++) {
     const cur = await backend.get(s.slotId);
     const rev = cur ? cur.rev + 1 : 0;
+    const plain = new Uint8Array(rootSecret);
+    let env;
     try {
-      await backend.put(s.slotId, await seal(slotCipher(s), s.slotId, rev, new Uint8Array(rootSecret), Date.now()), cur ? cur.rev : null);
+      env = await seal(slotCipher(s), s.slotId, rev, plain, Date.now());
+    } finally {
+      zeroise(plain); // SEC-1
+    }
+    try {
+      await backend.put(s.slotId, env, cur ? cur.rev : null);
       return;
     } catch (e) {
       if (!(e instanceof BackendError && e.code === "conflict")) throw e;
@@ -111,7 +118,6 @@ export function passkey(options: PasskeyOptions = {}): KeyProvider {
       const prf = prfOf(cred);
       if (!prf?.enabled && !prf?.results?.first) throw new BurrowError("prf-unsupported");
       const rawId = new Uint8Array(cred.rawId);
-      await store?.set(CRED, b64url(rawId)); // KP-9
       // Some authenticators return PRF output at creation; the rest need one assertion.
       let out = prf.results?.first ? bytes(prf.results.first) : (await evaluate(rawId))?.prf;
       if (!out) throw new BurrowError("no-provider", "the passkey prompt was dismissed");
@@ -120,6 +126,9 @@ export function passkey(options: PasskeyOptions = {}): KeyProvider {
       } finally {
         out.fill(0);
       }
+      // KP-9: remember the passkey only once a keyslot backs it. The id is a hint for recover(), so
+      // failing to save it must not fail an enrolment whose keyslot is already written.
+      await store?.set(CRED, b64url(rawId)).catch(() => {});
     },
 
     // KP-6: one passkey prompt per new device.

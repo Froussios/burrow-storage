@@ -190,6 +190,17 @@ into a file of its own). If you load `burrow.min.js` from a CDN instead, the SDK
 that CDN too, and that second request carries no SRI hash. Each release attaches both files with
 their SRI hashes.
 
+Pin the bundle with its Subresource Integrity hash, whether you load it from a CDN or your own
+site:
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/burrow-storage@VERSION/dist/burrow.min.js"
+        integrity="sha384-HASH" crossorigin="anonymous"></script>
+```
+
+Each release's notes print this tag with the real `VERSION` and `HASH`, and `npm run sri` prints
+it for a local build (the hashes are also written to `dist/sri.json`).
+
 ### 2b. Bundler or ESM
 
 ```sh

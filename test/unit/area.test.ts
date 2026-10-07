@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { BurrowError } from "../../src/errors.js";
-import type { ChangedEvent, StatusEvent } from "../../src/types.js";
+import { MemoryBackend } from "../../src/backends/memory.js";
+import { deriveAppKeys, docId } from "../../src/codec/derive.js";
+import { decodeSyncCode } from "../../src/codec/synccode.js";
+import { BackendError, BurrowError } from "../../src/errors.js";
+import type { ChangedEvent, Envelope, StatusEvent } from "../../src/types.js";
 import { World, until } from "../support/devices.js";
 
 let world: World;
@@ -42,6 +45,40 @@ describe("API-1/API-2 entry point", () => {
     expect(await b.get("theme")).toEqual({ theme: "dark" });
   });
 
+  it("SYNC-4 when IndexedDB cannot be opened, burrow() resolves on a memory cache with status offline", async () => {
+    const d = fresh().device();
+    const env = d.env();
+    const asked: string[] = [];
+    env.openCache = async (_app, kind) => { asked.push(kind); throw new DOMException("The user denied permission", "InvalidStateError"); };
+    const a = await d.open({ backend: undefined }, env); // local-only: nothing can move status on
+    expect(asked).toEqual(["indexeddb"]);
+    expect(a.status).toBe("offline");
+    expect(a.inspect()).toMatchObject({ status: "offline", backend: "none", dirtyKeys: 0 });
+    // Reads and writes still work, through both APIs, without IndexedDB.
+    await a.set({ k: 1 });
+    a.storage.setItem("s", "v");
+    expect(await a.get()).toEqual({ k: 1, s: "v" });
+    expect(await d.idb.databases()).toEqual([]);
+    expect(a.status).toBe("offline");
+  });
+
+  it("SYNC-4/D-19 on the memory fallback, status returns to idle after a successful sync", async () => {
+    const w = fresh(); const d = w.device();
+    const env = d.env();
+    env.openCache = async () => { throw new Error("IndexedDB unavailable"); };
+    // The fallback cache is the page's own memory cache, shared by every test in this file: use
+    // an app id of its own so earlier fallback tests' items do not show up here.
+    const app = "sync4-idle";
+    const a = await d.open({ app }, env);
+    expect(["offline", "syncing", "idle"]).toContain(a.status);
+    await a.set({ k: "from private mode" });
+    await a.syncNow();
+    expect(a.status).toBe("idle");
+    const b = await w.device().open({ app });
+    await b.link({ code: await a.exportCode() });
+    expect(await b.get()).toEqual({ k: "from private mode" });
+  });
+
   it("KP-1 different devices start with different secrets", async () => {
     const w = fresh();
     expect(await (await w.device().open()).exportCode()).not.toBe(await (await w.device().open()).exportCode());
@@ -58,6 +95,37 @@ describe("API-3..6 StorageArea", () => {
     expect(await a.get(["a", "missing"])).toEqual({ a: 1 });
     expect(await a.get({ a: 0, missing: "dflt" })).toEqual({ a: 1, missing: "dflt" });
     expect(await a.get([])).toEqual({});
+  });
+
+  it("API-3 remove() and getBytesInUse() accept chrome.storage argument shapes", async () => {
+    const a = await fresh().device().open();
+    const items = { a: 1, b: "xy", k: [1, { n: null }], keep: true };
+    await a.set(items);
+    const bytes = (...keys: (keyof typeof items)[]) => keys.reduce((n, k) => n + k.length + JSON.stringify(items[k]).length, 0);
+    const all = bytes("a", "b", "k", "keep");
+    expect(await a.getBytesInUse()).toBe(all);
+    expect(await a.getBytesInUse(null)).toBe(all);
+    expect(await a.getBytesInUse("k")).toBe(bytes("k"));
+    expect(await a.getBytesInUse(["a", "b"])).toBe(bytes("a", "b"));
+    expect(await a.getBytesInUse(["a", "missing"])).toBe(bytes("a"));
+    expect(await a.getBytesInUse("missing")).toBe(0);
+    expect(await a.getBytesInUse([])).toBe(0);
+
+    const seen: ChangedEvent[] = [];
+    a.onChanged.addListener((e) => seen.push(e));
+    await a.remove("k");
+    expect(await a.get()).toEqual({ a: 1, b: "xy", keep: true });
+    await a.remove(["a", "b"]);
+    expect(await a.get()).toEqual({ keep: true });
+    await a.remove([]);
+    await a.remove(["missing", "a"]);
+    expect(await a.get()).toEqual({ keep: true });
+    expect(seen).toEqual([
+      { source: "local", changes: { k: { oldValue: [1, { n: null }] } } },
+      { source: "local", changes: { a: { oldValue: 1 }, b: { oldValue: "xy" } } },
+    ]);
+    expect(await a.getBytesInUse()).toBe(bytes("keep"));
+    expect(await a.getBytesInUse(["a", "b", "k"])).toBe(0);
   });
 
   it("API-3 get returns copies, not the cached objects", async () => {
@@ -214,6 +282,47 @@ describe("§8 sync between devices", () => {
     g = s.gets; p = s.puts;
     await a.syncNow();
     expect(s.puts - p).toBe(4);
+  });
+
+  it("SYNC-9 item write succeeds, manifest write fails: the next pass writes the manifest and no item again", async () => {
+    /** Fails puts to one id (the manifest) and counts successful puts per id. */
+    class ManifestFails extends MemoryBackend {
+      failId: string | null = null;
+      readonly ok = new Map<string, number>();
+      override async put(id: string, env: Envelope, expectedRev: number | null): Promise<void> {
+        if (id === this.failId) { await Promise.resolve(); throw new BackendError("network"); }
+        await super.put(id, env, expectedRev);
+        this.ok.set(id, (this.ok.get(id) ?? 0) + 1);
+      }
+    }
+    const w = fresh(); const d = w.device();
+    const be = new ManifestFails({ store: w.store });
+    const a = await d.open({ backend: be, debounceMs: 1e9 });
+    const keys = await deriveAppKeys((await decodeSyncCode(await a.exportCode())).secret, "test");
+    const [idOld, idNew] = await Promise.all([docId(keys, "old"), docId(keys, "new")]);
+    await a.set({ old: 1 });
+    await a.syncNow();
+    expect(a.inspect().manifestRev).toBe(0);
+    be.ok.clear();
+
+    be.failId = keys.base;
+    await a.set({ old: 2, new: "n" }); // one item at a known rev, one never pushed before
+    await expect(a.syncNow()).rejects.toMatchObject({ code: "backend" });
+    expect(a.status).toBe("offline");
+    expect(Object.fromEntries(be.ok)).toEqual({ [idOld]: 1, [idNew]: 1 });
+    expect(a.inspect()).toMatchObject({ dirtyKeys: 2, manifestRev: 0 });
+
+    be.failId = null;
+    await a.syncNow();
+    expect(a.status).toBe("idle");
+    expect(Object.fromEntries(be.ok)).toEqual({ [idOld]: 1, [idNew]: 1, [keys.base]: 1 });
+    expect(a.inspect()).toMatchObject({ dirtyKeys: 0, manifestRev: 1 });
+    expect(w.store.get(idOld)!.rev).toBe(1);
+    expect(w.store.get(idNew)!.rev).toBe(0);
+
+    const b = await w.device().open();
+    await b.link({ code: await a.exportCode() });
+    expect(await b.get()).toEqual({ old: 2, new: "n" });
   });
 
   it("SYNC-5 writes are debounced and coalesced into one push", async () => {
@@ -457,8 +566,11 @@ describe("§6 link, protect, unlink", () => {
     await a.unlink({ discardLocal: true });
   });
 
-  it("protect('sync-code') and exportCode() mark the secret protected", async () => {
+  it("protect('sync-code') marks the secret protected; exportCode() alone does not (D-27)", async () => {
     const a = await fresh().device().open();
+    await a.exportCode();
+    expect(a.protection).toBe("none");
+    expect(a.inspect().provider).toBeNull();
     await a.protect("sync-code");
     expect(a.protection).toBe("code");
     expect(a.inspect().provider).toBe("sync-code");

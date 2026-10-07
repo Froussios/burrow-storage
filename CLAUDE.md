@@ -19,7 +19,7 @@ tags). The repository is about to be public. The documentation set is current wi
 | `docs/decisions.md` | Decision log: D-1… (implementation) and D1… (planning, with status) |
 | `docs/user-journeys.md` | The five user journeys the demo and its browser tests implement |
 | `CHANGELOG.md` | Keep-a-Changelog, unreleased section |
-| `docs/history/` | The pre-implementation requirements brief, design review and plan. The brief's requirement ids (`API-3`, `ENC-7`, …) are cited by tests and code comments. Historical otherwise. |
+| `docs/history/` | The pre-implementation requirements brief, design review, plan and WP-00 platform notes. The brief's requirement ids (`API-3`, `ENC-7`, …) are cited by tests and code comments. Historical otherwise. |
 
 GitHub issues #1–#18 and PR #19 are from the planning phase and do not reflect the code; treat
 them as history unless the owner says otherwise.

@@ -119,6 +119,26 @@
     URL.revokeObjectURL(a.href);
   });
 
+  // Forget the token on this device, like logging out (API-8). The next visit starts a new token.
+  $("forget").addEventListener("click", async () => {
+    if (!confirm("Forget the storage token on this device? Your data stays in the backup; keep the token or a passkey to get it back.")) return;
+    try {
+      await store.unlink();
+    } catch (e) {
+      if (e.code !== "would-orphan" || !confirm("This device has changes that are not synced yet. Discard them and forget anyway?")) {
+        say(e.code === "would-orphan" ? "Kept this device as it was." : `Could not forget this device (${e.code ?? e.name}).`);
+        return;
+      }
+      try {
+        await store.unlink({ discardLocal: true });
+      } catch (e2) {
+        say(`Could not forget this device (${e2.code ?? e2.name}).`);
+        return;
+      }
+    }
+    location.reload();
+  });
+
   await showToken();
   document.body.dataset.ready = "true";
 })();

@@ -44,8 +44,9 @@ One project serves every prototype. Do this once.
  6. Leave Auth, Storage, Functions and Blaze off. Burrow needs none of them.
 
 Spark ceilings (shared by all your prototypes): 1 GiB stored; 50,000 reads, 20,000 writes,
-20,000 deletes per day. A sync with nothing new costs 1 read; a push costs 1 write per changed
-item plus 1 for the manifest. Hitting a ceiling pauses sync until the daily reset.
+20,000 deletes per day. A sync with nothing new costs 1 read. Pushing n changed items costs n+1
+writes and at least n+2 reads, because writes go through transactions. Hitting a ceiling pauses
+sync until the daily reset. Full cost table: docs/firestore-setup.md.
 
 Automate steps 1-5 with: npx burrow-setup firestore --run   (needs gcloud; opens a browser to sign in)
 `);

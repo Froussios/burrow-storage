@@ -2,7 +2,7 @@ import { IDBFactory } from "fake-indexeddb";
 import { describe, expect, it } from "vitest";
 import { IdbCache } from "../../src/cache/indexeddb.js";
 import { MemoryCache, MemoryDevice } from "../../src/cache/memory.js";
-import type { Cache } from "../../src/cache/types.js";
+import type { Cache, CachedItem } from "../../src/cache/types.js";
 
 type Make = (app: string) => Promise<Cache>;
 
@@ -21,6 +21,28 @@ function cacheSuite(name: string, factory: () => Make) {
       await c.setDevice({ protection: "code", "p:cred": "abc" });
       await c.setDevice({ "p:cred": undefined });
       expect(await c.getDevice()).toEqual({ protection: "code" });
+    });
+
+    it("SYNC-2 putItems is atomic: one record that cannot be stored mid-batch writes nothing", async () => {
+      const make = factory();
+      const c = await make("a");
+      await c.putItems([["keep", { value: "old", ts: 1 }]]);
+      // A function is not structured-cloneable (DataCloneError). Core never produces one (values
+      // pass assertJson first), but any failure mid-batch must leave the cache as it was.
+      const bad = { value: () => 1, ts: 3 } as unknown as CachedItem;
+      await expect(c.putItems([["first", { value: 1, ts: 2 }], ["keep", { value: "new", ts: 2 }], ["bad", bad], ["last", { value: 2, ts: 4 }]])).rejects.toThrow();
+      expect(Object.fromEntries(await c.loadItems())).toEqual({ keep: { value: "old", ts: 1 } });
+      // The cache is still usable afterwards.
+      await c.putItems([["after", { value: 3, ts: 5 }]]);
+      expect([...(await c.loadItems()).keys()].sort()).toEqual(["after", "keep"]);
+    });
+
+    it("SYNC-2 updateItems is atomic too: a failing record mid-batch writes nothing", async () => {
+      const make = factory();
+      const c = await make("a");
+      await c.putItems([["x", { value: 1, ts: 1 }], ["y", { value: 1, ts: 1 }]]);
+      await expect(c.updateItems(["x", "y"], (k, cur) => (k === "y" ? ({ value: () => 2, ts: 2 } as unknown as CachedItem) : { ...cur!, value: 2, ts: 2 }))).rejects.toThrow();
+      expect(Object.fromEntries(await c.loadItems())).toEqual({ x: { value: 1, ts: 1 }, y: { value: 1, ts: 1 } });
     });
 
     it("keeps apps apart: clearing one never touches another", async () => {

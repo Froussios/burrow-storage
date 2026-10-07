@@ -18,7 +18,13 @@ export class SecretHolder {
 
   static async wrap(secret: Uint8Array): Promise<SecretHolder> {
     const kw = await subtle().generateKey(KW, false, ["wrapKey", "unwrapKey"]);
-    const vehicle = await subtle().importKey("raw", new Uint8Array(secret), VEHICLE, true, ["sign"]);
+    const copy = new Uint8Array(secret);
+    let vehicle: CryptoKey;
+    try {
+      vehicle = await subtle().importKey("raw", copy, VEHICLE, true, ["sign"]);
+    } finally {
+      zeroise(copy); // SEC-1
+    }
     return new SecretHolder(kw, new Uint8Array(await subtle().wrapKey("raw", vehicle, kw, "AES-KW")));
   }
 

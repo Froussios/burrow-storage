@@ -79,7 +79,15 @@ export class IdbCache implements Cache {
       t.onerror = () => rej(t.error);
       t.onabort = () => rej(t.error ?? new Error("transaction aborted"));
     });
-    const out = await fn(t);
+    let out: T;
+    try {
+      out = await fn(t);
+    } catch (e) {
+      // A batch is all or nothing: requests already queued must not commit (cache/types.ts).
+      try { t.abort(); } catch { /* already finished */ }
+      await done.catch(() => {});
+      throw e;
+    }
     await done;
     return out;
   }

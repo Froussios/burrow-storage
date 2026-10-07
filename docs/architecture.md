@@ -80,10 +80,10 @@ rejected promise, and an instance closed by `unlink()`, are removed so the next 
    app's items and reset its meta. Load the mirror from the cache. Read `protection` from the
    device store.
 5. Warn once if the backend declares `writeAuth: false`.
-6. `#start()`: listen for `pagehide` and `visibilitychange`; open `BroadcastChannel("burrow:" +
-   app)`; start the poll timer (`syncIntervalMs > 0`, fires only while visible); subscribe to the
-   manifest if the backend can; kick off the first sync (not awaited); schedule the
-   `onUnprotected` check.
+6. `#start()`: listen for `pagehide`, `visibilitychange` and `focus`; open
+   `BroadcastChannel("burrow:" + app)`; start the poll timer (`syncIntervalMs > 0`, fires only while
+   visible); subscribe to the manifest if the backend can; kick off the first sync (not awaited);
+   schedule the `onUnprotected` check.
 7. `#readFragment()`: if `location.hash` carries `burrow=<token>`, remove it with
    `history.replaceState` and run `link()` with `source: "link"`; a failure sets `status` to
    `"error"`. `burrow()` resolves after this.
@@ -169,12 +169,13 @@ when the page is hidden.
 ### 6.1 Triggers and coalescing
 
 `#sync()` is called by: `#start()` at start-up; the debounce timer after a local write; the poll
-timer (visible only); `visibilitychange` → visible; the backend's manifest subscription when the
-revision changed; `syncNow()`; `link()` (including a `#burrow=` link read at start-up); `get(null,
-{ fresh: true })`; and `#hide()` with `keepalive = true` when dirty items exist. Calls while a
-pass is running set `#rerun` and share the running promise; the loop repeats until nothing
-requested another pass. A pass runs under the Web Lock `burrow:<ns>:<app>:sync`, so two tabs of
-the same app never push at once. `#sync()` never rejects; failures go to `#failed()`.
+timer (visible only); `visibilitychange` → visible; window `focus` while visible, unless a pass
+started in the last five seconds; the backend's manifest subscription when the revision changed;
+`syncNow()`; `link()` (including a `#burrow=` link read at start-up); `get(null, { fresh: true })`;
+and `#hide()` with `keepalive = true` when dirty items exist. Calls while a pass is running set
+`#rerun` and share the running promise; the loop repeats until nothing requested another pass. A
+pass runs under the Web Lock `burrow:<ns>:<app>:sync`, so two tabs of the same app never push at
+once. `#sync()` never rejects; failures go to `#failed()`.
 
 ### 6.2 One pass (`#pass`)
 
@@ -281,10 +282,10 @@ because `link({ code })` decodes directly). `passkey(options)`:
 - `enrol()`: `credentials.create` with a discoverable credential, user verification, ES256/RS256,
   no attestation, the PRF extension with salt `burrow/prf/v1`, `user.name` = app id (or
   `userName`), `rp.id` only when `rpId` is given. A dismissed prompt is `no-provider`; other
-  errors are `prf-unsupported`. The credential id is saved under `p:passkey.credentialId`. If the
-  authenticator did not return the PRF output at creation, one `credentials.get` follows. The
-  keyslot is written at `slotId` with `writeSlot()` (read, then put at `rev + 1`, three tries on
-  conflict).
+  errors are `prf-unsupported`. If the authenticator did not return the PRF output at creation,
+  one `credentials.get` follows. The keyslot is written at `slotId` with `writeSlot()` (read, then
+  put at `rev + 1`, three tries on conflict). Only then is the credential id saved under
+  `p:passkey.credentialId`; a failure to save it does not fail the enrolment.
 - `recover()`: `credentials.get` with the cached credential id when there is one (otherwise the
   browser's account picker), derive the slot keys, `get(slotId)`, `open()`; a missing slot or a
   dismissed prompt is `null`.
@@ -367,10 +368,10 @@ Things the code does not do that a reader of the interfaces might expect:
 - `Backend.capabilities.keepalive` and `put(..., { keepalive })` are plumbed through but no shipped
   backend honours them. The push started on `pagehide` is best-effort: the Firestore adapter
   writes through transactions, which the SDK does not queue, so if the page closes first the
-  items stay dirty in the cache and go out on the next visit.
+  items stay dirty in the cache and go out on the next visit (D-31).
 - `Backend.capabilities.maxEnvelopeBytes` is not consulted; `seal()` uses the constant limit.
 - Polling is a fixed interval; there is no adaptive back-off for idle tabs, so a visible idle tab
-  costs one read per `syncIntervalMs`.
+  costs one read per `syncIntervalMs` (D-29).
 - `rememberDevice: false` generates a fresh token on every load and syncs under it immediately;
   data written before `link()` creates throwaway documents in the store.
 - The token is per origin but the `would-orphan` guard in `link()` and `unlink()` looks only at
@@ -385,9 +386,11 @@ Things the code does not do that a reader of the interfaces might expect:
   chooses the passkey and rejects with `prf-unsupported` instead of falling through to the token.
 - A non-default `collection` needs a matching edit to `firestore.rules`; `burrow-setup` does not
   rewrite it.
-- There is no tool to reap abandoned documents from a project; removal is manual.
+- There is no tool to reap abandoned documents from a project; removal is manual (D-33, #22).
+- `FirestoreBackend` always uses the project's `(default)` database; there is no `databaseId`
+  option (D-36).
 - `link({ code })` adopts a well-formed token that has no data as a new, empty identity (the demo
-  shows the token in use so a typo is visible).
+  shows the token in use so a typo is visible; D-32).
 - `#readFragment()` adopts any `#burrow=` link on every start-up without asking, which allows token
   fixation by whoever crafts the link (SECURITY.md). There is no option to turn links off; a site
   can only drop the fragment before calling `burrow()`.

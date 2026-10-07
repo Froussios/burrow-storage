@@ -4,6 +4,7 @@
   "base": "GvRMZ7DsLEcZZyZRva3FW9gfyXyiZpktVMEOa6RPrGQ",
   "docId": {
     "theme": "-H_yJYZzKliHqV0KDk5AMUA1BKob0o8aPK112zXp8w4",
+    "κλειδί 鍵 🔑": "PtKi0JJQgjol-nf0RTw88WoAaKVwkjDNuKsq_cactkc",
     "draft": "pMeqIJDkjWPHip6IfoC784Ejyt-qMINJloQU40cht5g",
     "": "hw7NO2gvgxXUr6fs-UV5UKExm2A41-i8VUcNeVt0Gnw"
   },
@@ -23,6 +24,94 @@
     "kekSha256": "fe0d8f3a8c8585adac517f5375550e7845b5f039b8897bac8012eedbb2cb4392"
   },
   "syncCode": "0400-20G3-0G2G-C1R8-1450-P30D-1R7H-048J-2CA1-A5GQ-30CH-M6RW-3MF1-YJ8H",
+  "unicodeKey": "κλειδί 鍵 🔑",
+  "chain": [
+    {
+      "n": 0,
+      "tok": "Ej8QbqtrOrkY-nYUM3VaTQ6Q5pbO5u6DnxNkWcJN4S4",
+      "next": "6ac6ae0810006a8e3acfafde0944f4583454ba394c93390a98206c3bf35b012e"
+    },
+    {
+      "n": 1,
+      "tok": "0mabm8thRSXnIBDwwbiCSdbbQcOQyW4LtUuge_vrlg0",
+      "next": "5a68d204a158d83577f2a598581835eeb5b72990c2cc0af003761825fe50ee3c"
+    },
+    {
+      "n": 2,
+      "tok": "izmJ-UzYfVftCy2bJg6ZYNFgnOBN7d_t0W9KJIPClso",
+      "next": "f1c0685930a33f98c56439c44466c67ee55fce4283cbbeb4f183a4f1d1e5293c"
+    },
+    {
+      "n": 3,
+      "tok": "859iwTpg7OFR3pohC1edWlc0h1H2HAUIIfSpe2zgLjA",
+      "next": "152b47bcd23fbd69a0600c8de10673601f8183359251ac452182ec0b0b0e4c34"
+    },
+    {
+      "n": 4,
+      "tok": "Wco59OVg7pmNADHljDlerGdn2MrF0u1kKgGS36g16j0",
+      "next": "94be150ebe8eac7f51b12d22950d0588a2175604eed6681201cc415a05078eca"
+    },
+    {
+      "n": 5,
+      "tok": "KTcMGanEKNsgV3p67gG1Tv-hSJgoceK-wYqkm7z1Kzw",
+      "next": "eebe9c3fd64c6b921811f3b9dde071067b4be7c29cc49aeeff6c20d45693bc5f"
+    }
+  ],
+  "root2": {
+    "rootSecretHex": "43f3d9f154f34b2614fc1b8a5462925e467f04ea66f6a10734836c05efa51dd2",
+    "base": "PUCekT-1-SPKw2zsRbsV4RpX8PxKEkwkhKUCl6RWOlk",
+    "docId": {
+      "theme": "5rnef1UXdB80pSsMFaCntf0J-Bv8YQzklv2oDBpyoYg",
+      "κλειδί 鍵 🔑": "rwB465yf7H_Rh7Wa6-Z94W6u7gqxNdv0XI7W-wI2e_A",
+      "": "McR6oylkX2b6kuH_G03MniR51kG7zpWGXN90zLr72KM"
+    },
+    "chain": [
+      {
+        "n": 0,
+        "tok": "gZB10clVSklZxMwtuCQTDSphzNC_bTT5uSr5bE2fVHs",
+        "next": "a70773e67415bd22bdbbd9358d98ffc9f274f7ad32d4b233cb07602896ed0a03"
+      },
+      {
+        "n": 1,
+        "tok": "J_6-iQ-HzHbqc1Q3kcNpJwdbrlLoHpezA8ZQ-bc3vIQ",
+        "next": "d2dffa9ce41e08aa3168203e6691998bcc0322ed17ef6e0158d9d058dcc224e8"
+      },
+      {
+        "n": 2,
+        "tok": "8VDFS5f5_U4VBqpPOHBWmmEA5j1kKuYtDVRGQWL0G0I",
+        "next": "abf495074cf1e6ec5bcacf896a35138e8676c1a4ba7f8c9aa935238fcc5f9ae7"
+      },
+      {
+        "n": 3,
+        "tok": "54aCaRkKbdUueKAac2XCSOxiPssx9Fuz_wSoYtjE0Fo",
+        "next": "5d0e6c9b48b6efab4c6111bbae6235cf3e620f86302b876cd1e81bacf0b7df1a"
+      },
+      {
+        "n": 4,
+        "tok": "xFucRiL4uxDKbPZ0WJvS_3Zn4rz4J8a_aLi0bN3Ur0A",
+        "next": "7e708a0af8d7beca74a996b1a0cbe9a9db40fdb43e286a19f0e3f0346499532a"
+      },
+      {
+        "n": 5,
+        "tok": "fwQjG4VnC-Q9CHsI8rMJsDh8GX5v7iXhwCBpqOt7y9c",
+        "next": "878e18722c64354f8513164a1839ba62dae43de363f8007f3f455fbd31b89399"
+      }
+    ],
+    "syncCode": "051Z-7PFH-AKSM-P9GM-ZGDR-MN32-J9F4-CZR4-X9KF-D887-6J1P-R1FF-MMEX-4Q7Z"
+  },
+  "envelope": {
+    "key": "theme",
+    "plaintext": "{\"v\":1,\"key\":\"theme\",\"value\":\"dark\",\"ts\":1700000000000}",
+    "env": {
+      "v": 1,
+      "iv": "AAECAwQFBgcICQoL",
+      "ct": "iDmOJilTbrGUdIWEjNF0xDh7_iTCMgVflme-dzWl4DgsVjlKwb97pWyrmbjuWicDGNTL_ykoxnZOJ1d1x-fNkzAR2JHXOFM",
+      "rev": 3,
+      "ts": 1700000000000,
+      "tok": "TzJGeUADOvfAZhawbH4bVZp7O2NBEfK8W7NQSxz1-OU",
+      "next": "69c703a2514bcd691a4d6d27b83b80718aed698b2e881e6bc87a2cf0a50e2844"
+    }
+  },
   "otherApp": {
     "app": "other",
     "base": "G4wbI34boDMXw-jinB2Yo8BsMU8qT-w6N3yHDFn5rvY"
