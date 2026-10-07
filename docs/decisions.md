@@ -1,6 +1,6 @@
 # Decisions
 
-The judgement calls behind the code, in two parts. **Part A** (D-1 … D-38, with a hyphen) is the
+The judgement calls behind the code, in two parts. **Part A** (D-1 … D-40, with a hyphen) is the
 log kept while implementing; each entry names the requirement it touches in
 [history/requirements.md](history/requirements.md) ("the brief") and the choice made where the
 brief was silent or self-contradictory. **Part B** (D1 … D20, no hyphen) is the earlier planning
@@ -292,6 +292,48 @@ WP-15 planned an SRI script tag on the demo. The demo is deployed with the bundl
 with, from its own origin, under `script-src 'self'`; an `integrity` attribute would have to be
 regenerated on every build and protects against nothing the CSP does not already exclude. SRI
 matters when a page loads Burrow from a CDN, and the README shows that form (SEC-6).
+
+### D-39 The demo is hosted on GitHub Pages (#24)
+
+The demo is always available at <https://froussios.github.io/burrow-storage/>, redeployed from
+every push to `main`. The owner chose GitHub Pages over Firebase Hosting on the store's project
+(`burrow-storage-shared.web.app`) and over Cloudflare Pages or Netlify, once the repository was
+public. The origin is effectively permanent: passkeys created on the demo are bound to the rp ID
+`froussios.github.io`, and the token is remembered per origin (D-9), so a move orphans both.
+
+What the choice costs:
+
+- The origin is shared with every other GitHub Pages site of the account. They can read the
+  demo's IndexedDB and use its token, and they share its passkey rp ID. SECURITY.md already
+  excludes code running on the same origin.
+- Pages cannot set response headers, so the CSP stays a `<meta>` tag. A meta CSP ignores
+  `frame-ancestors`, so other sites can frame the demo.
+
+The bundles are deployed beside the page, so the CSP is unchanged: `script-src 'self'` and
+`connect-src 'self' https://firestore.googleapis.com`. The browser key is restricted to the Cloud
+Firestore API only; if referrer restrictions are added (D-23), they must include
+`https://froussios.github.io/*`.
+
+The repository's Pages source must be **GitHub Actions** (Settings → Pages → Build and deployment).
+With "Deploy from a branch", GitHub renders the README at the same URL instead of the demo, and
+`pages.yml` fails at `configure-pages`.
+
+### D-40 Each demo deploy is smoke-tested against the live store (#24)
+
+After the deploy job, `pages.yml` runs `test/smoke/demo.spec.ts` on Chromium against the deployed
+URL. The page must show the commit being deployed: the test reloads with a fresh query until it
+does, for up to three minutes, so a cached copy of the previous deploy cannot pass. The page must
+also keep its strict CSP, log no console errors, request nothing outside its own origin and the
+store, and show a token. Two fresh browser contexts must then sync both ways: one writes, the other
+links with its token and reads the write, then changes the theme, and the first sees the change.
+
+A failure fails the workflow run, but the deployment stays live; there is no automatic rollback. The
+deploy is not gated on `ci.yml`: the head is deployed as it is, and the smoke test is the check.
+Runs are serialised (`cancel-in-progress: false`), so each smoke test sees its own deploy. Each run
+writes a few KB (one token's manifest and two items) to `burrow-storage-shared`, and a failed test
+that Playwright retries writes another set. These documents are never deleted (D-33, #22), and the
+runs share Spark's daily quotas with every other use of the project. CI runs the same spec against
+the assembled `site/` under the emulator, so the test itself is checked before a merge.
 
 ## Part B: planning decisions and their status
 

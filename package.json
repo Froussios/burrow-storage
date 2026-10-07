@@ -45,11 +45,13 @@
     "test:rules": "node scripts/emulator.mjs \"node --test firebase/tests/rules.test.mjs\"",
     "test:firestore": "node scripts/emulator.mjs \"vitest run --config vitest.firestore.config.ts\"",
     "test:e2e": "node scripts/emulator.mjs \"playwright test\"",
+    "test:smoke": "playwright test --config playwright.smoke.config.ts",
     "size": "node scripts/size.mjs",
     "docs:check": "node scripts/check-docs.mjs",
     "check": "npm run typecheck && npm test && npm run build && npm run size && npm run docs:check",
     "test:live": "vitest run --config vitest.live.config.ts",
     "serve": "node scripts/serve.mjs",
+    "demo:build": "node scripts/build-demo.mjs",
     "sri": "node scripts/sri.mjs"
   },
   "peerDependencies": {

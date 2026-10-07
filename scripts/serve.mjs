@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // Static file server for the demo and the browser tests. Serves the repo root; files missing
-// from demo/ fall back to dist/ (burrow.min.js, burrow-firestore.js), as a deployed demo has them.
-// With FIRESTORE_EMULATOR_HOST set, the demo's Firestore config and CSP point at the emulator.
+// from demo/ fall back to dist/ (burrow.min.js, burrow-firestore.js), as a deployed demo has them;
+// site/ is the assembled demo (scripts/build-demo.mjs). With FIRESTORE_EMULATOR_HOST set, the
+// Firestore config and CSP of the pages in demo/ and site/ point at the emulator.
 import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
-import { extname, join, normalize, resolve } from "node:path";
+import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -33,6 +34,6 @@ createServer(async (req, res) => {
   if (!path && rel.startsWith("demo/")) path = await file(join(root, "dist", rel.slice(5)));
   if (!path) { res.writeHead(404, { "content-type": "text/plain" }).end("not found"); return; }
   let body = await readFile(path);
-  if (emu && path.startsWith(join(root, "demo")) && path.endsWith(".html")) body = Buffer.from(forEmulator(body.toString()));
+  if (emu && [join(root, "demo"), join(root, "site")].some((d) => path.startsWith(d + sep)) && path.endsWith(".html")) body = Buffer.from(forEmulator(body.toString()));
   res.writeHead(200, { "content-type": TYPES[extname(path)] ?? "application/octet-stream", "cache-control": "no-store" }).end(body);
 }).listen(port, "127.0.0.1", () => console.log(`serving ${root} on http://localhost:${port}${emu ? ` (emulator ${emu})` : ""}`));

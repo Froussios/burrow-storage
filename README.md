@@ -3,6 +3,9 @@
 **Per-user data for static sites that survives a browser reset and follows the user to their other
 devices. No login. No server to write or run. Nothing readable in the store.**
 
+**[Try the live demo](https://froussios.github.io/burrow-storage/)**: type something, then open the
+page on another device and paste the storage token it shows.
+
 ```js
 // In an ES module. With no store configured, the data simply stays on this device.
 import { burrow } from "burrow-storage";
@@ -22,9 +25,12 @@ unlocks a **passkey backup** of it.
 - **Status:** pre-release. Everything below is implemented and tested in Chromium, Firefox and
   WebKit (passkeys in Chromium only, with a virtual authenticator), but nothing is on npm yet.
   Until the first release, follow [Installing before the first release](#installing-before-the-first-release).
-- **Demo:** [`demo/`](demo/) is a page whose theme and text draft follow you across devices. Run
-  it with `npm run build && npm run serve` and open <http://localhost:4173/demo/>. It syncs through
-  the maintainer's demo project; to use your own, replace its `<meta name="burrow-firestore">`.
+- **Demo:** <https://froussios.github.io/burrow-storage/> is a page whose theme and text draft
+  follow you across devices. It is redeployed from every push to `main`, and its footer shows the
+  commit it was built from. It syncs through the maintainer's demo project, which does not delete
+  documents, so what you type there stays in it, encrypted. The source is in [`demo/`](demo/); run
+  it locally with `npm run build && npm run serve` and open <http://localhost:4173/demo/>, and to
+  use your own project, replace its `<meta name="burrow-firestore">`.
 
 ## Contents
 
@@ -414,6 +420,8 @@ npm run test:rules     # Firestore rules in the emulator (needs Java 21)
 npm run test:firestore # backend conformance against the emulator
 npm run test:e2e       # Chromium, Firefox and WebKit via Playwright, against the emulator
 npm run serve          # demo at http://localhost:4173/demo/ (after npm run build)
+npm run demo:build     # site/: the deployable demo, stamped with the commit (after npm run build)
+npm run test:smoke     # demo smoke test: BURROW_DEMO_URL=<deployed demo>, or site/ under the emulator
 ```
 
 `npm run check` runs typecheck, tests, build, size and `docs:check` in one go. Development needs
