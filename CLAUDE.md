@@ -59,7 +59,10 @@ via fast-check, backend conformance), Playwright (`test/e2e`, three engines, a C
 authenticator for passkeys), `node --test` for the rules under the Firestore emulator
 (firebase-tools, Java 21). No linter is configured. GitHub Actions: `ci.yml`, `pages.yml`
 (demo to GitHub Pages at <https://froussios.github.io/burrow-storage/> on every push to `main`,
-then a smoke test against it), `release.yml` (npm publish with provenance on `v*` tags).
+then a smoke test against it), `release.yml` (npm publish with provenance on `v*` tags),
+`claude-code-review.yml` (Claude reviews the owner's PRs with the `pr-review` skill in
+`.claude/skills/pr-review/SKILL.md` and approves on a "no blocking issues" verdict) and
+`claude.yml` (`@claude` mentions from people with write access).
 
 ```
 npm ci

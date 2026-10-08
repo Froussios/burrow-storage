@@ -1,10 +1,12 @@
 name: Claude Code Review
 
-# Reviews PRs from people with write access (in practice, the owner) when they
-# become ready for review, and again after a push that follows a review with
-# blocking issues. Other PRs, including all PRs from forks, skip every job, so
-# they start no runner and use no Claude quota. The review only comments; it
-# never approves.
+# Reviews PRs from people with write access (in practice, the owner) with the
+# pr-review skill (.claude/skills/pr-review/SKILL.md) when they become ready
+# for review, and again after a push that follows a blocking verdict. A
+# "no blocking issues" verdict approves the reviewed commit; any later push
+# withdraws that approval (mark the PR draft and ready again for a fresh
+# review). Other PRs, including all PRs from forks, skip every job, so they
+# start no runner, use no Claude quota and are never approved.
 
 on:
   pull_request:
@@ -22,7 +24,7 @@ jobs:
       github.event.pull_request.author_association)
     runs-on: ubuntu-latest
     permissions:
-      pull-requests: read
+      pull-requests: write # to withdraw stale approvals
     outputs:
       review: ${{ steps.decide.outputs.review }}
     steps:
@@ -37,7 +39,14 @@ jobs:
             echo "review=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # A push re-reviews only if the latest review's verdict was blocking.
+          # New commits: an earlier approval no longer covers the PR.
+          for id in $(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/reviews" \
+              --jq '.[] | select(.user.login == "github-actions[bot]" and .state == "APPROVED") | .id'); do
+            gh api -X PUT "repos/$GITHUB_REPOSITORY/pulls/$PR/reviews/$id/dismissals" \
+              -f message="New commits since this approval." -f event=DISMISS >/dev/null \
+              || echo "::warning::Could not withdraw approval $id"
+          done
+          # Re-review only if the latest verdict was blocking.
           verdict=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" \
             --jq '.[] | select(.user.login == "claude[bot]") | .body
                   | capture("\\*\\*Verdict:\\*\\* (?<v>blocking|no blocking issues)")?
@@ -58,12 +67,34 @@ jobs:
       pull-requests: read
       issues: read
       id-token: write
+    outputs:
+      verdict: ${{ steps.verdict.outputs.verdict }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
+          persist-credentials: false
+
+      # The review and its verdict must follow the base branch's instructions,
+      # not ones the PR supplies. Claude Code loads CLAUDE.md files, .claude/
+      # (skills, settings, hooks) and .mcp.json from the checkout, so replace
+      # them all with the base branch's versions.
+      - name: Use the base branch's Claude configuration
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE"
+          find . -path ./.git -prune -o \( -name CLAUDE.md -o -name CLAUDE.local.md \
+            -o -name .mcp.json -o -name .claude \) -prune -exec rm -rf {} +
+          git ls-tree -r --name-only "$BASE" \
+            | grep -E '(^|/)(CLAUDE\.md|CLAUDE\.local\.md|\.mcp\.json)$|(^|/)\.claude/' \
+            | xargs -r git checkout "$BASE" --
+
+      - name: Note the start time
+        id: start
+        run: echo "at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
       - name: Run Claude Code Review
         id: claude-review
@@ -82,29 +113,9 @@ jobs:
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
 
-            Review this pull request for its author, as you would for an
-            "@claude review" comment. Read the PR description, the diff, and
-            as much of the surrounding code and docs as you need to judge it.
-            Follow the repository's CLAUDE.md: its hard rules, conventions
-            and documentation duties are part of the review.
-
-            Write the review in your tracking comment:
-            - Blocking issues first: bugs, broken hard rules, a public
-              contract change without its docs and decision entry, docs that
-              now disagree with the code, missing tests for changed
-              behaviour. Say why each one blocks and what would fix it.
-            - Then non-blocking observations, briefly.
-            - Then what you did not check (you can't build or run tests).
-            Use inline comments for issues tied to specific lines.
-
-            If an earlier review on this PR listed blocking issues, say for
-            each one whether this version addresses it.
-
-            Comment only. Don't approve, request changes or edit files.
-
-            End the comment with exactly one of these lines:
-            **Verdict:** blocking
-            **Verdict:** no blocking issues
+            Review this pull request with the pr-review skill. Read
+            .claude/skills/pr-review/SKILL.md first and follow it. Write the
+            review in your tracking comment.
           # Opus runs the review. Read-only access, plus /tmp for notes (such
           # as a saved diff), which is outside the checkout, and Claude's own
           # tool-results folder, where large diffs land. Nothing that can
@@ -114,9 +125,43 @@ jobs:
             --model opus
             --add-dir /home/runner/.claude/projects
             --add-dir /tmp
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(tr:*),Bash(cut:*),Edit(//tmp/**)"
+            --allowedTools "Skill,mcp__github_inline_comment__create_inline_comment,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(tr:*),Bash(cut:*),Edit(//tmp/**)"
           # Temporary, to diagnose #37: print the session transcript to the
           # Actions log (public for this repo). Remove once #37 is resolved.
           show_full_output: true
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
+
+      - name: Read the verdict
+        id: verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          STARTED: ${{ steps.start.outputs.at }}
+        run: |
+          verdict=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" \
+            --jq '.[] | select(.user.login == "claude[bot]" and .created_at >= env.STARTED) | .body
+                  | capture("\\*\\*Verdict:\\*\\* (?<v>blocking|no blocking issues)")?
+                  | .v' | tail -n 1)
+          echo "Verdict: ${verdict:-none}"
+          [ -n "$verdict" ] || echo "::warning::The review comment has no verdict line"
+          echo "verdict=$verdict" >> "$GITHUB_OUTPUT"
+
+  # A separate job, without Claude or a checkout, holds the only token that can
+  # approve.
+  approve:
+    needs: claude-review
+    if: needs.claude-review.outputs.verdict == 'no blocking issues'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Approve the reviewed commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          gh api -X POST "repos/$GITHUB_REPOSITORY/pulls/$PR/reviews" \
+            -f commit_id="$SHA" -f event=APPROVE \
+            -f body="Claude's review found no blocking issues; see its review comment." >/dev/null
