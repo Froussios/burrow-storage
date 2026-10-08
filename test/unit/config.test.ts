@@ -101,7 +101,11 @@ describe("FS-3/BE-3 public backend configuration", () => {
       {
         app: "shorthand",
         backend: undefined,
-        firestore: { apiKey: "publishable", projectId: "caller-project" },
+        firestore: {
+          apiKey: "emulator",
+          projectId: "burrow-rules-test",
+          emulator: { host: "127.0.0.1", port: 1 },
+        },
       },
       env,
     );
