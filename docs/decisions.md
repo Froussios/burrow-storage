@@ -130,7 +130,11 @@ purpose. With `rememberDevice: false` the cache defaults to `memory`; an explici
 If no `backend` is passed and no `<meta name="burrow-firestore">` or `window.BURROW.firestore`
 exists, `burrow()` still resolves and works locally, warns once in the console, and
 `inspect().backend` is `"none"`. A config that is present but incomplete (missing `apiKey`,
-`projectId` or `appId`) is an error (`TypeError`), not local-only.
+`projectId` or `appId`) originally rejected with `TypeError`.
+
+**Partly superseded by D-45:** a configured backend that cannot be resolved now returns a
+usable local store with `status: "error"`; it never silently selects another project.
+Firestore `appId` is optional. Missing configuration remains the local-only `idle` case.
 
 ### D-17 Script-tag build loads the Firestore SDK from a same-directory file (BE-3, SEC-4, SEC-5)
 
@@ -449,7 +453,8 @@ therefore write undeletable documents to the owner's project.
 `scripts/serve.mjs` rewrites pages in `demo/` and the assembled `site/` to use
 `FIRESTORE_EMULATOR_HOST` or `127.0.0.1:8080` by default. For local development against a real
 project, including pre-production, the caller explicitly supplies `BURROW_FIRESTORE` config
-JSON with non-empty `apiKey`, `projectId` and `appId` strings and an optional `collection`.
+JSON with non-empty `apiKey` and `projectId` strings and optional `appId` and `collection`.
+`appId` became optional in D-45, including for the local server and live setup check.
 It reuses the live setup check's config format. Unknown SDK fields are ignored and an
 `emulator` field is rejected. Empty, malformed or incomplete explicit config and simultaneous
 live and emulator settings stop the server before it listens. This validates the config's

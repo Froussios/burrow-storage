@@ -139,6 +139,19 @@ it("#40 explicit config preserves the collection and safely escapes attribute va
   expect(html).toContain("preprod&#39;s-$&amp;-&lt;items&gt;&amp;lt;");
 });
 
+it("#23 local serving accepts Firestore config without appId", async () => {
+  const config = { apiKey: project.apiKey, projectId: project.projectId };
+  const url = await serve({ firestore: JSON.stringify(config) });
+  for (const page of ["/demo/", "/site/"]) {
+    const html = await (await fetch(url + page)).text();
+    expect(readConfig(html)).toEqual(config);
+    expect(html).toContain(
+      "connect-src 'self' https://firestore.googleapis.com",
+    );
+    expect(html).not.toContain("burrow-storage-shared");
+  }
+});
+
 function readConfig(html: string) {
   const config = html.match(
     /<meta\s+name="burrow-firestore"\s+content='([^']*)'/,
@@ -164,7 +177,8 @@ it.each([
   "{}",
   JSON.stringify({ ...project, apiKey: 123 }),
   JSON.stringify({ ...project, projectId: " " }),
-  JSON.stringify({ apiKey: project.apiKey, projectId: project.projectId }),
+  JSON.stringify({ ...project, appId: " " }),
+  JSON.stringify({ ...project, appId: 123 }),
   JSON.stringify({ ...project, collection: "" }),
   JSON.stringify({ ...project, emulator: { host: "localhost", port: 8080 } }),
 ])("#40 invalid explicit config %s stops local serving", async (firestore) => {

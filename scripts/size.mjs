@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // CI size check (NF table): core + memory backend ≤ 12 KB min+gzip; the passkey
-// backup (burrow-storage/passkey) ≤ 2 KB on top of it. The Firestore SDK is
-// lazy-loaded and not counted.
+// backup (burrow-storage/passkey) ≤ 2 KB on top of it. The Firestore adapter
+// and lazy SDK have separate 2 KB and 150 KB budgets outside the core budget.
 import { build } from "esbuild";
 import { gzipSync } from "node:zlib";
 

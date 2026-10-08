@@ -79,8 +79,11 @@ export class FirestoreBackend implements Backend {
       !config.projectId.trim()
     )
       throw new TypeError("FirestoreBackend needs apiKey and projectId");
-    if (config.appId !== undefined && typeof config.appId !== "string")
-      throw new TypeError("FirestoreBackend appId must be a string");
+    if (
+      config.appId !== undefined &&
+      (typeof config.appId !== "string" || !config.appId.trim())
+    )
+      throw new TypeError("FirestoreBackend appId must be a non-empty string");
     if (
       config.collection !== undefined &&
       (typeof config.collection !== "string" ||
