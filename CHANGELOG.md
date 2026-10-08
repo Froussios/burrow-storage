@@ -49,9 +49,9 @@ labels, and the storage-token encoding are public contract: changing them is a m
   decision log.
 
 ### Changed
-- `npm run test:live` requires an explicit `BURROW_FIRESTORE` config for the caller's own project;
-  it no longer falls back to the demo's store. The setup guide and printed steps explain this
-  optional check, its limits and its undeletable throwaway documents (#43, D-43).
+- `npm run test:live` requires the `BURROW_FIRESTORE` environment variable to name the caller's
+  own project; it no longer falls back to the demo's store. The setup guide and printed steps
+  explain this optional check, its limits and its undeletable throwaway documents (#43, D-43).
 - Token-only API (#28, D-42): the `KeyProvider` interface, `BurrowConfig.keyProvider`,
   `protect()`, `link({ provider })`, `protection`, `onUnprotected` and the `passkey()` and
   `syncCode()` providers are gone. `exportCode()`, `link({ code })` and `bad-code` are renamed

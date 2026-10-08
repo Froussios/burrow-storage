@@ -52,14 +52,15 @@ run the same commands from a clone as `node scripts/burrow-setup.mjs firestore`.
    referrer restriction, so during development serve it from `http://localhost`.
 6. Leave Authentication, Storage, Functions and Blaze off. Burrow needs none of them.
 7. **Optionally check your project** from a repository clone with dependencies installed
-   (`npm ci`). Pass the config from step 3 explicitly:
+   (`npm ci`). Set the `BURROW_FIRESTORE` environment variable to the config JSON from step 3:
 
    ```sh
    BURROW_FIRESTORE='{"apiKey":"…","projectId":"your-project-id","appId":"…"}' npm run test:live
    ```
 
-   This is a one-off setup check of your own project, never run in CI. Without
-   `BURROW_FIRESTORE`, it exits non-zero before contacting Firebase and points back to this guide.
+   This is a one-off setup check of your own project, never run in CI. If the environment
+   variable is missing, empty or not valid JSON, it exits non-zero before contacting Firebase
+   and points back to this guide.
    Each run writes a few KB of throwaway documents that cannot be deleted through the client
    rules (FS-6). It checks:
 

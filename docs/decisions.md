@@ -432,8 +432,9 @@ post-deploy page smoke test in `pages.yml` (D-40), exercising the page as a user
 checks of the project's rules, quotas or key restrictions do not belong there. Other tests and
 scripts use the emulator or a project the caller explicitly names.
 
-`npm run test:live` is a one-off check of the caller's own setup. It requires `BURROW_FIRESTORE`,
-exits non-zero with setup guidance before contacting Firebase when absent, and never runs in CI.
+`npm run test:live` is a one-off check of the caller's own setup. It requires the
+`BURROW_FIRESTORE` environment variable, exits non-zero with setup guidance before contacting
+Firebase when the variable is missing, empty or not valid JSON, and never runs in CI.
 It checks unauthenticated create/read by id, refusal of a forged write token and of listing,
 backend conformance and two-device sync. It leaves undeletable throwaway documents and does not
 check Spark vs Blaze or that Auth, Storage and Functions are off. The setup guide and printed

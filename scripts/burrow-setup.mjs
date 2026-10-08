@@ -47,6 +47,7 @@ One project serves every prototype. Do this once.
  6. Leave Auth, Storage, Functions and Blaze off. Burrow needs none of them.
 
  7. Optionally check your project from a repository clone (never in CI):
+      Set the BURROW_FIRESTORE environment variable to your config JSON:
       BURROW_FIRESTORE='{"apiKey":"…","projectId":"${project}","appId":"…"}' npm run test:live
       Writes a few KB that cannot be deleted. See docs/firestore-setup.md for what it checks.
 

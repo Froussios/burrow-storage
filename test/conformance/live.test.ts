@@ -1,7 +1,8 @@
-// Gate 2 (M5): a one-off check of your own LIVE project, explicitly named in
-// BURROW_FIRESTORE (`{"apiKey","projectId","appId"}`). Checks unauthenticated
-// create/read by id, refusal of a forged write token and of listing, backend
-// conformance, and two-device sync. Does not check Spark vs Blaze, or whether
+// Gate 2 (M5): a one-off check of your own LIVE project, named in the
+// BURROW_FIRESTORE environment variable (`{"apiKey","projectId","appId"}`).
+// Checks fresh unauthenticated creates and reads by id, refusal of forged
+// write tokens and listing, backend conformance, and two-device sync.
+// Does not check Spark vs Blaze, or whether
 // Auth, Storage and Functions are off. Writes a few KB at ids derived from
 // throwaway secrets; documents cannot be deleted (FS-6). Never runs in CI.
 // See docs/firestore-setup.md, step 7, before running `npm run test:live`.
@@ -25,16 +26,20 @@ import { seal } from "../../src/codec/envelope.js";
 import { World } from "../support/devices.js";
 import { backendConformance } from "./suite.js";
 
+const guidance =
+  "Set the BURROW_FIRESTORE environment variable to your project's valid config JSON ({ apiKey, projectId, appId }) before running npm run test:live. See docs/firestore-setup.md, step 7.";
 const target = process.env.BURROW_FIRESTORE;
-if (!target)
-  throw new Error(
-    "Set BURROW_FIRESTORE to your project's config JSON ({ apiKey, projectId, appId }) before running npm run test:live. See docs/firestore-setup.md, step 7.",
-  );
-const config = JSON.parse(target) as {
+if (!target) throw new Error(guidance);
+let config: {
   apiKey: string;
   projectId: string;
   appId: string;
 };
+try {
+  config = JSON.parse(target);
+} catch {
+  throw new Error(guidance);
+}
 const opened: FirestoreBackend[] = [];
 const make = () => {
   const b = new FirestoreBackend(config);

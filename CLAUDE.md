@@ -41,7 +41,8 @@ them as history unless the owner says otherwise.
 - Unsynced writes are never dropped by the engine (SYNC-9).
 - Only the demo may use the owner's Firebase project. CI reaches it only through the deployed
   demo page in `pages.yml`; other tests and scripts use the emulator or a caller-named project
-  (D-43, #40). Live setup checks require `BURROW_FIRESTORE` and never run in CI.
+  (D-43, #40). Live setup checks require the `BURROW_FIRESTORE` environment variable and never
+  run in CI.
 - **Public contract**, major version to change: the `Envelope` format, HKDF salts `burrow/v1`,
   `burrow/slot/v1`, PRF salt `burrow/prf/v1`, the info labels, the AAD and token formats, the
   storage-token encoding (`SECURITY.md`).
@@ -81,7 +82,7 @@ npm run check          # typecheck + test + build + size + docs:check
 npm run test:rules     # firebase emulator: node --test firebase/tests/rules.test.mjs  (cd firebase/tests && npm ci first)
 npm run test:firestore # conformance suite against the emulator
 npm run test:e2e       # playwright under the emulator (npm run build first)
-npm run test:live      # one-off setup check of your own project; requires BURROW_FIRESTORE; writes undeletable throwaway docs; never in CI
+npm run test:live      # one-off setup check of your own project; set the BURROW_FIRESTORE environment variable (docs/firestore-setup.md); never in CI
 npm run serve          # static server for demo/ and test pages at http://localhost:4173 (after a build)
 npm run demo:build     # site/: the deployable demo, footer stamped with the commit (after a build)
 npm run test:smoke     # demo smoke test: BURROW_DEMO_URL=<deployed demo>, or site/ under the emulator:
