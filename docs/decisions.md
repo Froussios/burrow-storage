@@ -1,6 +1,6 @@
 # Decisions
 
-The judgement calls behind the code, in two parts. **Part A** (D-1 … D-42, with a hyphen) is the
+The judgement calls behind the code, in two parts. **Part A** (D-1 … D-43, with a hyphen) is the
 log kept while implementing; each entry names the requirement it touches in
 [history/requirements.md](history/requirements.md) ("the brief") and the choice made where the
 brief was silent or self-contradictory. **Part B** (D1 … D20, no hyphen) is the earlier planning
@@ -423,6 +423,22 @@ the 56-character string the user also sees: `exportToken()` hands it out, and
 Also: API-7's `link()` takes a token, not a provider. The passkey restore with unsynced local
 data used to prompt twice (`link({ provider })`, `would-orphan`, then `link()` again); now the
 retry reuses the token `restore()` returned, with one prompt.
+
+### D-43 Only the demo uses the owner's Firebase project (#40, #43)
+
+The owner's project is the demo's store, not a default for tests or setup scripts. Only
+`demo/index.html` and the deployed demo may be coupled to it. CI reaches it only through the
+post-deploy page smoke test in `pages.yml` (D-40), exercising the page as a user would; direct
+checks of the project's rules, quotas or key restrictions do not belong there. Other tests and
+scripts use the emulator or a project the caller explicitly names.
+
+`npm run test:live` is a one-off check of the caller's own setup. It requires the
+`BURROW_FIRESTORE` environment variable, exits non-zero with setup guidance before contacting
+Firebase when the variable is missing, empty or not valid JSON, and never runs in CI.
+It checks unauthenticated create/read by id, refusal of a forged write token and of listing,
+backend conformance and two-device sync. It leaves undeletable throwaway documents and does not
+check Spark vs Blaze or that Auth, Storage and Functions are off. The setup guide and printed
+steps describe these limits. The earlier live runs in D-1 and D-23 remain historical records.
 
 ## Part B: planning decisions and their status
 

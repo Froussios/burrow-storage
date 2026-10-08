@@ -341,7 +341,7 @@ npm provenance on a `v*` tag.
 | --- | --- | --- | --- |
 | Unit (`test/unit/*.test.ts`) | `npm test` | Node, `fake-indexeddb`, Node's `--localstorage-file` as the reference `Storage` | area API (`area.test.ts`), facade (`facade.test.ts`), codec and vectors (`codec.test.ts`), cache (`cache.test.ts`), the sample-app drop-in test |
 | Property (`test/property/merge.test.ts`) | `npm test` | Node, fast-check | merge convergence, tombstones, clock skew |
-| Conformance (`test/conformance/`) | `npm test` (memory), `npm run test:firestore` (emulator), `npm run test:live` (a real project, never in CI) | Node | `backendConformance()` for every backend |
+| Conformance (`test/conformance/`) | `npm test` (memory), `npm run test:firestore` (emulator), `npm run test:live` (your own project, never in CI) | Node | `backendConformance()` for every backend |
 | Rules (`firebase/tests/rules.test.mjs`) | `npm run test:rules` | `node --test` under the emulator (Java 21) | the rules matrix |
 | Browser (`test/e2e/*.spec.ts`) | `npm run test:e2e` | Playwright on Chromium, Firefox, WebKit, served by `scripts/serve.mjs` against the emulator | persistence, tabs, unload flush, the demo journeys; passkeys on Chromium via a CDP virtual authenticator with PRF |
 | Demo smoke (`test/smoke/demo.spec.ts`) | `npm run test:smoke` | Playwright on Chromium, against the deployed demo (`BURROW_DEMO_URL`) and its live store, or against the assembled `site/` under the emulator | the page shows the expected commit, keeps its strict CSP, loads from its own origin and the store only, logs no console errors, shows a token; two fresh contexts sync both ways |
@@ -352,6 +352,9 @@ examples compile, member-signature listings must match `BurrowArea`, and interfa
 match the exported type of the same name. Multi-device tests build several `Env`s over
 one `MemoryBackend` store (`test/support/devices.ts`).
 
+For the optional live setup check, set the `BURROW_FIRESTORE` environment variable as described
+in [firestore-setup.md, step 7](firestore-setup.md#create-the-project).
+
 CI (`.github/workflows/ci.yml`): typecheck, unit/property/conformance, build, size and
 `docs:check` on Node 24 and 26; rules and emulator conformance; browser tests on three engines,
 then the demo smoke test against `site/` under the emulator. `pages.yml` runs on every push to
@@ -359,7 +362,8 @@ then the demo smoke test against `site/` under the emulator. `pages.yml` runs on
 origin, so `script-src 'self'` covers them, and the page footer stamped with the commit and build
 time), the job deploys it to GitHub Pages at <https://froussios.github.io/burrow-storage/>, and a
 second job runs the smoke test against the deployed page; a smoke failure fails the run (D-39,
-D-40). `release.yml` publishes on tags.
+D-40). `release.yml` publishes on tags. Only the demo may use the owner's Firebase project;
+CI reaches it through the deployed page (D-43).
 
 Contributors need Node 22 or newer (`--localstorage-file`), Java 21 for the emulator, and
 Playwright browsers for the e2e suite (`npx playwright install --with-deps`).

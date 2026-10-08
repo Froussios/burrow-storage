@@ -46,6 +46,11 @@ One project serves every prototype. Do this once.
 
  6. Leave Auth, Storage, Functions and Blaze off. Burrow needs none of them.
 
+ 7. Optionally check your project from a repository clone (never in CI):
+      Set the BURROW_FIRESTORE environment variable to your config JSON:
+      BURROW_FIRESTORE='{"apiKey":"…","projectId":"${project}","appId":"…"}' npm run test:live
+      Writes a few KB that cannot be deleted. See docs/firestore-setup.md for what it checks.
+
 Spark ceilings (shared by all your prototypes): 1 GiB stored; 50,000 reads, 20,000 writes,
 20,000 deletes per day. A sync with nothing new costs 1 read. Pushing n changed items costs n+1
 writes and at least n+2 reads, because writes go through transactions. Hitting a ceiling pauses
