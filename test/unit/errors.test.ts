@@ -91,11 +91,62 @@ describe("SEC-8 scrub()", () => {
       expect(scrub(v)).toBeUndefined();
   });
 
-  it("passes BurrowError and BackendError through unchanged (their causes were scrubbed already)", () => {
-    const b = new BackendError("network");
+  it("passes a BurrowError through unchanged (its cause was scrubbed already)", () => {
     const e = new BurrowError("backend");
-    expect(scrub(b)).toBe(b);
     expect(scrub(e)).toBe(e);
+  });
+
+  it("rebuilds a BackendError with its code, a redacted message and a scrubbed cause (#32)", () => {
+    class AdapterError extends BackendError {
+      readonly doc = ID;
+    }
+    const original = new AdapterError("unauthorized", `write to ${ID} denied`);
+    Object.defineProperty(original, "cause", {
+      value: new Error(`rules rejected ${HEX}`),
+    });
+    const s = scrub(original) as BackendError;
+    expect(s).toBeInstanceOf(BackendError);
+    expect(s).not.toBe(original);
+    expect(s).toMatchObject({
+      name: "BackendError",
+      code: "unauthorized",
+      message: "write to [redacted] denied",
+    });
+    expect((s.cause as Error).message).toBe("rules rejected [redacted]");
+    expect("doc" in s).toBe(false);
+    expect(Object.keys(s).sort()).toEqual(["code", "name"]);
+    expect(s.stack ?? "").not.toMatch(ID_RE);
+    expect(String(s)).not.toMatch(ID_RE);
+
+    // A message with nothing to redact, and no cause, survives as is.
+    const plain = scrub(new BackendError("network")) as BackendError;
+    expect(plain).toMatchObject({ code: "network", message: "network" });
+    expect("cause" in plain).toBe(false);
+  });
+
+  it("stops at a BackendError cause chain that loops back on itself", () => {
+    const loop = new BackendError("network", `at ${ID}`);
+    Object.defineProperty(loop, "cause", { value: loop });
+    let s = scrub(loop) as BackendError | undefined;
+    let n = 0;
+    for (; s; s = s.cause as BackendError | undefined, n++)
+      expect(s.message).toBe("at [redacted]");
+    expect(n).toBeGreaterThan(1);
+    expect(n).toBeLessThan(20);
+  });
+
+  it("BurrowError and fromBackend scrub a BackendError cause whose message holds an id (#32)", () => {
+    const leaky = new BackendError("network", `get ${ID} timed out`);
+    for (const e of [
+      new BurrowError("backend", undefined, { cause: leaky }),
+      fromBackend(leaky),
+    ]) {
+      expect(e.cause).toBeInstanceOf(BackendError);
+      expect((e.cause as BackendError).message).toBe(
+        "get [redacted] timed out",
+      );
+      expect((e.cause as BackendError).code).toBe("network");
+    }
   });
 });
 

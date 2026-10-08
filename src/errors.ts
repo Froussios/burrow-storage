@@ -59,9 +59,22 @@ const SECRETISH = /[A-Za-z0-9_-]{40,}/g;
 export const scrubText = (s: string): string =>
   s.replace(SECRETISH, "[redacted]");
 
-export function scrub(cause: unknown): unknown {
-  if (cause instanceof BurrowError || cause instanceof BackendError)
-    return cause;
+export function scrub(cause: unknown, depth = 0): unknown {
+  if (cause instanceof BurrowError) return cause;
+  // #32: a third-party adapter may put an id in a BackendError's message, so
+  // rebuild it like any other cause, keeping its code and a scrubbed chain of
+  // causes. The depth cap stops a cause chain that loops back on itself.
+  if (cause instanceof BackendError) {
+    const e = new BackendError(cause.code, scrubText(cause.message));
+    const inner = depth < 8 ? scrub(cause.cause, depth + 1) : undefined;
+    if (inner !== undefined)
+      Object.defineProperty(e, "cause", {
+        value: inner,
+        writable: true,
+        configurable: true,
+      });
+    return e;
+  }
   if (cause instanceof Error) {
     const e = new Error(scrubText(cause.message));
     e.name = cause.name;

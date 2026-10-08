@@ -68,3 +68,6 @@ labels, and the storage-token encoding are public contract: changing them is a m
 - `link()` could finish against the old identity when the first sync pass was still running.
 - Firestore reads could return a stale view of a document the page also listens to; reads now go
   through a transaction.
+- A `BackendError` used as an error's `cause` kept its message unredacted, so a third-party
+  adapter that put an id in it would leak it; it is now rebuilt and scrubbed like any other
+  cause (#32).
