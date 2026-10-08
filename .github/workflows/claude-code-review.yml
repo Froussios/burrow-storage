@@ -1,23 +1,57 @@
 name: Claude Code Review
 
+# Reviews PRs from people with write access (in practice, the owner) when they
+# become ready for review, and again after a push that follows a review with
+# blocking issues. Other PRs, including all PRs from forks, skip every job, so
+# they start no runner and use no Claude quota. The review only comments; it
+# never approves.
+
 on:
   pull_request:
-    types: [opened, synchronize, ready_for_review, reopened]
-    # Optional: Only run on specific file changes
-    # paths:
-    #   - "src/**/*.ts"
-    #   - "src/**/*.tsx"
-    #   - "src/**/*.js"
-    #   - "src/**/*.jsx"
+    types: [opened, ready_for_review, reopened, synchronize]
+
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
-  claude-review:
-    # Optional: Filter by PR author
-    # if: |
-    #   github.event.pull_request.user.login == 'external-contributor' ||
-    #   github.event.pull_request.user.login == 'new-developer' ||
-    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
+  decide:
+    if: >-
+      !github.event.pull_request.draft &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'),
+      github.event.pull_request.author_association)
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      review: ${{ steps.decide.outputs.review }}
+    steps:
+      - name: Review now?
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_ACTION: ${{ github.event.action }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          if [ "$EVENT_ACTION" != synchronize ]; then
+            echo "review=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # A push re-reviews only if the latest review's verdict was blocking.
+          verdict=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" \
+            --jq '.[] | select(.user.login == "claude[bot]") | .body
+                  | capture("\\*\\*Verdict:\\*\\* (?<v>blocking|no blocking issues)")?
+                  | .v' | tail -n 1)
+          echo "Latest verdict: ${verdict:-none}"
+          if [ "$verdict" = blocking ]; then
+            echo "review=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "review=false" >> "$GITHUB_OUTPUT"
+          fi
 
+  claude-review:
+    needs: decide
+    if: needs.decide.outputs.review == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -35,25 +69,47 @@ jobs:
         id: claude-review
         uses: anthropics/claude-code-action@v1
         env:
-          # #37: the code-review command starts its subagents without saying
-          # foreground or background, so they start in the background. The
-          # session then ends its turn to wait for them, the action reports
-          # that as the result, and the subagents never finish. Keep them in
-          # the foreground.
+          # #37: subagents started in the background were abandoned when the
+          # main turn ended, so nothing was posted. Keep them in the
+          # foreground.
           CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1"
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          plugin_marketplaces: "https://github.com/anthropics/claude-code.git"
-          plugins: "code-review@claude-code-plugins"
-          prompt: "/code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}"
-          # Opus runs the review session. The command still picks its own
-          # subagent models: Haiku to screen, Opus for bugs.
-          #
-          # Read-only access, plus /tmp for the reviewers' notes (such as a
-          # saved diff), which is outside the checkout. They may also read
-          # Claude's own tool-results folder (large diffs land there) and use
-          # tr and cut. Nothing that can edit the repo or run other programs:
-          # the action's app token can write to the repo.
+          # One tracking comment that Claude fills in, as for an @claude
+          # mention.
+          track_progress: true
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Review this pull request for its author, as you would for an
+            "@claude review" comment. Read the PR description, the diff, and
+            as much of the surrounding code and docs as you need to judge it.
+            Follow the repository's CLAUDE.md: its hard rules, conventions
+            and documentation duties are part of the review.
+
+            Write the review in your tracking comment:
+            - Blocking issues first: bugs, broken hard rules, a public
+              contract change without its docs and decision entry, docs that
+              now disagree with the code, missing tests for changed
+              behaviour. Say why each one blocks and what would fix it.
+            - Then non-blocking observations, briefly.
+            - Then what you did not check (you can't build or run tests).
+            Use inline comments for issues tied to specific lines.
+
+            If an earlier review on this PR listed blocking issues, say for
+            each one whether this version addresses it.
+
+            Comment only. Don't approve, request changes or edit files.
+
+            End the comment with exactly one of these lines:
+            **Verdict:** blocking
+            **Verdict:** no blocking issues
+          # Opus runs the review. Read-only access, plus /tmp for notes (such
+          # as a saved diff), which is outside the checkout, and Claude's own
+          # tool-results folder, where large diffs land. Nothing that can
+          # edit the repo or run other programs: the action's app token can
+          # write to the repo.
           claude_args: >-
             --model opus
             --add-dir /home/runner/.claude/projects
