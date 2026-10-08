@@ -34,7 +34,7 @@
   "files": [
     "dist",
     "scripts/burrow-setup.mjs",
-    "scripts/setup.sh",
+    "firebase/SETUP-AGENT.md",
     "firebase/firestore.rules",
     "firebase/firebase.json"
   ],

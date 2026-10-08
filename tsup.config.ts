@@ -23,6 +23,7 @@ export default defineConfig([
       index: "src/index.ts",
       passkey: "src/passkey.ts",
       firestore: "src/backends/firestore.ts",
+      "setup-check": "src/setup/check.ts",
     },
     format: ["esm"],
     platform: "browser",

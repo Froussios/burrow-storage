@@ -41,8 +41,9 @@ them as history unless the owner says otherwise.
 - Unsynced writes are never dropped by the engine (SYNC-9).
 - Only the demo may use the owner's Firebase project. CI reaches it only through the deployed
   demo page in `pages.yml`; other tests and scripts use the emulator or a caller-named project
-  (D-43, #40). Live setup checks require the `BURROW_FIRESTORE` environment variable and never
-  run in CI.
+  (D-43, #40). Live setup checks require caller-supplied config (`BURROW_FIRESTORE` for
+  `npm run test:live`, the argument to `burrow-setup check`) and never run in CI. They have no
+  fallback to the owner's project (D-49 amends D-43).
   `npm run serve` rewrites the local demo and assembled `site/` to use the emulator
   (`FIRESTORE_EMULATOR_HOST` or `127.0.0.1:8080`) by default. Set `BURROW_FIRESTORE` to an
   explicit project config to use your own live or pre-production store; invalid config or
@@ -61,8 +62,9 @@ them as history unless the owner says otherwise.
 ## Toolchain
 
 TypeScript 5.9 `strict`, ES2022, browser `lib`. **Node 22 or newer** for development (`npm test`
-uses Node's `--localstorage-file`); `engines` says `>=18` because that is enough to run the
-`burrow-setup` CLI. npm. Builds with tsup (`tsup.config.ts`). Tests with vitest (unit, property
+uses Node's `--localstorage-file`); `engines` says `>=18` because that is enough to print the
+`burrow-setup` human guide; its live `check` and the agent setup CLI need Node 20 or newer. npm.
+Builds with tsup (`tsup.config.ts`). Tests with vitest (unit, property
 via fast-check, backend conformance), Playwright (`test/e2e`, three engines, a CDP virtual
 authenticator for passkeys), `node --test` for the rules under the Firestore emulator
 (firebase-tools, Java 21). No linter is configured. GitHub Actions: `ci.yml`, `pages.yml`
@@ -126,8 +128,8 @@ src/
   sync/merge.ts         pure LWW merge
   backends/             memory.ts, firestore.ts, firestore-sdk.ts
 test/                   unit/, property/, conformance/, e2e/, smoke/, sample-app/, support/, vectors.json, setup.ts
-firebase/               firestore.rules, firebase.json, README.md, tests/ (rules tests, own package.json)
-scripts/                burrow-setup.mjs (bin), setup.sh, emulator.mjs, serve.mjs, build-demo.mjs, size.mjs, sri.mjs, gen-vectors.mjs
+firebase/               SETUP-AGENT.md, firestore.rules, firebase.json, README.md, tests/ (rules tests, own package.json)
+scripts/                burrow-setup.mjs (bin), emulator.mjs, serve.mjs, build-demo.mjs, size.mjs, sri.mjs, gen-vectors.mjs
 demo/                   index.html, demo.js, demo.css, favicon.svg, burrow.config.example.html
 docs/                   guides, api, architecture, decisions, user-journeys, history/
 ```
