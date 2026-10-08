@@ -1011,15 +1011,15 @@ export class Core implements BurrowArea {
         }
       }
       await this.#applyRemote(remote, changes);
+      const unlistedLive = new Set<string>();
+      for (const [k, r] of ok)
+        if (!r.ver.deleted && !(k in dir)) unlistedLive.add(k);
       let pruned = 0;
       // Synced keys missing from an existing manifest were pruned tombstones:
       // drop them, except live item results this pass will publish.
       if (menv) {
         const gone = [...this.#mirror]
-          .filter(
-            ([k, e]) =>
-              !e.dirty && !(k in dir) && (!ok.has(k) || ok.get(k)!.ver.deleted),
-          )
+          .filter(([k, e]) => !e.dirty && !(k in dir) && !unlistedLive.has(k))
           .map(([k]) => k);
         const mark = this.#mark();
         const dropped = await this.#cache.updateItems(gone, (_k, cur) =>
@@ -1046,10 +1046,7 @@ export class Core implements BurrowArea {
       const dirty = [...this.#mirror].filter(([, e]) => e.dirty);
       // Revalidation can adopt a newer live result and clear the last dirty
       // key. It still needs a manifest entry before this pass can finish.
-      const unlistedLive = [...ok].some(
-        ([k, r]) => !r.ver.deleted && !(k in dir),
-      );
-      if (!dirty.length && !unlistedLive) {
+      if (!dirty.length && !unlistedLive.size) {
         this.#meta.manifestRev = menv?.rev ?? null;
         break;
       }

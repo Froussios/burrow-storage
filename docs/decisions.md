@@ -487,6 +487,8 @@ so adopting a newer unlisted value cannot briefly remove it locally during the s
 The pass publishes unlisted live results even when revalidation cleared the last dirty key,
 so the next pass sees their manifest entries and keeps them without depending on the other
 writer finishing its manifest upload.
+Forced publication lists the observed winning `(ts, h)` from the other device; it creates no
+new local write or timestamp.
 
 ## Part B: planning decisions and their status
 
