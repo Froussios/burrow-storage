@@ -17,7 +17,7 @@ describe("SYNC-6 pull triggers", () => {
       value: { ...bDev.backend.capabilities, subscribe: false },
     });
     const b = await bDev.open();
-    await b.link({ code: await a.exportCode() });
+    await b.link({ token: await a.exportToken() });
     await settle(b);
     await a.set({ theme: "dark" });
     await settle(a);
@@ -65,7 +65,7 @@ describe("ERR-3 debug lines", () => {
       lines.push(args);
     });
     const b = await world.device().open({ debug: true });
-    await b.link({ code: await a.exportCode() });
+    await b.link({ token: await a.exportToken() });
     await settle(b);
     const merges = lines.filter((l) => String(l[0]).endsWith(" merge"));
     expect(merges.length).toBeGreaterThanOrEqual(1);

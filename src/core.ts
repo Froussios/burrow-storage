@@ -11,7 +11,7 @@ import {
   open,
   seal,
 } from "./codec/envelope.js";
-import { decodeSyncCode, encodeSyncCode } from "./codec/synccode.js";
+import { decodeToken, encodeToken } from "./codec/token.js";
 import { BackendError, BurrowError, fromBackend } from "./errors.js";
 import { BurrowEvent } from "./events.js";
 import { createFacade } from "./facade.js";
@@ -33,10 +33,7 @@ import type {
   GetKeys,
   Inspection,
   Item,
-  KeyProvider,
   Manifest,
-  Protection,
-  ProviderStore,
   Status,
   TokenInfo,
   StatusEvent,
@@ -94,22 +91,17 @@ function addChange(
   if (!("oldValue" in c) && !("newValue" in c)) delete ch[key];
 }
 
-const protectionFor = (providerId: string): Protection =>
-  providerId === "sync-code" ? "code" : providerId;
-
 let warnedNoAuth = false;
 
 export class Core implements BurrowArea {
   readonly app: string;
   readonly onChanged = new BurrowEvent<ChangedEvent>("changed");
   readonly onStatus = new BurrowEvent<StatusEvent>("status");
-  readonly onUnprotected = new BurrowEvent<void>("unprotected");
   readonly onToken = new BurrowEvent<TokenInfo>("token");
   readonly storage: Storage;
 
   readonly #env: Env;
   readonly #backend: Backend | null;
-  readonly #providers: KeyProvider[];
   readonly #remember: boolean;
   readonly #interval: number;
   readonly #debounce: number;
@@ -122,7 +114,6 @@ export class Core implements BurrowArea {
   #keys: AppKeys | null = null;
   #mirror = new Map<string, Entry>();
   #meta: AppMeta = {};
-  #protection: Protection = "none";
   #token: TokenInfo = { source: "generated", remembered: false, since: null };
   #status: Status = "idle";
   #error: BurrowError | undefined;
@@ -164,8 +155,6 @@ export class Core implements BurrowArea {
     this.app = config.app;
     this.#env = env;
     this.#backend = backend;
-    const kp = config.keyProvider;
-    this.#providers = kp ? (Array.isArray(kp) ? kp : [kp]) : [];
     this.#remember = config.rememberDevice !== false;
     this.#interval = config.syncIntervalMs ?? 30_000;
     this.#debounce = config.debounceMs ?? 1_500;
@@ -185,18 +174,12 @@ export class Core implements BurrowArea {
   static async create(
     config: BurrowConfig,
     env: Env,
-    providers: KeyProvider[],
     onClose: () => void,
   ): Promise<Core> {
     if (!APP_RE.test(config.app ?? ""))
       throw new TypeError("app must match /^[a-z0-9-]{1,64}$/");
     const backend = config.backend ?? (await env.defaultBackend());
-    const core = new Core(
-      { ...config, keyProvider: config.keyProvider ?? providers },
-      env,
-      backend,
-      onClose,
-    );
+    const core = new Core(config, env, backend, onClose);
     await core.#init(config);
     return core;
   }
@@ -229,7 +212,6 @@ export class Core implements BurrowArea {
         if (this.#remember) {
           await s.persist(this.#cache);
           await this.#cache.setDevice({
-            protection: undefined,
             tokenSource: "generated",
             tokenSince: this.#token.since!,
           });
@@ -270,15 +252,11 @@ export class Core implements BurrowArea {
         manifestRev: null,
         maxRemoteTs: 0,
         lastSyncAt: null,
-        unprotectedFired: false,
       };
       await this.#cache.setMeta(meta);
     }
     this.#meta = meta;
     this.#mirror = await this.#cache.loadItems();
-    this.#protection =
-      (await this.#cache.getDevice()).protection ??
-      (this.#remember ? "none" : this.#protection);
   }
 
   // ---------------------------------------------------- lifecycle
@@ -315,7 +293,6 @@ export class Core implements BurrowArea {
       }, this.#interval);
     this.#subscribe();
     void this.#sync();
-    setTimeout(() => void this.#checkUnprotected(), 0);
   }
 
   #visible(): boolean {
@@ -336,7 +313,7 @@ export class Core implements BurrowArea {
       this.#unsubscribe = null;
     }, HIDDEN_DETACH_MS);
     await this.#flush();
-    if ([...this.#mirror.values()].some((e) => e.dirty)) await this.#sync(true);
+    if ([...this.#mirror.values()].some((e) => e.dirty)) await this.#sync();
   }
 
   #subscribe(): void {
@@ -376,7 +353,7 @@ export class Core implements BurrowArea {
   #alive(): void {
     if (this.#closed)
       throw new BurrowError(
-        "no-provider",
+        "unlinked",
         "this device was unlinked; call burrow() again",
       );
   }
@@ -385,9 +362,6 @@ export class Core implements BurrowArea {
 
   get status(): Status {
     return this.#status;
-  }
-  get protection(): Protection {
-    return this.#protection;
   }
   get token(): TokenInfo {
     return { ...this.#token };
@@ -413,18 +387,10 @@ export class Core implements BurrowArea {
     for (const e of this.#mirror.values()) if (e.dirty) dirty++;
     return {
       status: this.#status,
-      tokenSource: this.#token.source,
-      protection: this.#protection,
       manifestRev: this.#meta.manifestRev ?? null,
       dirtyKeys: dirty,
       lastSyncAt: this.#meta.lastSyncAt ?? null,
       backend: this.#backend?.id ?? "none",
-      provider:
-        this.#protection === "none"
-          ? null
-          : this.#protection === "code"
-            ? "sync-code"
-            : this.#protection,
     };
   }
 
@@ -538,7 +504,6 @@ export class Core implements BurrowArea {
       () => {
         this.#broadcast({ t: "changed", keys, source: "local" });
         this.#schedulePush();
-        void this.#checkUnprotected();
       },
       () => {},
     );
@@ -672,21 +637,6 @@ export class Core implements BurrowArea {
     if (Object.keys(changes).length) this.onChanged.emit({ changes, source });
   }
 
-  async #checkUnprotected(): Promise<void> {
-    // KP-14: once per device, when data exists but nothing can carry the secret
-    // elsewhere.
-    if (
-      this.#closed ||
-      this.#protection !== "none" ||
-      this.#meta.unprotectedFired
-    )
-      return;
-    if (!this.keysSync().length) return;
-    this.#meta.unprotectedFired = true;
-    await this.#cache.setMeta({ unprotectedFired: true });
-    this.onUnprotected.emit(undefined);
-  }
-
   // ---------------------------------------------------- multi-tab (SYNC-14)
 
   #broadcast(
@@ -818,7 +768,7 @@ export class Core implements BurrowArea {
   /**
    * Run one sync pass, coalescing callers onto the running one. Never rejects.
    */
-  #sync(keepalive = false): Promise<void> {
+  #sync(): Promise<void> {
     if (!this.#backend || this.#paused || this.#closed || !this.#keys)
       return Promise.resolve();
     if (this.#running) {
@@ -830,7 +780,7 @@ export class Core implements BurrowArea {
         this.#rerun = false;
         this.#passStartedAt = Date.now();
         try {
-          await this.#lock("sync", () => this.#pass(keepalive));
+          await this.#lock("sync", () => this.#pass());
           this.#retryDelay = 0;
           this.#setStatus("idle");
         } catch (e) {
@@ -998,7 +948,7 @@ export class Core implements BurrowArea {
    * One sync pass: pull the manifest, fetch newer items, push dirty items,
    * write the manifest last.
    */
-  async #pass(keepalive: boolean): Promise<void> {
+  async #pass(): Promise<void> {
     const t0 = Date.now();
     const b = this.#backend!;
     const keys = this.#keys!;
@@ -1083,7 +1033,7 @@ export class Core implements BurrowArea {
       }
       const results = await Promise.all(
         dirty.map(([k, e]) =>
-          ok.get(k)?.ver.ts === e.ts ? null : this.#pushItem(k, e, keepalive),
+          ok.get(k)?.ver.ts === e.ts ? null : this.#pushItem(k, e),
         ),
       );
       for (const r of results) {
@@ -1108,7 +1058,6 @@ export class Core implements BurrowArea {
           keys.base,
           await seal(this.#cipher(keys.base), keys.base, rev, pt, Date.now()),
           menv ? menv.rev : null,
-          { keepalive },
         );
         this.#log("push", {
           rev,
@@ -1168,7 +1117,6 @@ export class Core implements BurrowArea {
   async #pushItem(
     key: string,
     e: Entry,
-    keepalive: boolean,
   ): Promise<{ key: string; ver: Versioned; rev: number; adopted?: Entry }> {
     const b = this.#backend!;
     const id = await docId(this.#keys!, key);
@@ -1199,7 +1147,6 @@ export class Core implements BurrowArea {
             Date.now(),
           ),
           rev,
-          { keepalive },
         );
         return { key, ver, rev: next };
       } catch (err) {
@@ -1215,113 +1162,41 @@ export class Core implements BurrowArea {
     }
   }
 
-  // ---------------------------------------------------- unlock methods (§6)
+  // ---------------------------------------------------- the token (§6)
 
-  async protect(providerId?: string): Promise<void> {
+  async exportToken(): Promise<string> {
     this.#alive();
-    const list = providerId
-      ? this.#providers.filter((p) => p.id === providerId)
-      : this.#providers;
-    if (!list.length) throw new BurrowError("no-provider");
-    let chosen: KeyProvider | undefined;
-    for (const p of list)
-      if (await p.available()) {
-        chosen = p;
-        break;
-      }
-    if (!chosen)
-      throw new BurrowError(
-        providerId === "passkey" ? "prf-unsupported" : "no-provider",
-      );
-    const backend = this.#backend;
-    if (!backend && chosen.id === "passkey")
-      throw new BurrowError("backend", "a passkey keyslot needs a backend");
-    await this.#secret!.use((rootSecret) =>
-      chosen.enrol({
-        app: this.app,
-        rootSecret,
-        backend: backend!,
-        store: this.#providerStore(),
-      }),
-    );
-    await this.#setProtection(protectionFor(chosen.id));
+    return this.#secret!.use((s) => encodeToken(s));
   }
 
-  #providerStore(): ProviderStore {
-    return {
-      get: async (name) => (await this.#cache.getDevice())[`p:${name}`],
-      set: (name, value) => this.#cache.setDevice({ [`p:${name}`]: value }),
-    };
-  }
-
-  async #setProtection(p: Protection): Promise<void> {
-    this.#protection = p;
-    if (this.#remember) await this.#cache.setDevice({ protection: p });
-  }
-
-  async exportCode(): Promise<string> {
+  async link(options: {
+    token: string;
+    source?: string;
+    discardLocal?: boolean;
+  }): Promise<void> {
     this.#alive();
-    return this.#secret!.use((s) => encodeSyncCode(s));
-  }
-
-  async link(
-    options: { provider?: string; code?: string; discardLocal?: boolean } = {},
-  ): Promise<void> {
-    this.#alive();
-    let secret: Uint8Array | null = null;
-    let via: Protection = "none";
-    if (options.code !== undefined) {
-      // KP-12: bad-code before any network call
-      secret = (await decodeSyncCode(options.code)).secret;
-      via = "code";
-    } else {
-      // API-7 / KP-3: try each configured provider's recover() in order.
-      const list = options.provider
-        ? this.#providers.filter((p) => p.id === options.provider)
-        : this.#providers;
-      for (const p of list) {
-        if (!(await p.available().catch(() => false))) continue;
-        try {
-          secret = await p.recover({
-            app: this.app,
-            interactive: true,
-            backend: this.#backend!,
-            store: this.#providerStore(),
-          });
-        } catch (e) {
-          this.#log("recover-failed", {
-            provider: p.id,
-            code: e instanceof BurrowError ? e.code : "error",
-          });
-          secret = null;
-        }
-        if (secret) {
-          via = protectionFor(p.id);
-          break;
-        }
-      }
-      if (!secret) throw new BurrowError("no-provider");
-    }
+    const source = options?.source ?? "token";
+    if (typeof source !== "string" || !source)
+      throw new TypeError("source must be a non-empty string");
+    // KP-12: bad-token before any network call
+    const secret = await decodeToken(options?.token);
     try {
-      await this.#switchTo(secret, via, !!options.discardLocal);
+      await this.#switchTo(secret, source, !!options.discardLocal);
     } finally {
       secret.fill(0);
     }
   }
 
-  /**
-   * Adopt `secret`. `via` is both the new protection and the token's source:
-   * "code" for a typed token, otherwise the provider's protection.
-   */
+  /** Adopt `secret`, recording `source` as where the token came from. */
   async #switchTo(
     secret: Uint8Array,
-    via: Protection,
+    source: string,
     discardLocal: boolean,
   ): Promise<void> {
     const same =
       (await deriveAppKeys(secret, this.app)).base === this.#keys!.base;
     if (same) {
-      if (this.#protection === "none") await this.#setProtection(via);
+      // Already this token: resume a sync paused by decrypt-failed (ENC-6).
       this.#paused = false;
       await this.#sync();
       return;
@@ -1344,12 +1219,10 @@ export class Core implements BurrowArea {
       });
       this.#secret?.forget();
       this.#secret = holder;
-      this.#protection = via;
-      this.#token = { source: via, remembered: false, since: Date.now() };
+      this.#token = { source, remembered: false, since: Date.now() };
       if (this.#remember)
         await this.#cache.setDevice({
-          protection: via,
-          tokenSource: via,
+          tokenSource: source,
           tokenSince: this.#token.since!,
         });
       // the cache now belongs to nobody; #adoptIdentity resets it
@@ -1398,7 +1271,6 @@ export class Core implements BurrowArea {
     await this.#cache.setDevice({
       kw: undefined,
       wrapped: undefined,
-      protection: undefined,
       tokenSource: undefined,
       tokenSince: undefined,
     });

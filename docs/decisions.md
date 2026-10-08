@@ -1,6 +1,6 @@
 # Decisions
 
-The judgement calls behind the code, in two parts. **Part A** (D-1 … D-41, with a hyphen) is the
+The judgement calls behind the code, in two parts. **Part A** (D-1 … D-42, with a hyphen) is the
 log kept while implementing; each entry names the requirement it touches in
 [history/requirements.md](history/requirements.md) ("the brief") and the choice made where the
 brief was silent or self-contradictory. **Part B** (D1 … D20, no hyphen) is the earlier planning
@@ -59,6 +59,8 @@ from "set to null" without the manifest.
 
 ### D-7 Provider context includes the backend and a small device store (KP-5, KP-9, KP-15)
 
+*Superseded by D-42: there are no providers.*
+
 The passkey provider writes and reads a keyslot through the backend and caches the credential id
 locally, so `enrol`/`recover` receive `backend` and `store` (a per-device string store). Custom
 providers may ignore both; the built-ins get no special treatment.
@@ -99,6 +101,8 @@ facade writes store strings, as `localStorage` does. The facade is a `Proxy`, so
 batched per microtask, and net-zero changes are dropped.
 
 ### D-12 Passphrase provider not shipped in v1 (ENC-3)
+
+*Amended by D-42: the unexported PBKDF2 helper is removed, and v1 rejects version `0x02`.*
 
 v1 ships random tokens only. The PBKDF2 path (`passphraseSecret`, ≥ 600 000 iterations) is
 implemented and tested but not exported; version byte `0x02` is reserved for it.
@@ -198,6 +202,8 @@ that re-sets unchanged values causes one write per debounce window.
 
 ### D-27 `store.token` reports where the token came from; `exportCode()` does not protect (supersedes D-14)
 
+*Amended by D-42: `source` is now the label passed to `link()`, and `protection` is gone.*
+
 The demo always shows the storage token in use and where it came from
 ([user-journeys.md](user-journeys.md)). `store.token` is `{ source, remembered, since }`: `source`
 is `generated`, `code` (`link({ code })`), `passkey`, or a custom provider's id; `remembered` is
@@ -208,6 +214,8 @@ no longer sets `protection: "code"`; otherwise `onUnprotected` could never fire.
 `protect("sync-code")` still records that the user kept the token.
 
 ### D-28 The sync code is presented to people as the "storage token"
+
+*Superseded by D-42: the API now uses the same name.*
 
 User-facing text (demo, README, guides) says *storage token*; the API keeps its names
 (`exportCode()`, `link({ code })`, `bad-code`, provider id `sync-code`, protection `"code"`),
@@ -239,6 +247,7 @@ SDK transactions, which cannot be sent as keepalive requests. On `pagehide` and 
 flushes the facade to IndexedDB and starts a normal push; if the page closes first, the items stay
 dirty in the cache and go out on the next visit (SYNC-9). `capabilities.keepalive` and
 `put(..., { keepalive })` stay in the `Backend` interface for adapters that can honour them.
+(D-42 removed them: nothing used them.)
 
 ### D-32 `link({ code })` does not require existing data (design review T4)
 
@@ -355,6 +364,65 @@ implemented.
 `burrow()` no longer reads `location`, `Env` lost its `location` and `history` members, and
 `TokenSource` no longer has `"link"`. The docs do not describe links at all, not even as a recipe
 on top of `link({ code })`.
+
+### D-42 Only the token crosses the API; the passkey backup is a separate utility (#28)
+
+The `KeyProvider` interface let the store call unlock methods: `protect()` enrolled one,
+`link({ provider })` recovered the token through one, and the store recorded which in
+`protection`. #28 asked for something simpler. The store now deals only in the storage token, as
+the 56-character string the user also sees: `exportToken()` hands it out, and
+`link({ token, source? })` adopts it. Getting it from one device to another is the site's choice.
+
+- **Removed:** `KeyProvider`, `EnrolContext`, `RecoverContext`, `ProviderStore`,
+  `BurrowConfig.keyProvider`, `protect()`, `link({ provider })` and `link()` with no arguments,
+  `protection`, `onUnprotected`, `Protection`, the `passkey()` and `syncCode()` providers, and
+  `inspect()`'s `protection`, `provider` and `tokenSource` (the last duplicated `store.token`).
+  The device store loses `protection` and the `p:<name>` provider values; app meta loses
+  `unprotectedFired`.
+- **The passkey backup** is `passkeyBackup()` from `burrow-storage/passkey` (also
+  `Burrow.passkeyBackup`): `available()`, `save(token)`, `restore()`. It keeps the WebAuthn and
+  PRF code and the keyslot format of the old provider unchanged, so existing keyslots still open
+  and SECURITY.md's derivation is untouched. It defaults its backend from the page like
+  `burrow()` does (shared in `src/config.ts`), and its `userName` defaults to the page's host
+  instead of the app id, since it has no app.
+- **`source` instead of provider ids.** `link()` takes an optional label, persisted with the token
+  and reported in `token.source` (default `"token"`). The demo's "Restored from your passkey"
+  needs it, and the store is the only place that can keep it next to the token and share it with
+  other tabs.
+- **No protection bookkeeping.** With the backup outside the store, Burrow cannot know whether a
+  token is kept anywhere, so it no longer pretends to. `token.source === "generated"` is the
+  useful half of KP-14: this token was made here. A site that wants to say "backed up" keeps its
+  own record; the demo keeps it in the store under `backup`, so it syncs with the data. This
+  supersedes KP-14, KP-15 and the `protect()` clause of KP-3.
+- **The name.** `exportCode()`, `link({ code })`, `bad-code` and the source `"code"` become
+  `exportToken()`, `link({ token })`, `bad-token` and `"token"`. D-28 kept the old names because a
+  rename was a breaking change for no gain; this change breaks the API anyway, and the docs no
+  longer have to explain that `code` means the token. The internal codec is `codec/token.ts`;
+  the format and `test/vectors.json` are unchanged.
+- **Errors.** `no-provider` meant three things. It becomes `unlinked` (a call after `unlink()`)
+  and `cancelled` (a dismissed passkey prompt in `save()`); "no provider could recover" no longer
+  exists, and `restore()` resolves `null` instead.
+- **The token as a string in the site's hands.** SECURITY.md already listed typing, pasting and
+  carrying it as the ways the token leaves the device. Raw bytes would add a second format and a
+  zeroise duty that a site cannot honour for a JavaScript string anyway. The store's own copy
+  stays wrapped (`SecretHolder`), and the passkey backup zeroises the bytes it decodes.
+- **KP-9 dropped.** The old provider cached the passkey's credential id on the device so recovery
+  could skip the account picker. It only helped on a device that still had site data (backup,
+  unlink, restore), the case that needs it least; a wiped device has no hint anyway. `restore()`
+  always makes a discoverable request, and the utility stores nothing on the device.
+- **`available()` checks `isSecureContext`.** This closes the architecture gap where, from
+  `file://`, the passkey looked available and then failed with `prf-unsupported`.
+- **Also removed, unused:** `Backend.put()`'s `{ keepalive }` and `capabilities.keepalive`
+  (honoured by no backend, and the unload flush was dropped in D-31), `capabilities.maxEnvelopeBytes`
+  (never read), and the unexported `passphraseSecret` with acceptance of version byte `0x02`
+  (D-12). `0x02` stays reserved in the format and is rejected as `bad-token`.
+- **Not added: `BurrowConfig.token`.** Opening the store with a given token was considered and
+  rejected. It conflicts with API-2 (a second config for the same app is ignored), and a passkey
+  restore needs a user gesture after the page has loaded anyway, so `link()` is the one way in.
+
+Also: API-7's `link()` takes a token, not a provider. The passkey restore with unsynced local
+data used to prompt twice (`link({ provider })`, `would-orphan`, then `link()` again); now the
+retry reuses the token `restore()` returned, with one prompt.
 
 ## Part B: planning decisions and their status
 

@@ -47,10 +47,7 @@ export interface Item {
   deleted?: true;
 }
 
-/**
- * What a backend can do. The core reads `writeAuth` and `subscribe`; the rest
- * is informational.
- */
+/** What a backend can do. The core reads both. */
 export interface BackendCapabilities {
   /**
    * The store itself verifies the write-token chain (ENC-7): an update must
@@ -64,16 +61,6 @@ export interface BackendCapabilities {
    * alone.
    */
   subscribe: boolean;
-  /**
-   * `put()` can complete during page unload when called with
-   * `{ keepalive: true }`. Not used by the core yet.
-   */
-  keepalive: boolean;
-  /**
-   * Largest document the store accepts, in bytes. Informational; the core
-   * enforces its own cap.
-   */
-  maxEnvelopeBytes: number;
 }
 
 /**
@@ -109,105 +96,15 @@ export interface Backend {
    * Two concurrent writers at the same `expectedRev` must see exactly one
    * success. A `writeAuth` store also rejects `unauthorized` for a broken token
    * chain or a malformed envelope. Other rejections: `too-large`, `quota`,
-   * `network`. `opts.keepalive` asks the write to survive page unload.
+   * `network`.
    */
-  put(
-    id: string,
-    env: Envelope,
-    expectedRev: number | null,
-    opts?: { keepalive?: boolean },
-  ): Promise<void>;
+  put(id: string, env: Envelope, expectedRev: number | null): Promise<void>;
   /**
    * Optional push notifications for one document. Call `onChange` with each new
    * envelope stored at `id`, and return a function that stops them. Burrow
    * subscribes to the user's manifest only.
    */
   subscribe?(id: string, onChange: (env: Envelope) => void): () => void;
-}
-
-/**
- * A small per-device string store that Burrow gives providers, e.g. for a
- * cached credential id (KP-9).
- */
-export interface ProviderStore {
-  /** The value saved under `name` on this device, or `undefined`. */
-  get(name: string): Promise<string | undefined>;
-  /** Save `value` under `name` in this device's local cache. */
-  set(name: string, value: string): Promise<void>;
-}
-
-/** What `KeyProvider.enrol()` receives when `protect()` is called. */
-export interface EnrolContext {
-  /**
-   * The app id that called `protect()`. The token itself is shared by every app
-   * on the origin.
-   */
-  app: string;
-  /**
-   * The raw 32-byte storage token. Zeroised after `enrol()` returns, so do not
-   * keep a reference.
-   */
-  rootSecret: Uint8Array;
-  /**
-   * The configured backend, for providers that store a keyslot
-   * (docs/decisions.md D-7). At runtime this is `null` when the page runs
-   * local-only.
-   */
-  backend: Backend;
-  /** Per-device storage for the provider's own small values. */
-  store?: ProviderStore;
-}
-
-/** What `KeyProvider.recover()` receives when `link()` is called. */
-export interface RecoverContext {
-  /** The app id that called `link()`. */
-  app: string;
-  /**
-   * True when called from `link()`, which should run inside a user gesture;
-   * prompting is allowed.
-   */
-  interactive: boolean;
-  /** Text the user supplied, for providers that decode typed input. */
-  input?: string;
-  /**
-   * The configured backend. At runtime this is `null` when the page runs
-   * local-only.
-   */
-  backend: Backend;
-  /** Per-device storage for the provider's own small values. */
-  store?: ProviderStore;
-}
-
-/**
- * An unlock method: carries the storage token to another device and back (§6).
- * The built-ins are `passkey()` and `syncCode()`; pass your own in
- * `BurrowConfig.keyProvider`. Guide: docs/extending.md.
- */
-export interface KeyProvider {
-  /**
-   * Unique name. The site selects this provider with `store.protect(id)` or
-   * `store.link({ provider: id })`. Burrow then records the id:
-   * `store.protection` reads it after a successful `protect()`, and
-   * `store.token.source` after a successful `link()`. The built-in "sync-code"
-   * is recorded as "code".
-   */
-  readonly id: string;
-  /**
-   * Whether this method can work in this browser now. Must not prompt the user.
-   */
-  available(): Promise<boolean>;
-  /**
-   * Called by `protect()`: store `ctx.rootSecret` somewhere only the user can
-   * get it back from, such as a keyslot in the backend. Reject with a
-   * `BurrowError` on failure.
-   */
-  enrol(ctx: EnrolContext): Promise<void>;
-  /**
-   * Called by `link()`: return the 32-byte token, or `null` when the user
-   * declined or nothing was found. A provider that throws is skipped and the
-   * next one is tried.
-   */
-  recover(ctx: RecoverContext): Promise<Uint8Array | null>;
 }
 
 /** Options for `burrow()`. Only `app` is required. */
@@ -222,11 +119,6 @@ export interface BurrowConfig {
    * local-only if there is none.
    */
   backend?: Backend;
-  /**
-   * Unlock methods for `protect()` and `link()`, tried in order. Default:
-   * `[passkey(), syncCode()]`.
-   */
-  keyProvider?: KeyProvider | KeyProvider[];
   /**
    * Local cache. Default `"indexeddb"`, or `"memory"` when `rememberDevice` is
    * false.
@@ -260,13 +152,12 @@ export interface BurrowConfig {
 export type Status = "idle" | "syncing" | "offline" | "error";
 
 /**
- * How this device got its storage token (the root secret): generated here on
- * first use (KP-1), entered as a code (pasted or typed), recovered from a
- * passkey, or from a custom provider (its id). "unknown" for tokens stored
- * before this was recorded.
+ * How this device got its storage token (the root secret): "generated" here on
+ * first use (KP-1), "token" when passed to `link()` without a `source`, the
+ * site's own label when passed with one (e.g. "passkey"), or "unknown" for
+ * tokens stored before this was recorded.
  */
-export type TokenSource =
-  "generated" | "code" | "passkey" | "unknown" | (string & {});
+export type TokenSource = "generated" | "token" | "unknown" | (string & {});
 
 export interface TokenInfo {
   source: TokenSource;
@@ -278,7 +169,6 @@ export interface TokenInfo {
   /** When this device obtained the token (ms), if known. */
   since: number | null;
 }
-export type Protection = "none" | "passkey" | "code" | (string & {});
 
 export type StorageChanges = Record<
   string,
@@ -295,13 +185,10 @@ export interface StatusEvent {
 
 export interface Inspection {
   status: Status;
-  tokenSource: TokenSource;
-  protection: Protection;
   manifestRev: number | null;
   dirtyKeys: number;
   lastSyncAt: number | null;
   backend: string;
-  provider: string | null;
 }
 
 export type GetKeys =
@@ -351,11 +238,6 @@ export interface BurrowArea {
    */
   readonly status: Status;
   /**
-   * The unlock method recorded for the token on this device: "none", "passkey",
-   * "code" or a custom provider id.
-   */
-  readonly protection: Protection;
-  /**
    * Where the token in use came from. Changes on link(); onToken fires then.
    */
   readonly token: TokenInfo;
@@ -367,24 +249,16 @@ export interface BurrowArea {
   /** Fires on every change of status or error. */
   readonly onStatus: BurrowEvent<StatusEvent>;
   /**
-   * Fires once per device when data exists and `protection` is "none". Register
-   * right after `burrow()`.
+   * Adopt an existing storage token on this device: one the user typed or
+   * pasted, or one a backup returned (e.g. `passkeyBackup().restore()`).
+   * Replaces the token for every app on the origin. `source` labels it in
+   * `token.source` (default "token"). Rejects `bad-token` before any network
+   * call, and `would-orphan` if this app has unsynced writes, unless
+   * `discardLocal` is true.
    */
-  readonly onUnprotected: BurrowEvent<void>;
-  /**
-   * Enrol an unlock method for the current token: the named provider, or the
-   * first available one.
-   */
-  protect(providerId?: string): Promise<void>;
-  /**
-   * Adopt an existing token on this device, from `code` or a provider's
-   * `recover()`. Replaces the token for every app on the origin. Rejects
-   * `would-orphan` if this app has unsynced writes, unless `discardLocal` is
-   * true.
-   */
-  link(options?: {
-    provider?: string;
-    code?: string;
+  link(options: {
+    token: string;
+    source?: string;
     discardLocal?: boolean;
   }): Promise<void>;
   /**
@@ -397,8 +271,11 @@ export interface BurrowArea {
    * pass fails.
    */
   syncNow(): Promise<void>;
-  /** The storage token: 56 Crockford base32 characters in 14 groups of four. */
-  exportCode(): Promise<string>;
+  /**
+   * The storage token: 56 Crockford base32 characters in 14 groups of four.
+   * Show it to the user, or hand it to a backup such as `passkeyBackup()`.
+   */
+  exportToken(): Promise<string>;
   /**
    * Plaintext export of this app's data:
    * `{ burrow: 1, app, exportedAt, items }`.

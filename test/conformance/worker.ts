@@ -134,8 +134,6 @@ export class WorkerBackend implements Backend {
   readonly capabilities = {
     writeAuth: true,
     subscribe: false,
-    keepalive: true,
-    maxEnvelopeBytes: MAX_ENVELOPE_BYTES,
   };
   readonly #fetch: FetchLike;
   readonly #base: string;
@@ -184,20 +182,17 @@ export class WorkerBackend implements Backend {
     id: string,
     env: Envelope,
     expectedRev: number | null,
-    opts?: { keepalive?: boolean },
   ): Promise<void> {
     const headers: Record<string, string> = {
       "content-type": "application/json",
     };
     if (expectedRev === null) headers["if-none-match"] = "*";
     else headers["if-match"] = String(expectedRev);
-    const init: RequestInit = {
+    const res = await this.#send(id, {
       method: "PUT",
       headers,
       body: JSON.stringify(env),
-    };
-    if (opts?.keepalive) init.keepalive = true;
-    const res = await this.#send(id, init);
+    });
     if (res.status === 200 || res.status === 201 || res.status === 204) return;
     throw codeFor(res.status);
   }

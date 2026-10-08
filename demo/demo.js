@@ -9,6 +9,9 @@
 
   const store = await Burrow.burrow({ app: "burrow-demo" });
   const s = store.storage; // drop-in for localStorage
+  // The token's passkey backup lives outside the store
+  // (burrow-storage/passkey).
+  const backup = Burrow.passkeyBackup();
 
   // Theme
   const applyTheme = (theme) => {
@@ -33,6 +36,7 @@
     if ("theme" in changes) applyTheme(changes.theme.newValue);
     if ("draft" in changes && document.activeElement !== draft)
       draft.value = changes.draft.newValue ?? "";
+    if ("backup" in changes) showBackup();
     debug();
   });
 
@@ -51,7 +55,7 @@
           : status;
     if (error?.code === "decrypt-failed")
       say(
-        "This device cannot read the synced data. Link it again with your code.",
+        "This device cannot read the synced data. Link it again with your storage token.",
       );
     debug();
   };
@@ -59,17 +63,31 @@
   showStatus({ status: store.status });
   setInterval(debug, 5000);
 
-  // KP-14: a low-key nudge once there is something worth keeping.
-  store.onUnprotected.addListener(() =>
+  // Whether the token has a passkey backup is the demo's own record, kept in
+  // the store under "backup" so it travels with the data to every device.
+  const showBackup = () => {
+    $("token-backup").textContent =
+      s.getItem("backup") === "passkey"
+        ? "Yes, in a passkey"
+        : "None yet. Create one below, or keep the token yourself.";
+  };
+
+  // A low-key nudge, once per visit, when there is something worth keeping and
+  // the token exists only on this device.
+  let nudged = false;
+  store.onChanged.addListener(({ source }) => {
+    if (nudged || source !== "local") return;
+    if (store.token.source !== "generated" || s.getItem("backup")) return;
+    nudged = true;
     say(
       "Tip: create a backup with a key, or keep your storage token, so you can get this back on another device.",
-    ),
-  );
+    );
+  });
 
   // The storage token in use, always on screen, with where it came from.
   const SOURCES = {
     generated: "generated on this device",
-    code: "pasted or typed in",
+    token: "pasted or typed in",
     passkey: "restored from your passkey",
   };
   const when = (ms) => (ms ? ` · ${new Date(ms).toLocaleString()}` : "");
@@ -91,13 +109,9 @@
     );
   };
   const showToken = async () => {
-    const code = await store.exportCode();
-    $("code").textContent = code;
+    $("code").textContent = await store.exportToken();
     $("token-source").textContent = describeToken(store.token);
-    $("token-backup").textContent =
-      store.protection === "passkey"
-        ? "Yes, in a passkey"
-        : "None yet. Create one below, or keep the token yourself.";
+    showBackup();
     debug();
   };
   store.onToken.addListener(showToken);
@@ -111,18 +125,23 @@
   });
 
   // Passkey (KP-5)
+  const NO_PASSKEY =
+    "This browser cannot use passkeys for this. Keep your storage token instead.";
   $("passkey").addEventListener("click", async () => {
+    if (!(await backup.available())) return say(NO_PASSKEY);
     try {
-      await store.protect("passkey");
+      await backup.save(await store.exportToken());
+      s.setItem("backup", "passkey");
       say(
         "Backup created. On another device, go to “Link to existing backup” and choose “Use my passkey”.",
       );
-      await showToken();
     } catch (e) {
       say(
         e.code === "prf-unsupported"
-          ? "This browser cannot use passkeys for this. Keep your storage token instead."
-          : `Passkey not added (${e.code ?? e.name}).`,
+          ? NO_PASSKEY
+          : e.code === "cancelled"
+            ? "No passkey was created."
+            : `Passkey not added (${e.code ?? e.name}).`,
       );
     }
     debug();
@@ -143,11 +162,9 @@
         return link({ ...options, discardLocal: true });
       }
       say(
-        e.code === "bad-code"
+        e.code === "bad-token"
           ? "That token is not right. Check it and try again."
-          : e.code === "no-provider"
-            ? "No passkey was used."
-            : `Could not link (${e.code ?? e.name}).`,
+          : `Could not link (${e.code ?? e.name}).`,
       );
     }
     draft.value = s.getItem("draft") ?? "";
@@ -156,11 +173,23 @@
   };
   $("link-form").addEventListener("submit", (e) => {
     e.preventDefault();
-    link({ code: $("link-code").value });
+    link({ token: $("link-code").value });
   });
-  $("link-passkey").addEventListener("click", () =>
-    link({ provider: "passkey" }),
-  );
+  // KP-6: one passkey prompt; a would-orphan retry reuses the token it gave.
+  $("link-passkey").addEventListener("click", async () => {
+    let token;
+    try {
+      token = await backup.restore();
+    } catch (e) {
+      return say(
+        e.code === "prf-unsupported"
+          ? NO_PASSKEY
+          : `Could not use the passkey (${e.code ?? e.name}).`,
+      );
+    }
+    if (!token) return say("No passkey backup was used.");
+    await link({ token, source: "passkey" });
+  });
 
   // Export (graceful failure: the user can always take their data by hand).
   $("export").addEventListener("click", async () => {

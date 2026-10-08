@@ -1,17 +1,18 @@
-// KP-11/12: the sync code. version (1 byte) || root secret (32) || checksum (2)
-// = 35 bytes = 56 Crockford base32 characters, shown in 14 groups of 4.
+// KP-11/12: the storage token. version (1 byte) || root secret (32) ||
+// checksum (2) = 35 bytes = 56 Crockford base32 characters, shown in 14 groups
+// of 4.
 import { concat, sha256 } from "../bytes.js";
 import { BurrowError } from "../errors.js";
 
 const ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 /**
- * 0x01: random root secret (KP-1). 0x02: secret derived from a passphrase via
- * PBKDF2 (ENC-3).
+ * 0x01: a random root secret (KP-1), the only version v1 accepts. 0x02 stays
+ * reserved for a passphrase-derived secret (ENC-3), which is not implemented
+ * (docs/decisions.md D-12, D-42).
  */
-export const CODE_VERSION_RANDOM = 0x01;
-export const CODE_VERSION_PASSPHRASE = 0x02;
+const TOKEN_VERSION = 0x01;
 const SECRET_BYTES = 32;
-const CODE_CHARS = 56;
+const TOKEN_CHARS = 56;
 
 async function checksum(body: Uint8Array<ArrayBuffer>): Promise<Uint8Array> {
   return (await sha256(body)).subarray(0, 2);
@@ -40,7 +41,7 @@ function fromBase32(s: string): Uint8Array {
     bits = 0;
   for (const ch of s) {
     const v = ALPHABET.indexOf(ch);
-    if (v < 0) throw new BurrowError("bad-code");
+    if (v < 0) throw new BurrowError("bad-token");
     acc = (acc << 5) | v;
     bits += 5;
     if (bits >= 8) {
@@ -55,7 +56,7 @@ function fromBase32(s: string): Uint8Array {
 /**
  * Case-insensitive; ignores hyphens and whitespace; reads O as 0 and I/L as 1.
  */
-export function normaliseCode(input: string): string {
+export function normaliseToken(input: string): string {
   return input
     .toUpperCase()
     .replace(/[\s-]/g, "")
@@ -63,13 +64,10 @@ export function normaliseCode(input: string): string {
     .replace(/[IL]/g, "1");
 }
 
-export async function encodeSyncCode(
-  secret: Uint8Array,
-  version = CODE_VERSION_RANDOM,
-): Promise<string> {
+export async function encodeToken(secret: Uint8Array): Promise<string> {
   if (secret.length !== SECRET_BYTES)
     throw new RangeError("root secret must be 32 bytes");
-  const body = concat(Uint8Array.of(version), secret);
+  const body = concat(Uint8Array.of(TOKEN_VERSION), secret);
   const raw = concat(body, await checksum(body));
   try {
     return toBase32(raw).match(/.{4}/g)!.join("-");
@@ -80,28 +78,22 @@ export async function encodeSyncCode(
 }
 
 /**
- * Returns the root secret. Rejects bad-code before any network call (KP-12).
+ * Returns the 32-byte root secret; the caller zeroises it. Rejects bad-token
+ * before any network call (KP-12).
  */
-export async function decodeSyncCode(
-  input: string,
-): Promise<{ secret: Uint8Array; version: number }> {
-  const s = normaliseCode(input);
-  if (s.length !== CODE_CHARS) throw new BurrowError("bad-code");
+export async function decodeToken(input: string): Promise<Uint8Array> {
+  if (typeof input !== "string") throw new BurrowError("bad-token");
+  const s = normaliseToken(input);
+  if (s.length !== TOKEN_CHARS) throw new BurrowError("bad-token");
   const raw = fromBase32(s);
   const body = new Uint8Array(raw.subarray(0, 1 + SECRET_BYTES));
   const sum = await checksum(body);
-  const version = raw[0]!;
-  if (
-    sum[0] !== raw[33] ||
-    sum[1] !== raw[34] ||
-    (version !== CODE_VERSION_RANDOM && version !== CODE_VERSION_PASSPHRASE)
-  ) {
+  try {
+    if (sum[0] !== raw[33] || sum[1] !== raw[34] || raw[0] !== TOKEN_VERSION)
+      throw new BurrowError("bad-token");
+    return body.slice(1);
+  } finally {
     raw.fill(0);
     body.fill(0);
-    throw new BurrowError("bad-code");
   }
-  const secret = body.slice(1);
-  raw.fill(0);
-  body.fill(0);
-  return { secret, version };
 }

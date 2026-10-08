@@ -36,15 +36,10 @@ const EXPORTED = [
   "Item",
   "BackendCapabilities",
   "Backend",
-  "ProviderStore",
-  "EnrolContext",
-  "RecoverContext",
-  "KeyProvider",
   "BurrowConfig",
   "Status",
   "TokenSource",
   "TokenInfo",
-  "Protection",
   "StorageChanges",
   "ChangedEvent",
   "StatusEvent",
@@ -55,13 +50,13 @@ const EXPORTED = [
   "BackendError",
   "BurrowErrorCode",
   "BackendErrorCode",
-  "PasskeyOptions",
   "MemoryBackendOptions",
 ];
 // Generic exports, aliased with their parameters.
 const GENERIC = { BurrowEvent: "T" };
-// Type names exported by burrow-storage/firestore.
+// Type names exported by burrow-storage/firestore and burrow-storage/passkey.
 const FIRESTORE = ["FirestoreConfig"];
+const PASSKEY = ["PasskeyBackupOptions", "PasskeyBackup"];
 
 // Free names the usage examples treat as page context.
 const CONTEXT = `
@@ -72,7 +67,10 @@ declare const showBanner: (s: string) => void;
 declare const input: HTMLInputElement;
 declare const tokenEl: HTMLElement;
 declare const text: string;
-declare const myHardwareKey: () => import("burrow-storage").KeyProvider;
+declare const myVault: {
+  put(token: string): Promise<void>;
+  get(): Promise<string | null>;
+};
 `;
 
 const firstLine = (body) =>
@@ -82,8 +80,9 @@ function usage(body) {
   let pre = "";
   if (!/^\s*import /m.test(body)) {
     pre +=
-      'import { burrow, MemoryBackend, BurrowError, passkey, syncCode } from "burrow-storage";\n';
+      'import { burrow, MemoryBackend, BurrowError } from "burrow-storage";\n';
     pre += 'import { FirestoreBackend } from "burrow-storage/firestore";\n';
+    pre += 'import { passkeyBackup } from "burrow-storage/passkey";\n';
   }
   if (!/\b(const|let)\s+store\b/.test(body))
     pre += 'declare const store: import("burrow-storage").BurrowArea;\n';
@@ -123,13 +122,22 @@ function declarations(body) {
     ...FIRESTORE.filter((n) => !all.includes(n)).map(
       (n) => `  type ${n} = F.${n};`,
     ),
+    ...PASSKEY.filter((n) => !all.includes(n)).map(
+      (n) => `  type ${n} = P.${n};`,
+    ),
   ].join("\n");
   const real = (n) =>
-    (FIRESTORE.includes(n) ? `F.${n}` : `R.${n}`) +
-    (GENERIC[n] ? "<unknown>" : "");
+    (FIRESTORE.includes(n)
+      ? `F.${n}`
+      : PASSKEY.includes(n)
+        ? `P.${n}`
+        : `R.${n}`) + (GENERIC[n] ? "<unknown>" : "");
   const doc = (n) => `D.${n}` + (GENERIC[n] ? "<unknown>" : "");
   const known = (n) =>
-    EXPORTED.includes(n) || FIRESTORE.includes(n) || n in GENERIC;
+    EXPORTED.includes(n) ||
+    FIRESTORE.includes(n) ||
+    PASSKEY.includes(n) ||
+    n in GENERIC;
   // Interfaces and types are compared structurally in both directions; a
   // documented class only has to list members the real class has (its private
   // fields cannot be written down).
@@ -149,6 +157,7 @@ function declarations(body) {
   ];
   return `import type * as R from "burrow-storage";
 import type * as F from "burrow-storage/firestore";
+import type * as P from "burrow-storage/passkey";
 namespace D {
 ${aliases}
 ${body.replace(/^(interface|type)\s/gm, "export $1 ").replace(/^declare\s+class\s/gm, "export declare class ")}
@@ -195,6 +204,7 @@ for (const file of DOCS) {
 const paths = {
   "burrow-storage": [join(root, "dist/index.d.ts")],
   "burrow-storage/firestore": [join(root, "dist/firestore.d.ts")],
+  "burrow-storage/passkey": [join(root, "dist/passkey.d.ts")],
 };
 const base = {
   target: "ES2022",

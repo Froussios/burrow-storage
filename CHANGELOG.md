@@ -18,18 +18,21 @@ labels, and the storage-token encoding are public contract: changing them is a m
   deterministic `(ts, h)` tie-break and 30-day tombstones, clock-skew correction, debounced
   pushes, polling and listener-driven pulls, exponential backoff, multi-tab coordination over
   `BroadcastChannel` with Web Locks.
-- Unlock methods: the storage token (`exportCode()`, `link({ code })`) and passkeys with
-  PRF-wrapped keyslots (`protect("passkey")`, `link({ provider: "passkey" })`).
-- `store.token` / `onToken`: where this device's token came from (`generated`, `code`, `passkey`,
-  custom) and whether it was remembered from an earlier visit.
+- The storage token crosses the API as its 56-character string: `exportToken()` hands it out and
+  `link({ token, source })` adopts it on another device.
+- `burrow-storage/passkey`: `passkeyBackup()` with `available()`, `save(token)` and `restore()`,
+  a passkey backup of the token in a PRF-wrapped keyslot, separate from the store
+  (`Burrow.passkeyBackup` in the script-tag build).
+- `store.token` / `onToken`: where this device's token came from (`generated`, `token`, or the
+  site's `source` label such as `passkey`) and whether it was remembered from an earlier visit.
 - `unlink({ discardLocal })` with the same `would-orphan` guard as `link()`.
 - `syncNow()` rejects with the sync error when a pass fails; `exportJSON()` /
   `importJSON()` with the `{ burrow: 1, app, exportedAt, items }` format; `inspect()`.
 - Events are `BurrowEvent`s: real `EventTarget`s with chrome-style `addListener` helpers.
 - `FirestoreBackend` (`burrow-storage/firestore`) over the modular Firebase SDK, with transactional
   reads and writes and a manifest listener; `readFirestoreConfig()` for the
-  `<meta name="burrow-firestore">` / `window.BURROW.firestore` page config; `passkey()` options
-  (`rpId`, `rpName`, `userName`, `timeoutMs`).
+  `<meta name="burrow-firestore">` / `window.BURROW.firestore` page config; `passkeyBackup()`
+  options (`backend`, `rpId`, `rpName`, `userName`, `timeoutMs`).
 - Firestore security rules with the SHA-256 write chain, emulator tests, `npx burrow-setup
   firestore` guide and `--run` script.
 - Static demo (theme, draft, storage token panel, passkey backup, export, debug panel) under a
@@ -46,10 +49,19 @@ labels, and the storage-token encoding are public contract: changing them is a m
   decision log.
 
 ### Changed
-- User-facing wording calls the sync code the **storage token**; API names are unchanged.
+- Token-only API (#28, D-42): the `KeyProvider` interface, `BurrowConfig.keyProvider`,
+  `protect()`, `link({ provider })`, `protection`, `onUnprotected` and the `passkey()` and
+  `syncCode()` providers are gone. `exportCode()`, `link({ code })` and `bad-code` are renamed
+  `exportToken()`, `link({ token })` and `bad-token`; `no-provider` is split into `unlinked` and
+  `cancelled`; `inspect()` drops `tokenSource`, `protection` and `provider`.
+- The passkey backup keeps no credential id on the device; `restore()` lets the user pick the
+  passkey. Its `available()` also requires a secure context.
+- `Backend.put()` no longer takes `{ keepalive }`, and `BackendCapabilities` keeps only
+  `writeAuth` and `subscribe`.
+- Version byte `0x02` (passphrase-derived tokens) is reserved but rejected as `bad-token`; the
+  unexported PBKDF2 helper is removed.
 - Setting a key to the value it already has is still a write (it takes a new timestamp and
   syncs), so the last writer wins across devices; only the `onChanged` event is skipped.
-- `exportCode()` no longer marks the token as protected; `protect("sync-code")` does.
 
 ### Fixed (found during development)
 - A sync pass could drop a key written while it was reading the cache.

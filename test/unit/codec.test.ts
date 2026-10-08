@@ -7,7 +7,6 @@ import {
   deriveAppKeys,
   deriveSlotKeys,
   docId,
-  passphraseSecret,
   token,
 } from "../../src/codec/derive.js";
 import {
@@ -17,12 +16,10 @@ import {
   seal,
 } from "../../src/codec/envelope.js";
 import {
-  CODE_VERSION_PASSPHRASE,
-  CODE_VERSION_RANDOM,
-  decodeSyncCode,
-  encodeSyncCode,
-  normaliseCode,
-} from "../../src/codec/synccode.js";
+  decodeToken,
+  encodeToken,
+  normaliseToken,
+} from "../../src/codec/token.js";
 import { BurrowError } from "../../src/errors.js";
 import type { Envelope } from "../../src/types.js";
 
@@ -80,10 +77,8 @@ describe("ENC-1/ENC-2 derivation matches the committed vectors", () => {
       expect(await token(k.macKey, r2.docId.theme, n)).toBe(tok);
       expect(await commitment(k.macKey, r2.docId.theme, n)).toBe(next);
     }
-    expect(await encodeSyncCode(fromHex(r2.rootSecretHex))).toBe(r2.syncCode);
-    expect(hex((await decodeSyncCode(r2.syncCode)).secret)).toBe(
-      r2.rootSecretHex,
-    );
+    expect(await encodeToken(fromHex(r2.rootSecretHex))).toBe(r2.syncCode);
+    expect(hex(await decodeToken(r2.syncCode))).toBe(r2.rootSecretHex);
   });
 
   it("ENC-7 write tokens n = 0..5 chain: next(n) = sha256(tok(n+1))", async () => {
@@ -317,15 +312,13 @@ describe("API-4 JSON values only", () => {
   });
 });
 
-describe("KP-11/KP-12 sync code", () => {
+describe("KP-11/KP-12 storage token", () => {
   it("matches the committed vector and round trips", async () => {
-    const code = await encodeSyncCode(root);
+    const code = await encodeToken(root);
     expect(code).toBe(vectors.syncCode);
-    expect(normaliseCode(code)).toHaveLength(56);
+    expect(normaliseToken(code)).toHaveLength(56);
     expect(code.split("-").every((g) => g.length === 4)).toBe(true);
-    expect(hex((await decodeSyncCode(code)).secret)).toBe(
-      vectors.rootSecretHex,
-    );
+    expect(hex(await decodeToken(code))).toBe(vectors.rootSecretHex);
   });
 
   it("decoding ignores case, hyphens, spaces and O/0, I/L/1 confusions", async () => {
@@ -334,12 +327,10 @@ describe("KP-11/KP-12 sync code", () => {
       .replace(/0/g, "o")
       .replace(/1/g, "l")
       .replace(/-/g, "  ");
-    expect(hex((await decodeSyncCode(messy)).secret)).toBe(
-      vectors.rootSecretHex,
-    );
+    expect(hex(await decodeToken(messy))).toBe(vectors.rootSecretHex);
   });
 
-  it("rejects a wrong checksum, length or character with bad-code", async () => {
+  it("rejects a wrong checksum, length or character with bad-token", async () => {
     const flip = vectors.syncCode.replace(/^./, (c) => (c === "0" ? "1" : "0"));
     for (const bad of [
       flip,
@@ -347,8 +338,8 @@ describe("KP-11/KP-12 sync code", () => {
       vectors.syncCode.replace(/.$/, "U"),
       "",
     ])
-      await expect(decodeSyncCode(bad)).rejects.toMatchObject({
-        code: "bad-code",
+      await expect(decodeToken(bad)).rejects.toMatchObject({
+        code: "bad-token",
       });
   });
 
@@ -356,19 +347,15 @@ describe("KP-11/KP-12 sync code", () => {
     await fc.assert(
       fc.asyncProperty(
         fc.uint8Array({ minLength: 32, maxLength: 32 }),
-        fc.constantFrom(CODE_VERSION_RANDOM, CODE_VERSION_PASSPHRASE),
-        async (secret, version) => {
-          const code = await encodeSyncCode(secret, version);
+        async (secret) => {
+          const code = await encodeToken(secret);
           expect(code).toMatch(
             /^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){13}$/,
           );
-          const out = await decodeSyncCode(code);
-          expect(out.version).toBe(version);
-          expect([...out.secret]).toEqual([...secret]);
-          // Messy input of the same code decodes too.
+          expect([...(await decodeToken(code))]).toEqual([...secret]);
+          // Messy input of the same token decodes too.
           expect([
-            ...(await decodeSyncCode(code.toLowerCase().replace(/-/g, " ")))
-              .secret,
+            ...(await decodeToken(code.toLowerCase().replace(/-/g, " "))),
           ]).toEqual([...secret]);
         },
       ),
@@ -376,7 +363,7 @@ describe("KP-11/KP-12 sync code", () => {
     );
   });
 
-  it("KP-12 an unknown version byte with a valid checksum is bad-code", async () => {
+  it("KP-12 any version byte but 0x01 with a valid checksum is bad-token, including the reserved 0x02", async () => {
     // Build the 35 bytes by hand: version || secret || sha256(version ||
     // secret)[0:2], base32.
     const A = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
@@ -393,14 +380,11 @@ describe("KP-11/KP-12 sync code", () => {
       return out.match(/.{4}/g)!.join("-");
     };
     // the hand encoder is right
-    expect(await encode(CODE_VERSION_RANDOM)).toBe(vectors.syncCode);
-    expect(
-      (await decodeSyncCode(await encode(CODE_VERSION_PASSPHRASE))).version,
-    ).toBe(CODE_VERSION_PASSPHRASE);
-    for (const v of [0x00, 0x03, 0x7f, 0xff])
-      await expect(decodeSyncCode(await encode(v))).rejects.toMatchObject({
+    expect(await encode(0x01)).toBe(vectors.syncCode);
+    for (const v of [0x00, 0x02, 0x03, 0x7f, 0xff])
+      await expect(decodeToken(await encode(v))).rejects.toMatchObject({
         name: "BurrowError",
-        code: "bad-code",
+        code: "bad-token",
       });
   });
 
@@ -409,38 +393,26 @@ describe("KP-11/KP-12 sync code", () => {
     let n = 0;
     const withI = vectors.syncCode.replace(/1/g, () => (n++ % 2 ? "I" : "i"));
     expect(withI).not.toContain("1");
-    expect(normaliseCode(withI)).toBe(normaliseCode(vectors.syncCode));
-    expect(hex((await decodeSyncCode(withI)).secret)).toBe(
-      vectors.rootSecretHex,
-    );
+    expect(normaliseToken(withI)).toBe(normaliseToken(vectors.syncCode));
+    expect(hex(await decodeToken(withI))).toBe(vectors.rootSecretHex);
   });
 
   it("KP-12 a token with every hyphen removed decodes", async () => {
     const bare = vectors.syncCode.replace(/-/g, "");
     expect(bare).toHaveLength(56);
-    expect(hex((await decodeSyncCode(bare)).secret)).toBe(
-      vectors.rootSecretHex,
-    );
-    expect(hex((await decodeSyncCode(bare.toLowerCase())).secret)).toBe(
+    expect(hex(await decodeToken(bare))).toBe(vectors.rootSecretHex);
+    expect(hex(await decodeToken(bare.toLowerCase()))).toBe(
       vectors.rootSecretHex,
     );
   });
 
   it("detects any single-character typo", async () => {
-    const s = normaliseCode(vectors.syncCode);
+    const s = normaliseToken(vectors.syncCode);
     let caught = 0;
     for (let i = 2; i < s.length; i += 3) {
       const typo = s.slice(0, i) + (s[i] === "Z" ? "Y" : "Z") + s.slice(i + 1);
-      await decodeSyncCode(typo).catch(() => caught++);
+      await decodeToken(typo).catch(() => caught++);
     }
     expect(caught).toBe(Math.ceil((s.length - 2) / 3));
-  });
-});
-
-describe("ENC-3 passphrase KDF", () => {
-  it("refuses fewer than 600,000 iterations", async () => {
-    await expect(passphraseSecret("pw", "salt", 1000)).rejects.toThrow(
-      RangeError,
-    );
   });
 });

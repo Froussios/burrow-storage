@@ -65,8 +65,6 @@ export class FirestoreBackend implements Backend {
   readonly capabilities = {
     writeAuth: true,
     subscribe: true,
-    keepalive: false,
-    maxEnvelopeBytes: 1_048_576,
   };
   readonly #cfg: FirestoreConfig;
   readonly #collection: string;

@@ -17,9 +17,10 @@ const HEX = hex(randomBytes(32)); // a commitment (next) shape
 const ID_RE = /[A-Za-z0-9_-]{40,}/;
 
 const BURROW_CODES: BurrowErrorCode[] = [
-  "no-provider",
+  "unlinked",
+  "cancelled",
   "prf-unsupported",
-  "bad-code",
+  "bad-token",
   "item-too-large",
   "backend",
   "conflict",

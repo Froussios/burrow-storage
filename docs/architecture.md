@@ -7,35 +7,38 @@ refer to [history/requirements.md](history/requirements.md); decision ids (`D-5`
 [decisions.md](decisions.md).
 
 Contents: 1 Layers and files · 2 Runtime shape · 3 Start-up · 4 Data model · 5 Local reads and
-writes · 6 The sync engine · 7 Merge rules · 8 Tabs · 9 Tokens, linking and providers · 10 Backends
+writes · 6 The sync engine · 7 Merge rules · 8 Tabs · 9 Tokens, linking and the passkey backup · 10 Backends
 · 11 Build and packaging · 12 Tests and CI · 13 Known gaps
 
 ## 1. Layers and files
 
 ```
 site code ──► store.storage (sync, Storage-shaped)      store (async, chrome.storage-shaped)
-                        └──────────────┬──────────────────────┘
-                              Core (src/core.ts): mirror · cache · codec · sync engine
-            KeyProviders ┘                                       └ Backend (the swappable seam)
-      passkey · sync-code                                 firestore · memory · yours
+   │                    └──────────────┬──────────────────────┘
+   │                          Core (src/core.ts): mirror · cache · codec · sync engine
+   │  exportToken() / link({ token })                            └ Backend (the swappable seam)
+   └──► passkeyBackup() (src/passkey.ts, optional) ── keyslot ──► firestore · memory · yours
 ```
 
 Dependencies point downward only: `core.ts` imports the codec, caches, merge and secret modules;
-providers and backends import only `types.ts`, `errors.ts`, the codec and `bytes.ts`. Nothing in
-the core names a concrete provider or backend except `index.ts`, which supplies the defaults.
+`passkey.ts` and the backends import only `types.ts`, `errors.ts`, the codec, `config.ts` and
+`bytes.ts`. The core never sees the passkey backup: the site moves the token between them as a
+string. Nothing in the core names a concrete backend except `index.ts`, which supplies the
+default.
 
 | Path | Responsibility |
 | --- | --- |
-| `src/index.ts` | Public entry: `burrow()`, re-exports, default backend discovery (`readFirestoreConfig`), the per-page `Env`, one `Core` per app |
-| `src/iife.ts` | Entry of `burrow.min.js`: global `Burrow`, plus the loader that fetches `burrow-firestore.js` on demand |
+| `src/index.ts` | Public entry: `burrow()`, re-exports, the per-page `Env`, one `Core` per app |
+| `src/config.ts` | Default backend discovery shared by `burrow()` and `passkeyBackup()`: `readFirestoreConfig`, `defaultBackend` |
+| `src/iife.ts` | Entry of `burrow.min.js`: global `Burrow` (with `passkeyBackup`), plus the loader that fetches `burrow-firestore.js` on demand |
 | `src/types.ts` | Every public interface; `src/errors.ts` the two error classes and `scrub()`; `src/events.ts` `BurrowEvent` |
-| `src/core.ts` | `Core implements BurrowArea`: the in-memory mirror, local writes, the sync engine, tabs, link/unlink/protect |
+| `src/core.ts` | `Core implements BurrowArea`: the in-memory mirror, local writes, the sync engine, tabs, link/unlink |
 | `src/facade.ts` | The synchronous `Storage` facade (a `Proxy` over a small class) |
 | `src/secret.ts` | `SecretHolder`: the token wrapped with AES-KW, unwrapped per use |
-| `src/codec/derive.ts` | HKDF derivation, document ids, write tokens, keyslot keys; `codec/envelope.ts` seal/open with AES-GCM and deflate; `codec/synccode.ts` the storage-token encoding |
+| `src/codec/derive.ts` | HKDF derivation, document ids, write tokens, keyslot keys; `codec/envelope.ts` seal/open with AES-GCM and deflate; `codec/token.ts` the storage-token encoding |
 | `src/cache/types.ts` | `Cache` interface; `cache/indexeddb.ts` and `cache/memory.ts` implement it |
 | `src/sync/merge.ts` | Pure merge functions: `compare`, `mergeDirectories`, `nextTs`, `valueHash` |
-| `src/providers/passkey.ts`, `providers/synccode.ts` | The built-in unlock methods |
+| `src/passkey.ts` | `burrow-storage/passkey`: `passkeyBackup()`, the optional passkey backup of the token |
 | `src/backends/memory.ts`, `backends/firestore.ts`, `backends/firestore-sdk.ts` | The backends; `firestore-sdk.ts` is the slice of the Firebase SDK the adapter uses |
 | `src/bytes.ts` | UTF-8, base64url, hex, SHA-256, random bytes, `zeroise` |
 | `firebase/` | `firestore.rules`, `firebase.json`, the rules tests (`tests/`) |
@@ -59,9 +62,8 @@ closed by `unlink()`, are removed so the next call starts fresh.
 - the **cache**: the `Cache` implementation (IndexedDB or memory) the mirror is persisted to;
 - the **secret** (`SecretHolder`) and the derived **app keys** (`AppKeys`: `base`, `pathKey`,
   `encKey`, `macKey`);
-- per-app **meta** (`AppMeta`: owner fingerprint, `manifestRev`, `maxRemoteTs`, `lastSyncAt`,
-  `unprotectedFired`);
-- the sync engine's timers, the backend subscription, the tab channel and the four events.
+- per-app **meta** (`AppMeta`: owner fingerprint, `manifestRev`, `maxRemoteTs`, `lastSyncAt`);
+- the sync engine's timers, the backend subscription, the tab channel and the three events.
 
 ## 3. Start-up (`Core.create` → `#init`)
 
@@ -77,13 +79,12 @@ closed by `unlink()`, are removed so the next call starts fresh.
    `tokenSource: "generated"`. `token` is set to `{ source, remembered, since }`.
 4. `#adoptIdentity()`: derive the app keys; compute the cache's **owner fingerprint**
    `hex(SHA-256("owner:" + base))[0:16]`; if the app's stored `meta.owner` differs, clear the
-   app's items and reset its meta. Load the mirror from the cache. Read `protection` from the
-   device store.
+   app's items and reset its meta. Load the mirror from the cache.
 5. Warn once if the backend declares `writeAuth: false`.
 6. `#start()`: listen for `pagehide`, `visibilitychange` and `focus`; open
    `BroadcastChannel("burrow:" + app)`; start the poll timer (`syncIntervalMs > 0`, fires only while
-   visible); subscribe to the manifest if the backend can; kick off the first sync (not awaited);
-   schedule the `onUnprotected` check. `burrow()` resolves after this.
+   visible); subscribe to the manifest if the backend can; kick off the first sync (not awaited).
+   `burrow()` resolves after this.
 
 ## 4. Data model
 
@@ -110,8 +111,8 @@ IndexedDB database `burrow`, one per origin:
 | Object store | Key | Value |
 | --- | --- | --- |
 | `app:<app>` | item key | `CachedItem { value?, ts, h?, deleted?, dirty?, rev? }` |
-| `_meta` | `"app:<app>"` | `AppMeta { owner, manifestRev, maxRemoteTs, lastSyncAt, unprotectedFired }` |
-| `_device` | field name | `DeviceMeta`: `wrapped`, `kw` (the non-extractable `CryptoKey` itself), `protection`, `tokenSource`, `tokenSince`, `p:<provider>` values |
+| `_meta` | `"app:<app>"` | `AppMeta { owner, manifestRev, maxRemoteTs, lastSyncAt }` |
+| `_device` | field name | `DeviceMeta`: `wrapped`, `kw` (the non-extractable `CryptoKey` itself), `tokenSource`, `tokenSince` |
 
 The first use of a new app bumps the database version to add its store; another tab holding the
 old version closes on `versionchange` and reconnects lazily (`IdbCache.#connect`, five attempts).
@@ -146,7 +147,7 @@ the named item documents (`#fetchKeys`), swallowing errors.
 updates the mirror, records the write sequence number for the key, computes the `onChanged`
 delta (`addChange` drops no-ops), and persists: `set`/`remove` await the cache write; the facade's
 `writeSync` schedules it on a microtask. After persistence the write is broadcast to other tabs,
-a push is scheduled after `debounceMs`, and the `onUnprotected` check runs.
+and a push is scheduled after `debounceMs`.
 
 Writing a value equal to the current one still produces a new `ts` and syncs (D-26), so the last
 writer wins across devices; only the `onChanged` event is suppressed.
@@ -169,7 +170,7 @@ when the page is hidden.
 timer (visible only); `visibilitychange` → visible; window `focus` while visible, unless a pass
 started in the last five seconds; the backend's manifest subscription when the revision changed;
 `syncNow()`; `link()`; `get(null, { fresh: true })`;
-and `#hide()` with `keepalive = true` when dirty items exist. Calls while a pass is running set
+and `#hide()` when dirty items exist. Calls while a pass is running set
 `#rerun` and share the running promise; the loop repeats until nothing requested another pass. A
 pass runs under the Web Lock `burrow:<ns>:<app>:sync`, so two tabs of the same app never push at
 once. `#sync()` never rejects; failures go to `#failed()`.
@@ -243,56 +244,56 @@ There is no leader election: any tab may run a pass, serialised by the Web Lock.
 `navigator.locks` passes are not serialised across tabs; without `BroadcastChannel` tabs do not
 learn of each other's writes until their next pass.
 
-## 9. Tokens, linking and providers
+## 9. Tokens, linking and the passkey backup
 
 The token is wrapped on creation (`SecretHolder.wrap`): an extractable HMAC "vehicle" key holds
 the 32 bytes and is wrapped with AES-KW under a non-extractable key generated for the device;
 the pair `{ kw, wrapped }` is what `_device` stores. `use(fn)` unwraps, exports the raw bytes, runs
-`fn`, and zeroises them.
+`fn`, and zeroises them. `exportToken()` is `use(encodeToken)`.
 
-**`protect(id?)`** picks the first available provider (filtered by id), checks that the passkey
-has a backend, calls `enrol({ app, rootSecret, backend, store })` inside `secret.use`, then
-records `protection` (`"code"` for the sync-code provider) in the device store.
+**`link({ token, source, discardLocal })`** checks `source` (a non-empty string, default
+`"token"`; else `TypeError`), decodes `token` with `decodeToken()` (`bad-token` before any I/O),
+then `#switchTo(secret, source, discardLocal)` and zeroises the decoded bytes:
 
-**`link(options)`** decodes `code` (`bad-code` before any I/O) or iterates providers calling
-`recover({ app, interactive: true, backend, store })`, skipping ones that throw, then
-`#switchTo(secret, via, source, discardLocal)`:
-
-1. If the new token derives the same `base` as the current one: set protection if it was none,
-   unpause, sync.
+1. If the new token derives the same `base` as the current one: unpause, sync. Nothing else
+   changes, `token.source` included. This is the `decrypt-failed` recovery path.
 2. Otherwise flush; if dirty items exist and `discardLocal` is false, run a pass under the old
    token and reject `would-orphan` if any remain.
 3. Wrap the new token, wait for any running pass (`#drain`), then under the `sync` and `secret`
-   locks: persist it, swap `#secret`, set `protection` and `token`, invalidate the cache's owner
-   stamp, `#adoptIdentity()` (which clears the app's items), unpause.
+   locks: persist it, swap `#secret`, set `token` (`source`, `since`) and store `tokenSource`
+   and `tokenSince` in `_device`, invalidate the cache's owner stamp, `#adoptIdentity()` (which
+   clears the app's items), unpause.
 4. Broadcast `identity`, emit `onToken`, resubscribe, run a pass with `onChanged` suppressed, then
    emit one `onChanged("remote")` with the difference between the mirror before and after.
 
 **`unlink(options)`** has the same `would-orphan` guard, then forgets the secret, deletes the
-token fields from `_device`, broadcasts `identity` and closes the instance.
+token fields from `_device`, broadcasts `identity` and closes the instance. Later calls throw
+`unlinked`.
 
-**Providers.** `syncCode()` is trivial (`recover` decodes `input`; the core never passes `input`
-because `link({ code })` decodes directly). `passkey(options)`:
+**The passkey backup** (`src/passkey.ts`, `burrow-storage/passkey`) never touches the core. It
+resolves its backend once, on first use: `options.backend`, else `defaultBackend()` from
+`config.ts` (which shares the page's Firebase app with the store's backend), else it rejects
+`backend` before prompting. It keeps no state on the device.
 
-- `available()`: `PublicKeyCredential` and `navigator.credentials` exist, `getClientCapabilities()`
-  does not report `extension:prf: false`, and `isUserVerifyingPlatformAuthenticatorAvailable()`.
-- `enrol()`: `credentials.create` with a discoverable credential, user verification, ES256/RS256,
-  no attestation, the PRF extension with salt `burrow/prf/v1`, `user.name` = app id (or
-  `userName`), `rp.id` only when `rpId` is given. A dismissed prompt is `no-provider`; other
-  errors are `prf-unsupported`. If the authenticator did not return the PRF output at creation,
-  one `credentials.get` follows. The keyslot is written at `slotId` with `writeSlot()` (read, then
-  put at `rev + 1`, three tries on conflict). Only then is the credential id saved under
-  `p:passkey.credentialId`; a failure to save it does not fail the enrolment.
-- `recover()`: `credentials.get` with the cached credential id when there is one (otherwise the
-  browser's account picker), derive the slot keys, `get(slotId)`, `open()`; a missing slot or a
-  dismissed prompt is `null`.
+- `available()`: a secure context, `PublicKeyCredential` and `navigator.credentials` exist,
+  `getClientCapabilities()` does not report `extension:prf: false`, and
+  `isUserVerifyingPlatformAuthenticatorAvailable()`.
+- `save(token)`: `decodeToken()` first (`bad-token` before any prompt), then
+  `credentials.create` with a discoverable credential, user verification, ES256/RS256, no
+  attestation, the PRF extension with salt `burrow/prf/v1`, `rp.name`, `user.name` and
+  `user.displayName` from the options or the page's host, `rp.id` only when `rpId` is given. A
+  dismissed prompt is `cancelled`; other errors are `prf-unsupported`. If the authenticator did
+  not return the PRF output at creation, one `credentials.get` for that credential follows. The
+  keyslot is written at `slotId` with `writeSlot()` (read, then put at `rev + 1`, three tries on
+  conflict). The decoded secret and the PRF output are zeroised.
+- `restore()`: a discoverable `credentials.get` (the browser's account picker), derive the slot
+  keys, `get(slotId)`, `open()`, `encodeToken()`; a missing slot or a dismissed prompt is `null`.
 
 ## 10. Backends
 
 `Backend` is six members (`id`, `capabilities`, `get`, `getMany?`, `put`, `subscribe?`), see
 [extending.md](extending.md) for the contract. The core uses `capabilities.writeAuth` (warn) and
-`capabilities.subscribe` (whether to subscribe); `keepalive` and `maxEnvelopeBytes` are declared
-but not read.
+`capabilities.subscribe` (whether to subscribe).
 
 **`MemoryBackend`** keeps a `Map<id, Envelope>` and enforces the rules exactly: well-formedness
 (`wellFormed()` mirrors `shape()` in the rules file), create at rev 0, update at `rev + 1`, and
@@ -323,14 +324,14 @@ and tested in `firebase/tests/rules.test.mjs` under the emulator.
 
 | Output | Entry | Notes |
 | --- | --- | --- |
-| `dist/index.js`, `dist/firestore.js` (+ `.d.ts`, maps) | `src/index.ts`, `src/backends/firestore.ts` | ESM, `firebase/*` external, shared chunks |
+| `dist/index.js`, `dist/passkey.js`, `dist/firestore.js` (+ `.d.ts`, maps) | `src/index.ts`, `src/passkey.ts`, `src/backends/firestore.ts` | ESM, `firebase/*` external, shared chunks |
 | `dist/burrow.min.js` | `src/iife.ts` | IIFE, global `Burrow`; the static SDK import is stubbed out so Firebase is not inlined |
 | `dist/burrow-firestore.js` | `src/backends/firestore-sdk.ts` | IIFE, global `BurrowFirestoreSdk`, Firebase bundled; loaded on demand by `burrow.min.js` from its own directory |
 
-`package.json` exports `.` and `./firestore`; `firebase >= 10` is an optional peer dependency;
+`package.json` exports `.`, `./passkey` and `./firestore`; `firebase >= 10` is an optional peer dependency;
 `files` ships `dist/`, the setup scripts, and `firebase/firestore.rules` + `firebase.json` so
 `npx burrow-setup firestore` can deploy them. `scripts/size.mjs` builds with esbuild and checks
-the core (≤ 12 KB min+gzip) and the passkey provider (≤ 2 KB); `scripts/sri.mjs` writes
+the core (≤ 12 KB min+gzip) and the passkey backup on top of it (≤ 2 KB); `scripts/sri.mjs` writes
 `dist/sri.json` and prints the script tags for release notes. The release workflow publishes with
 npm provenance on a `v*` tag.
 
@@ -367,11 +368,9 @@ Playwright browsers for the e2e suite (`npx playwright install --with-deps`).
 
 Things the code does not do that a reader of the interfaces might expect:
 
-- `Backend.capabilities.keepalive` and `put(..., { keepalive })` are plumbed through but no shipped
-  backend honours them. The push started on `pagehide` is best-effort: the Firestore adapter
-  writes through transactions, which the SDK does not queue, so if the page closes first the
-  items stay dirty in the cache and go out on the next visit (D-31).
-- `Backend.capabilities.maxEnvelopeBytes` is not consulted; `seal()` uses the constant limit.
+- The push started on `pagehide` is best-effort: the Firestore adapter writes through
+  transactions, which the SDK does not queue, so if the page closes first the items stay dirty in
+  the cache and go out on the next visit (D-31). There is no `keepalive` write path (D-42).
 - Polling is a fixed interval; there is no adaptive back-off for idle tabs, so a visible idle tab
   costs one read per `syncIntervalMs` (D-29).
 - `rememberDevice: false` generates a fresh token on every load and syncs under it immediately;
@@ -380,18 +379,18 @@ Things the code does not do that a reader of the interfaces might expect:
   the calling app; other apps' unsynced writes on the device are discarded on their next load.
 - Open tabs of *other* apps on the origin are not told about a `link()` or `unlink()` (the
   channel is per app); they keep using the old token until they reload.
-- `EnrolContext.backend` and `RecoverContext.backend` are typed `Backend`, but a local-only page
-  passes `null` to custom providers.
+- Burrow does not know whether a token is backed up anywhere; a site that wants to say so keeps
+  its own record (the demo keeps it in the store, D-42).
+- `passkeyBackup().restore()` returns `null` both when the prompt is dismissed and when the chosen
+  passkey has no keyslot, so a page cannot tell the user which happened.
 - The Firestore adapter initialises its own named Firebase app and has no hook for Firebase App
   Check, so a site cannot protect Burrow's requests with App Check.
-- `passkey().available()` does not check for a secure origin, so from `file://` `protect()`
-  chooses the passkey and rejects with `prf-unsupported` instead of falling through to the token.
 - A non-default `collection` needs a matching edit to `firestore.rules`; `burrow-setup` does not
   rewrite it.
 - There is no tool to reap abandoned documents from a project; removal is manual (D-33, #22).
 - `FirestoreBackend` always uses the project's `(default)` database; there is no `databaseId`
   option (D-36).
-- `link({ code })` adopts a well-formed token that has no data as a new, empty identity (the demo
+- `link({ token })` adopts a well-formed token that has no data as a new, empty identity (the demo
   shows the token in use so a typo is visible; D-32).
 - Nothing calls `navigator.storage.persist()`, so a browser may evict the cache and the remembered
   token (Safari after seven days of use without interaction).
