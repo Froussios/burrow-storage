@@ -130,7 +130,11 @@ purpose. With `rememberDevice: false` the cache defaults to `memory`; an explici
 If no `backend` is passed and no `<meta name="burrow-firestore">` or `window.BURROW.firestore`
 exists, `burrow()` still resolves and works locally, warns once in the console, and
 `inspect().backend` is `"none"`. A config that is present but incomplete (missing `apiKey`,
-`projectId` or `appId`) is an error (`TypeError`), not local-only.
+`projectId` or `appId`) originally rejected with `TypeError`.
+
+**Partly superseded by D-45:** a configured backend that cannot be resolved now returns a
+usable local store with `status: "error"`; it never silently selects another project.
+Firestore `appId` is optional. Missing configuration remains the local-only `idle` case.
 
 ### D-17 Script-tag build loads the Firestore SDK from a same-directory file (BE-3, SEC-4, SEC-5)
 
@@ -449,7 +453,8 @@ therefore write undeletable documents to the owner's project.
 `scripts/serve.mjs` rewrites pages in `demo/` and the assembled `site/` to use
 `FIRESTORE_EMULATOR_HOST` or `127.0.0.1:8080` by default. For local development against a real
 project, including pre-production, the caller explicitly supplies `BURROW_FIRESTORE` config
-JSON with non-empty `apiKey`, `projectId` and `appId` strings and an optional `collection`.
+JSON with non-empty `apiKey` and `projectId` strings and optional `appId` and `collection`.
+`appId` became optional in D-45, including for the local server and live setup check.
 It reuses the live setup check's config format. Unknown SDK fields are ignored and an
 `emulator` field is rejected. Empty, malformed or incomplete explicit config and simultaneous
 live and emulator settings stop the server before it listens. This validates the config's
@@ -465,6 +470,33 @@ targets and failures without contacting a cloud project; CI browser tests use th
 
 This affects local HTTP responses only. The source demo config and assembled deployment files
 still use the demo project, as does the post-deploy page smoke test in `pages.yml` (D-40).
+
+### D-45 Public backend configuration and lazy adapter factories (#23)
+
+`backend` accepts an instance or `{ type, …options }`; `firestore` is shorthand. Explicit
+`backend` wins over shorthand. Page discovery prefers `burrow-backend` meta, then
+`window.BURROW.backend`, then legacy Firestore meta/global config. Registered factories
+load adapters on demand; the Firestore factory is built in. Registration cannot replace an
+existing type. Page data selects a registered type, never a script URL or executable code.
+The script-tag Firestore SDK still comes from its same-origin chunk (D-17, D-24).
+
+Firestore needs `apiKey` and `projectId`, not a Firebase web-app `appId`; the latter is optional.
+Invalid remote config or failed adapter loading must not reject local initialization (API-1,
+API-3). A usable local store resolves with `status: "error"` and a fixed `backend` error,
+without retaining config/parser/factory exception values. Dirty writes stay cached. Missing
+config remains the `idle` local-only case (D-16). The first opened instance keeps its backend;
+correct config and reload to enable sync. Passkey backup operations still reject if their
+backend cannot be resolved, since a keyslot needs remote storage. They discard configuration
+exception values in the same way and retry page discovery on the next call. Their explicit
+`backend` option accepts an instance checked against the same structural contract as the
+core; declarative config comes from the page.
+
+The Firestore subpath has a 2 KiB min+gzip adapter budget excluding the lazy SDK; the SDK
+has a separate 150 KiB budget. Both are enforced by `npm run size`. This leaves headroom
+above the measured 1.55/135.80 KiB baselines without hiding SDK growth in the core budget.
+No other hosted adapter is certified. The [candidate assessment](backend-candidates.md)
+records feasibility, costs, setup and missing conformance evidence; #23 stays open pending
+backend choice/privacy approval and deployment tests. Setup work is tracked separately in #36.
 
 ### D-46 Revalidate unlisted item results on manifest retries (SYNC-10, #55)
 

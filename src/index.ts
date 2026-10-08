@@ -11,7 +11,7 @@ export type { MemoryBackendOptions } from "./backends/memory.js";
 export { BurrowError, BackendError } from "./errors.js";
 export type { BurrowErrorCode, BackendErrorCode } from "./errors.js";
 export { BurrowEvent } from "./events.js";
-export { readFirestoreConfig } from "./config.js";
+export { readFirestoreConfig, registerBackend } from "./config.js";
 export type * from "./types.js";
 
 let warnedNoBackend = false;

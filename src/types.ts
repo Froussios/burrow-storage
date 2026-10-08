@@ -107,6 +107,17 @@ export interface Backend {
   subscribe?(id: string, onChange: (env: Envelope) => void): () => void;
 }
 
+/** Page or caller configuration consumed by a registered adapter factory. */
+export interface BackendConfig {
+  type: string;
+  [option: string]: unknown;
+}
+
+/** A factory can load its adapter on demand. It receives publishable config. */
+export type BackendFactory = (
+  config: BackendConfig,
+) => Backend | Promise<Backend>;
+
 /** Options for `burrow()`. Only `app` is required. */
 export interface BurrowConfig {
   /**
@@ -115,10 +126,12 @@ export interface BurrowConfig {
    */
   app: string;
   /**
-   * Where to sync. Default: a FirestoreBackend from the page's config, or
-   * local-only if there is none.
+   * Where to sync: an adapter instance or config for a registered adapter.
+   * Default: the page's config, or local-only if there is none.
    */
-  backend?: Backend;
+  backend?: Backend | BackendConfig;
+  /** Firestore shorthand; ignored when backend is supplied. */
+  firestore?: import("./backends/firestore.js").FirestoreConfig;
   /**
    * Local cache. Default `"indexeddb"`, or `"memory"` when `rememberDevice` is
    * false.

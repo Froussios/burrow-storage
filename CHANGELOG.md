@@ -8,6 +8,10 @@ labels, and the storage-token encoding are public contract: changing them is a m
 ## [Unreleased]
 
 ### Added
+- Generic backend configuration (`burrow-backend` meta / `window.BURROW.backend`), lazy
+  `registerBackend(type, factory)`, caller `{ backend: { type, …options } }` and Firestore
+  shorthand. Invalid backend config preserves local reads/writes and reports an error status
+  (#23, D-45). Firestore `appId` is optional. Separate adapter and SDK size budgets.
 - `burrow()` entry point with a `chrome.storage`-shaped `BurrowArea` and a synchronous `Storage`
   facade (`store.storage`) that supports property-style access like `localStorage`.
 - Codec: HKDF id and key derivation, AES-256-GCM envelopes bound to id, app and revision,
@@ -49,6 +53,15 @@ labels, and the storage-token encoding are public contract: changing them is a m
   decision log.
 
 ### Changed
+- Explicit `backend: null` from untyped callers now counts as invalid configuration
+  instead of falling back to page discovery. `burrow()` opens local storage with error
+  status; passkey operations reject `backend` before prompting. Omit `backend` to discover
+  page config (#23, D-45).
+- Malformed legacy `burrow-firestore` JSON now produces a usable local store with
+  `status: "error"`; it no longer warns and falls back to `window.BURROW.firestore` or
+  another project. Passkey backup operations reject `backend` for that invalid config
+  or failed adapter factory without retaining exception values (#23, D-45). Local serving
+  and the live setup check also accept omitted Firestore `appId`.
 - `npm run test:live` requires the `BURROW_FIRESTORE` environment variable to name the caller's
   own project; it no longer falls back to the demo's store. The setup guide and printed steps
   explain this optional check, its limits and its undeletable throwaway documents (#43, D-43).

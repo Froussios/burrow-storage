@@ -14,7 +14,8 @@ export interface FirestoreConfig {
    */
   apiKey: string;
   projectId: string;
-  appId: string;
+  /** Optional Firebase web-app identifier; Firestore does not require it. */
+  appId?: string;
   /** FS-1: default "burrow". */
   collection?: string;
   /** Point at the Firestore emulator (tests). */
@@ -71,8 +72,27 @@ export class FirestoreBackend implements Backend {
   #conn: Promise<{ sdk: Sdk; db: Db }> | null = null;
 
   constructor(config: FirestoreConfig) {
-    if (!config?.apiKey || !config.projectId || !config.appId)
-      throw new TypeError("FirestoreBackend needs apiKey, projectId and appId");
+    if (
+      typeof config?.apiKey !== "string" ||
+      !config.apiKey.trim() ||
+      typeof config.projectId !== "string" ||
+      !config.projectId.trim()
+    )
+      throw new TypeError("FirestoreBackend needs apiKey and projectId");
+    if (
+      config.appId !== undefined &&
+      (typeof config.appId !== "string" || !config.appId.trim())
+    )
+      throw new TypeError("FirestoreBackend appId must be a non-empty string");
+    if (
+      config.collection !== undefined &&
+      (typeof config.collection !== "string" ||
+        !config.collection ||
+        config.collection.includes("/"))
+    )
+      throw new TypeError(
+        "FirestoreBackend collection must be one path segment",
+      );
     this.#cfg = config;
     this.#collection = config.collection ?? "burrow";
   }

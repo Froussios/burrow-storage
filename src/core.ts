@@ -2,6 +2,7 @@
 // (§4, §8).
 import { hex, sha256, utf8 } from "./bytes.js";
 import { MemoryCache } from "./cache/memory.js";
+import { configuredBackend } from "./config.js";
 import type { AppMeta, Cache, CachedItem } from "./cache/types.js";
 import { type AppKeys, deriveAppKeys, docId } from "./codec/derive.js";
 import {
@@ -178,9 +179,26 @@ export class Core implements BurrowArea {
   ): Promise<Core> {
     if (!APP_RE.test(config.app ?? ""))
       throw new TypeError("app must match /^[a-z0-9-]{1,64}$/");
-    const backend = config.backend ?? (await env.defaultBackend());
+    let backend: Backend | null = null;
+    let configError: BurrowError | undefined;
+    try {
+      backend =
+        config.backend !== undefined
+          ? await configuredBackend(config.backend)
+          : config.firestore !== undefined
+            ? await configuredBackend({
+                ...config.firestore,
+                type: "firestore",
+              })
+            : await env.defaultBackend();
+    } catch {
+      // API-1/API-3: invalid remote config must not prevent local storage.
+      // Factory errors may contain secrets, so retain only a fixed message.
+      configError = new BurrowError("backend", "backend configuration failed");
+    }
     const core = new Core(config, env, backend, onClose);
     await core.#init(config);
+    if (configError) core.#setStatus("error", configError);
     return core;
   }
 
