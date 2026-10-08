@@ -161,14 +161,46 @@ App Check, so a site cannot turn it on yet.
 Removed keys leave their item documents behind forever, overwritten with a deleted marker and
 bounded by the size cap; the manifest forgets them after 30 days.
 
-## Local development with the emulator
+## Local development
 
 ```sh
 npm run test:rules       # rules matrix
 npm run test:firestore   # backend conformance suite
 npm run test:e2e         # browser tests; the demo is served pointed at the emulator
+node scripts/emulator.mjs "npm run serve" # start the emulator and local demo (after a build)
 ```
 
 `scripts/emulator.mjs` runs any command under `firebase emulators:exec` and exports
-`FIRESTORE_EMULATOR_HOST` to it; `scripts/serve.mjs` then injects `emulator` into the demo's
-config and widens its CSP. Needs Java 21. Set `BURROW_EMULATOR_PORT` if 8080 is taken.
+`FIRESTORE_EMULATOR_HOST` to it. By default, `scripts/serve.mjs` replaces the local demo and
+assembled `site/` config with the emulator's, and replaces the live Firestore endpoint in their CSP.
+Bare `npm run serve` expects an already-running emulator at `127.0.0.1:8080`, or at
+`FIRESTORE_EMULATOR_HOST` if set. It never uses the source page's config as a default.
+Starting the emulator needs Java 21; set `BURROW_EMULATOR_PORT` if 8080 is taken.
+
+To run the page locally against your own live or pre-production Firebase project, supply its
+public config explicitly in `BURROW_FIRESTORE` and run the server directly after building:
+
+```sh
+BURROW_FIRESTORE='{"apiKey":"your-api-key","projectId":"your-project-id","appId":"your-app-id"}' npm run serve
+```
+
+In PowerShell:
+
+```powershell
+$env:BURROW_FIRESTORE = '{"apiKey":"your-api-key","projectId":"your-project-id","appId":"your-app-id"}'
+npm run serve
+```
+
+Open <http://localhost:4173/demo/>. The server replaces both `demo/` and assembled `site/` page
+configs with the supplied project and allows `https://firestore.googleapis.com` in their CSP.
+`apiKey`, `projectId` and `appId` must be non-empty strings. An optional non-empty `collection`
+string selects a collection whose rules you have configured. Other Firebase SDK config fields
+are ignored; omit the `emulator` field. An empty, malformed or incomplete config stops the
+server before it listens, without falling back to the source page or the emulator. Validation
+checks the config's shape, not whether the project exists or its rules and key restrictions are
+correct. Configure the project with the steps above and allow `http://localhost:*` in the
+browser key's referrer restrictions. The page writes real documents to the selected project.
+
+Choose one target: `BURROW_FIRESTORE` and a non-empty `FIRESTORE_EMULATOR_HOST` together are an
+error. Unset `BURROW_FIRESTORE` to return to the emulator. CI browser and smoke suites continue
+to use only the emulator.

@@ -2,9 +2,8 @@
 // Static file server for the demo and the browser tests. Serves the repo root;
 // files missing from demo/ fall back to dist/ (burrow.min.js,
 // burrow-firestore.js), as a deployed demo has them; site/ is the assembled
-// demo (scripts/build-demo.mjs). With FIRESTORE_EMULATOR_HOST set, the
-// Firestore config and CSP of the pages in demo/ and site/ point at the
-// emulator.
+// demo (scripts/build-demo.mjs). Local pages in demo/ and site/ use the
+// emulator by default, or an explicit project from BURROW_FIRESTORE (#40).
 import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize, resolve, sep } from "node:path";
@@ -12,7 +11,74 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const port = Number(process.env.PORT ?? 4173);
-const emu = process.env.FIRESTORE_EMULATOR_HOST;
+const LIVE = "https://firestore.googleapis.com";
+const guidance =
+  "BURROW_FIRESTORE must be config JSON with non-empty apiKey, projectId and appId strings and an optional non-empty collection string; omit emulator. See docs/firestore-setup.md#local-development.";
+
+function localTarget() {
+  const supplied = process.env.BURROW_FIRESTORE;
+  if (supplied !== undefined) {
+    let cfg;
+    try {
+      cfg = JSON.parse(supplied);
+    } catch {
+      throw new Error(guidance);
+    }
+    if (
+      !cfg ||
+      Array.isArray(cfg) ||
+      ["apiKey", "projectId", "appId"].some(
+        (key) => typeof cfg[key] !== "string" || !cfg[key].trim(),
+      ) ||
+      (cfg.collection !== undefined &&
+        (typeof cfg.collection !== "string" || !cfg.collection.trim())) ||
+      cfg.emulator !== undefined
+    )
+      throw new Error(guidance);
+    if (process.env.FIRESTORE_EMULATOR_HOST)
+      throw new Error(
+        "Choose BURROW_FIRESTORE or FIRESTORE_EMULATOR_HOST, not both. See docs/firestore-setup.md#local-development.",
+      );
+    const { apiKey, projectId, appId, collection } = cfg;
+    return {
+      config: {
+        apiKey,
+        projectId,
+        appId,
+        ...(collection ? { collection } : {}),
+      },
+      endpoint: LIVE,
+      label: `project ${JSON.stringify(projectId)}`,
+    };
+  }
+  const emu = process.env.FIRESTORE_EMULATOR_HOST || "127.0.0.1:8080";
+  const [host, p] = emu.split(":");
+  return {
+    config: {
+      apiKey: "emulator",
+      projectId: "burrow-rules-test",
+      appId: "1:0:web:0",
+      emulator: { host, port: Number(p) },
+    },
+    endpoint: `http://${emu}`,
+    label: `emulator ${emu}`,
+  };
+}
+
+let target;
+try {
+  target = localTarget();
+} catch (e) {
+  console.error(`serve.mjs: ${e.message}`);
+  process.exit(1);
+}
+// Config is inserted into a single-quoted HTML attribute. Use a replacement
+// callback below so config values containing '$' stay literal too.
+const pageConfig = JSON.stringify(target.config)
+  .replaceAll("&", "&amp;")
+  .replaceAll("'", "&#39;")
+  .replaceAll("<", "&lt;")
+  .replaceAll(">", "&gt;");
 const TYPES = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript",
@@ -38,26 +104,23 @@ async function file(p) {
   }
 }
 
-function forEmulator(html) {
-  const [host, p] = emu.split(":");
-  const cfg = JSON.stringify({
-    apiKey: "emulator",
-    projectId: "burrow-rules-test",
-    appId: "1:0:web:0",
-    emulator: { host, port: Number(p) },
-  });
+function forLocalTarget(html) {
   // Attributes may sit on separate lines (Prettier wraps the tag).
   const meta = /(<meta\s+name="burrow-firestore"\s+content=')[^']*'/;
-  // A page that names a Firestore config must get the emulator's, or it would
-  // sync with the live project (#39).
+  // A page must get the selected config, or it could sync with the owner's
+  // project instead (#39, #40).
   if (html.includes("burrow-firestore") && !meta.test(html))
     throw new Error("burrow-firestore config not found");
   return html
-    .replace(meta, `$1${cfg}'`)
-    .replace(/connect-src ([^;"]*)/, `connect-src $1 http://${emu}`);
+    .replace(meta, (_, prefix) => `${prefix}${pageConfig}'`)
+    .replace(
+      /connect-src ([^;"]*)/,
+      (_, sources) =>
+        `connect-src ${sources.replace(/\s*https:\/\/firestore\.googleapis\.com/g, "").trim()} ${target.endpoint}`,
+    );
 }
 
-createServer(async (req, res) => {
+const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", "http://x");
   const rel = normalize(decodeURIComponent(url.pathname)).replace(
     /^([/\\])+/,
@@ -76,21 +139,20 @@ createServer(async (req, res) => {
   }
   let body = await readFile(path);
   if (
-    emu &&
     [join(root, "demo"), join(root, "site")].some((d) =>
       path.startsWith(d + sep),
     ) &&
     path.endsWith(".html")
   ) {
     try {
-      body = Buffer.from(forEmulator(body.toString()));
+      body = Buffer.from(forLocalTarget(body.toString()));
     } catch (e) {
       console.error(
-        `serve.mjs: cannot point ${rel} at the emulator: ${e.message}`,
+        `serve.mjs: cannot configure ${rel} for the selected backend: ${e.message}`,
       );
       res
         .writeHead(500, { "content-type": "text/plain" })
-        .end(`cannot point ${rel} at the emulator: ${e.message}`);
+        .end(`cannot configure ${rel} for the selected backend: ${e.message}`);
       return;
     }
   }
@@ -100,8 +162,10 @@ createServer(async (req, res) => {
       "cache-control": "no-store",
     })
     .end(body);
-}).listen(port, "127.0.0.1", () =>
+});
+server.listen(port, "127.0.0.1", () => {
+  const address = server.address();
   console.log(
-    `serving ${root} on http://localhost:${port}${emu ? ` (emulator ${emu})` : ""}`,
-  ),
-);
+    `serving ${root} on http://localhost:${address.port} (${target.label})`,
+  );
+});

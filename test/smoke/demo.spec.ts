@@ -12,13 +12,12 @@ const TOKEN = /^([0-9A-Z]{4}-){13}[0-9A-Z]{4}$/;
 const COMMIT = process.env.BURROW_DEMO_COMMIT;
 const EMU = process.env.FIRESTORE_EMULATOR_HOST;
 const LIVE = "https://firestore.googleapis.com";
-/** The connect-src stores: under the emulator, scripts/serve.mjs adds it. */
-const STORES = [LIVE, ...(EMU ? [`http://${EMU}`] : [])];
 /**
- * Where the page may actually connect: under the emulator only the emulator,
- * so CI never writes to the live project (#39, #40).
+ * The connect-src stores and where the page may actually connect: under the
+ * emulator only the emulator, so CI never writes to the live project
+ * (#39, #40).
  */
-const REACHED = EMU ? [`http://${EMU}`] : [LIVE];
+const STORES = EMU ? [`http://${EMU}`] : [LIVE];
 
 type Device = { page: Page; problems: string[] };
 
@@ -29,7 +28,7 @@ type Device = { page: Page; problems: string[] };
 async function device(browser: Browser, origin: string): Promise<Device> {
   const page = await (await browser.newContext()).newPage();
   const problems: string[] = [];
-  const allowed = new Set([origin, ...REACHED]);
+  const allowed = new Set([origin, ...STORES]);
   page.on("console", (m) => {
     if (m.type() === "error") problems.push(m.text());
   });

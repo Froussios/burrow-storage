@@ -440,6 +440,32 @@ backend conformance and two-device sync. It leaves undeletable throwaway documen
 check Spark vs Blaze or that Auth, Storage and Functions are off. The setup guide and printed
 steps describe these limits. The earlier live runs in D-1 and D-23 remain historical records.
 
+### D-44 Local serving defaults to the emulator; real projects are explicit (#40)
+
+D-43 isolates CI and the live setup check, but bare `npm run serve` still served the demo's
+live config whenever `FIRESTORE_EMULATOR_HOST` was absent or empty. Local development could
+therefore write undeletable documents to the owner's project.
+
+`scripts/serve.mjs` rewrites pages in `demo/` and the assembled `site/` to use
+`FIRESTORE_EMULATOR_HOST` or `127.0.0.1:8080` by default. For local development against a real
+project, including pre-production, the caller explicitly supplies `BURROW_FIRESTORE` config
+JSON with non-empty `apiKey`, `projectId` and `appId` strings and an optional `collection`.
+It reuses the live setup check's config format. Unknown SDK fields are ignored and an
+`emulator` field is rejected. Empty, malformed or incomplete explicit config and simultaneous
+live and emulator settings stop the server before it listens. This validates the config's
+shape, not the project's existence or setup.
+
+The server adjusts the page's CSP for the chosen backend and refuses a page whose config
+cannot be rewritten. The source page's project is never a default or fallback. An unavailable
+emulator means sync is offline. `node scripts/emulator.mjs "npm run serve"` starts both for
+emulator development; `BURROW_FIRESTORE='<config JSON>' npm run serve` uses the caller's project.
+Config values are escaped for the HTML attribute, and inserted through a replacement callback
+so quotes, markup characters and dollar signs remain data. HTTP regression tests cover both
+targets and failures without contacting a cloud project; CI browser tests use the emulator.
+
+This affects local HTTP responses only. The source demo config and assembled deployment files
+still use the demo project, as does the post-deploy page smoke test in `pages.yml` (D-40).
+
 ## Part B: planning decisions and their status
 
 These were proposed in the pre-implementation design review

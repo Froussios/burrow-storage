@@ -29,8 +29,12 @@ unlocks a **passkey backup** of it.
   follow you across devices. It is redeployed from every push to `main`, and its footer shows the
   commit it was built from. It syncs through the maintainer's demo project, which does not delete
   documents, so what you type there stays in it, encrypted. The source is in [`demo/`](demo/); run
-  it locally with `npm run build && npm run serve` and open <http://localhost:4173/demo/>, and to
-  use your own project, replace its `<meta name="burrow-firestore">`.
+  it locally against the emulator with `npm run build` then
+  `node scripts/emulator.mjs "npm run serve"` (needs Java 21) and open
+  <http://localhost:4173/demo/>. To run locally against your own live or pre-production project,
+  set `BURROW_FIRESTORE` to its config JSON; see
+  [Local development](docs/firestore-setup.md#local-development). To deploy it with your own
+  project, replace its `<meta name="burrow-firestore">` before deploying.
 
 ## Contents
 
@@ -412,14 +416,21 @@ npm run docs:check     # typechecks every code example in this README and the gu
 npm run test:rules     # Firestore rules in the emulator (needs Java 21)
 npm run test:firestore # backend conformance against the emulator
 npm run test:e2e       # Chromium, Firefox and WebKit via Playwright, against the emulator
-npm run serve          # demo at http://localhost:4173/demo/ (after npm run build)
+npm run serve          # local demo defaults to the emulator; BURROW_FIRESTORE selects your own project
 npm run demo:build     # site/: the deployable demo, stamped with the commit (after npm run build)
 npm run test:smoke     # demo smoke test: BURROW_DEMO_URL=<deployed demo>, or site/ under the emulator
 ```
 
 `npm run check` runs typecheck, tests, build, size and `docs:check` in one go. Development needs
 Node 22 or newer; the emulator suites need Java 21. Set `BURROW_EMULATOR_PORT` if port 8080 is
-taken. Contributor notes are in [CLAUDE.md](CLAUDE.md).
+taken. To start the emulator and local demo together, run
+`node scripts/emulator.mjs "npm run serve"` after building. Bare `npm run serve` expects an
+already-running emulator at `127.0.0.1:8080`, or at `FIRESTORE_EMULATOR_HOST` if set; it never
+uses the source page's project config. To connect to your own real project, explicitly set
+`BURROW_FIRESTORE` to its config JSON before running `npm run serve` directly. Invalid config
+stops the server; do not also set `FIRESTORE_EMULATOR_HOST`. See
+[Local development](docs/firestore-setup.md#local-development) for commands.
+Contributor notes are in [CLAUDE.md](CLAUDE.md).
 
 ## License
 

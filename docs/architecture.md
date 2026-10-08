@@ -365,6 +365,18 @@ second job runs the smoke test against the deployed page; a smoke failure fails 
 D-40). `release.yml` publishes on tags. Only the demo may use the owner's Firebase project;
 CI reaches it through the deployed page (D-43).
 
+Local serving follows the same isolation rule (D-44): `scripts/serve.mjs` rewrites `demo/` and
+`site/` pages to use `FIRESTORE_EMULATOR_HOST`, defaulting to `127.0.0.1:8080`, or an explicit
+project from the `BURROW_FIRESTORE` config JSON. It adjusts their CSP for the selected backend.
+An invalid explicit config or simultaneous live and emulator settings stops the server before
+it listens. If a page's Firestore config cannot be rewritten, it returns HTTP 500 instead of
+serving the original. Run
+`node scripts/emulator.mjs "npm run serve"` to start both the emulator and server after a build;
+bare `npm run serve` expects the emulator to be running already. To use your own live or
+pre-production project, set `BURROW_FIRESTORE` and run the server directly; commands and config
+requirements are in [firestore-setup.md](firestore-setup.md#local-development). CI continues to
+use the emulator.
+
 Contributors need Node 22 or newer (`--localstorage-file`), Java 21 for the emulator, and
 Playwright browsers for the e2e suite (`npx playwright install --with-deps`).
 
