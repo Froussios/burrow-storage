@@ -46,8 +46,14 @@ function forEmulator(html) {
     appId: "1:0:web:0",
     emulator: { host, port: Number(p) },
   });
+  // Attributes may sit on separate lines (Prettier wraps the tag).
+  const meta = /(<meta\s+name="burrow-firestore"\s+content=')[^']*'/;
+  // A page that names a Firestore config must get the emulator's, or it would
+  // sync with the live project (#39).
+  if (html.includes("burrow-firestore") && !meta.test(html))
+    throw new Error("burrow-firestore config not found");
   return html
-    .replace(/(<meta name="burrow-firestore"\s+content=')[^']*'/, `$1${cfg}'`)
+    .replace(meta, `$1${cfg}'`)
     .replace(/connect-src ([^;"]*)/, `connect-src $1 http://${emu}`);
 }
 
@@ -75,8 +81,19 @@ createServer(async (req, res) => {
       path.startsWith(d + sep),
     ) &&
     path.endsWith(".html")
-  )
-    body = Buffer.from(forEmulator(body.toString()));
+  ) {
+    try {
+      body = Buffer.from(forEmulator(body.toString()));
+    } catch (e) {
+      console.error(
+        `serve.mjs: cannot point ${rel} at the emulator: ${e.message}`,
+      );
+      res
+        .writeHead(500, { "content-type": "text/plain" })
+        .end(`cannot point ${rel} at the emulator: ${e.message}`);
+      return;
+    }
+  }
   res
     .writeHead(200, {
       "content-type": TYPES[extname(path)] ?? "application/octet-stream",

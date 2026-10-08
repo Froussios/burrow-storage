@@ -27,6 +27,13 @@ test("the demo shows the token and its source, runs under its strict CSP, and sy
       if (m.type() === "error") keep(m.text());
     });
     p.on("pageerror", (e) => keep(String(e)));
+    // These tests run under the emulator; the page must never reach the live
+    // project (#39). Only the origin is recorded: URLs carry document ids.
+    p.on("request", (r) => {
+      const origin = new URL(r.url()).origin;
+      if (origin === "https://firestore.googleapis.com")
+        keep(`request to ${origin}`);
+    });
   };
   const deviceA = await browser.newContext();
   const deviceB = await browser.newContext();
