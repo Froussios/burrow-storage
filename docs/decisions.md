@@ -1,6 +1,6 @@
 # Decisions
 
-The judgement calls behind the code, in two parts. **Part A** (D-1 … D-40, with a hyphen) is the
+The judgement calls behind the code, in two parts. **Part A** (D-1 … D-41, with a hyphen) is the
 log kept while implementing; each entry names the requirement it touches in
 [history/requirements.md](history/requirements.md) ("the brief") and the choice made where the
 brief was silent or self-contradictory. **Part B** (D1 … D20, no hyphen) is the earlier planning
@@ -199,13 +199,13 @@ that re-sets unchanged values causes one write per debounce window.
 ### D-27 `store.token` reports where the token came from; `exportCode()` does not protect (supersedes D-14)
 
 The demo always shows the storage token in use and where it came from
-([user-journeys.md](user-journeys.md)). `store.token` is `{ source, remembered, since }`:
-`source` is `generated`, `code` (`link({ code })`), `link` (a `#burrow=` URL), `passkey`, or a
-custom provider's id; `remembered` is true when the token was loaded from this browser's storage
-on page load; `since` is when this device obtained it. The source is persisted next to the wrapped
-token, so it survives reloads, and `onToken` fires when it changes. Because the demo calls
-`exportCode()` on every load, `exportCode()` no longer sets `protection: "code"`; otherwise
-`onUnprotected` could never fire. `protect("sync-code")` still records that the user kept the token.
+([user-journeys.md](user-journeys.md)). `store.token` is `{ source, remembered, since }`: `source`
+is `generated`, `code` (`link({ code })`), `passkey`, or a custom provider's id; `remembered` is
+true when the token was loaded from this browser's storage on page load; `since` is when this device
+obtained it. The source is persisted next to the wrapped token, so it survives reloads, and
+`onToken` fires when it changes. Because the demo calls `exportCode()` on every load, `exportCode()`
+no longer sets `protection: "code"`; otherwise `onUnprotected` could never fire.
+`protect("sync-code")` still records that the user kept the token.
 
 ### D-28 The sync code is presented to people as the "storage token"
 
@@ -335,6 +335,27 @@ that Playwright retries writes another set. These documents are never deleted (D
 runs share Spark's daily quotas with every other use of the project. CI runs the same spec against
 the assembled `site/` under the emulator, so the test itself is checked before a merge.
 
+### D-41 No `#burrow=` links: the token is never read from the URL (KP-13, D7; #35)
+
+KP-13 allowed (MAY) carrying the token in a URL fragment. An earlier build adopted a
+`#burrow=<token>` fragment on every `burrow()`, without asking, and removed it with
+`history.replaceState`; that superseded D7. It is removed, and D7 is in force again: KP-13 is not
+implemented.
+
+- **Token fixation.** Anyone who got a user to open a link they made switched that device, and
+  every Burrow app on the origin, to their token, then read what the user wrote. The library had
+  no mitigation, and a site that never offered links still had to strip the fragment before
+  calling `burrow()`, so the default was unsafe.
+- **The link is the token.** It ends up in history, synced history, autocomplete, chat logs and
+  screenshots; removing it from the address bar after reading undoes none of that. The token
+  should leave the device only when the user deliberately carries it.
+- **Better paths exist.** A password manager, through `exportCode()` and `link({ code })`, or a
+  passkey backup, which moves the token without showing it.
+
+`burrow()` no longer reads `location`, `Env` lost its `location` and `history` members, and
+`TokenSource` no longer has `"link"`. The docs do not describe links at all, not even as a recipe
+on top of `link({ code })`.
+
 ## Part B: planning decisions and their status
 
 These were proposed in the pre-implementation design review
@@ -349,7 +370,7 @@ confirmation. The implementation then went its own way on several. Status agains
 | D4 | No passphrase provider in v1 | **Adopted** (D-12). The decoder accepts version byte `0x02` for forward compatibility. |
 | D5 | Wrap the token with AES-GCM rather than AES-KW | **Superseded.** AES-KW under a non-extractable key, with an extractable HMAC "vehicle" key carrying the raw bytes (`src/secret.ts`). |
 | D6 | A chrome-style emitter that is not an `EventTarget` | **Superseded.** `BurrowEvent` extends `EventTarget` and adds the chrome-style methods (D-13). |
-| D7 | No URL-fragment transport for the token | **Superseded.** `#burrow=<token>` links are supported; the fragment is removed on read. The history-leak caveat is documented in SECURITY.md. |
+| D7 | No URL-fragment transport for the token | **Adopted** (D-41). |
 | D8 | `linked`, `not-linked`/`unsupported` error codes, `compress`, `rememberDevice: false` starts unlinked | **Not adopted** except `debug`. `rememberDevice: false` generates an in-memory token per load (D-15). |
 | D9 | Single package, two entries, IIFE includes both | **Adopted** for the entries; the IIFE excludes the SDK (D-17). |
 | D10 | tsup, vitest, fast-check, Playwright, firebase-tools, size-limit, eslint, prettier | **Partly adopted.** No eslint, prettier or size-limit; a custom `scripts/size.mjs`; rules tests use `node --test`. |

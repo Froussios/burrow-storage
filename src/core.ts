@@ -39,7 +39,6 @@ import type {
   ProviderStore,
   Status,
   TokenInfo,
-  TokenSource,
   StatusEvent,
   StorageChanges,
 } from "./types.js";
@@ -57,10 +56,6 @@ export interface Env {
   /** Receives visibilitychange/pagehide; null outside a browser. */
   win: EventTarget | null;
   doc: { visibilityState: DocumentVisibilityState } | null;
-  location: { hash: string; href: string } | null;
-  history: {
-    replaceState(data: unknown, unused: string, url?: string): void;
-  } | null;
   defaultBackend(): Promise<Backend | null>;
 }
 
@@ -255,7 +250,6 @@ export class Core implements BurrowArea {
       );
     }
     this.#start();
-    await this.#readFragment();
   }
 
   /**
@@ -1270,20 +1264,12 @@ export class Core implements BurrowArea {
     return this.#secret!.use((s) => encodeSyncCode(s));
   }
 
-  link(
+  async link(
     options: { provider?: string; code?: string; discardLocal?: boolean } = {},
-  ): Promise<void> {
-    return this.#link(options, "code");
-  }
-
-  async #link(
-    options: { provider?: string; code?: string; discardLocal?: boolean },
-    codeSource: TokenSource,
   ): Promise<void> {
     this.#alive();
     let secret: Uint8Array | null = null;
     let via: Protection = "none";
-    let source: TokenSource = codeSource;
     if (options.code !== undefined) {
       // KP-12: bad-code before any network call
       secret = (await decodeSyncCode(options.code)).secret;
@@ -1311,23 +1297,25 @@ export class Core implements BurrowArea {
         }
         if (secret) {
           via = protectionFor(p.id);
-          source = via;
           break;
         }
       }
       if (!secret) throw new BurrowError("no-provider");
     }
     try {
-      await this.#switchTo(secret, via, source, !!options.discardLocal);
+      await this.#switchTo(secret, via, !!options.discardLocal);
     } finally {
       secret.fill(0);
     }
   }
 
+  /**
+   * Adopt `secret`. `via` is both the new protection and the token's source:
+   * "code" for a typed token, otherwise the provider's protection.
+   */
   async #switchTo(
     secret: Uint8Array,
     via: Protection,
-    source: TokenSource,
     discardLocal: boolean,
   ): Promise<void> {
     const same =
@@ -1357,11 +1345,11 @@ export class Core implements BurrowArea {
       this.#secret?.forget();
       this.#secret = holder;
       this.#protection = via;
-      this.#token = { source, remembered: false, since: Date.now() };
+      this.#token = { source: via, remembered: false, since: Date.now() };
       if (this.#remember)
         await this.#cache.setDevice({
           protection: via,
-          tokenSource: source,
+          tokenSource: via,
           tokenSince: this.#token.since!,
         });
       // the cache now belongs to nobody; #adoptIdentity resets it
@@ -1416,29 +1404,6 @@ export class Core implements BurrowArea {
     });
     this.#broadcast({ t: "identity" });
     this.close();
-  }
-
-  /**
-   * KP-13: a sync code in the URL fragment (#burrow=<code>) links this device.
-   */
-  async #readFragment(): Promise<void> {
-    const loc = this.#env.location;
-    const m = loc?.hash.match(/[#&]burrow=([^&]+)/);
-    if (!loc || !m) return;
-    const rest = loc.hash.replace(/[#&]?burrow=[^&]+/, "").replace(/^#?&?/, "");
-    this.#env.history?.replaceState(
-      null,
-      "",
-      loc.href.split("#")[0] + (rest ? "#" + rest : ""),
-    );
-    try {
-      await this.#link({ code: decodeURIComponent(m[1]!) }, "link");
-    } catch (e) {
-      this.#setStatus(
-        "error",
-        e instanceof BurrowError ? e : new BurrowError("bad-code"),
-      );
-    }
   }
 
   // ---------------------------------------------------- export / import

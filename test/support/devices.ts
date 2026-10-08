@@ -38,7 +38,6 @@ export class Device {
     visibilityState: "visible" as DocumentVisibilityState,
   };
   readonly win = new EventTarget();
-  location: { hash: string; href: string } | null = null;
   constructor(
     readonly world: World,
     opts: { cache?: "indexeddb" | "memory"; latencyMs?: number },
@@ -65,16 +64,6 @@ export class Device {
       locks: navigator.locks,
       win: this.win,
       doc: this.visibility,
-      location: this.location,
-      history: {
-        replaceState: (_d, _u, url) => {
-          if (this.location && url)
-            this.location = {
-              href: url,
-              hash: url.includes("#") ? url.slice(url.indexOf("#")) : "",
-            };
-        },
-      },
       defaultBackend: async () => null,
     };
   }

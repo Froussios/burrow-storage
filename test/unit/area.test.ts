@@ -748,20 +748,26 @@ describe("§6 link, protect, unlink", () => {
     expect(fired).toBe(1);
   });
 
-  it("KP-13 a #burrow=<code> fragment links the device and is stripped from the URL", async () => {
+  it("KP-13 (not implemented, D-41) a #burrow=<code> fragment is ignored and left in the URL", async () => {
     const w = fresh();
     const a = await w.device().open();
     await a.set({ k: "shared" });
     await a.syncNow();
-    const D = w.device();
     const code = await a.exportCode();
-    D.location = {
-      href: `https://example.test/app#burrow=${code}`,
-      hash: `#burrow=${code}`,
-    };
-    const b = await D.open();
-    expect(await b.get()).toEqual({ k: "shared" });
-    expect(D.location!.href).toBe("https://example.test/app");
+    const href = `https://example.test/app#burrow=${code}`;
+    const replaceState = vi.fn();
+    vi.stubGlobal("location", { href, hash: `#burrow=${code}` });
+    vi.stubGlobal("history", { replaceState });
+    try {
+      const b = await w.device().open();
+      expect(b.token.source).toBe("generated");
+      expect(await b.exportCode()).not.toBe(code);
+      expect(await b.get()).toEqual({});
+      expect(location.href).toBe(href);
+      expect(replaceState).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("rememberDevice: false keeps the secret in memory only", async () => {
@@ -846,17 +852,6 @@ describe("token source (demo journeys)", () => {
       source: "code",
       remembered: true,
     });
-  });
-
-  it("a #burrow= link records 'link'", async () => {
-    const w = fresh();
-    const code = await (await w.device().open()).exportCode();
-    const D = w.device();
-    D.location = {
-      href: `https://example.test/#burrow=${code}`,
-      hash: `#burrow=${code}`,
-    };
-    expect((await D.open()).token.source).toBe("link");
   });
 
   it("a provider records its own id", async () => {

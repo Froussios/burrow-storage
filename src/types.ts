@@ -261,12 +261,12 @@ export type Status = "idle" | "syncing" | "offline" | "error";
 
 /**
  * How this device got its storage token (the root secret): generated here on
- * first use (KP-1), entered as a code (pasted or typed), opened from a
- * `#burrow=` link (KP-13), recovered from a passkey, or from a custom provider
- * (its id). "unknown" for tokens stored before this was recorded.
+ * first use (KP-1), entered as a code (pasted or typed), recovered from a
+ * passkey, or from a custom provider (its id). "unknown" for tokens stored
+ * before this was recorded.
  */
 export type TokenSource =
-  "generated" | "code" | "link" | "passkey" | "unknown" | (string & {});
+  "generated" | "code" | "passkey" | "unknown" | (string & {});
 
 export interface TokenInfo {
   source: TokenSource;

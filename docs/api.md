@@ -60,12 +60,6 @@ interface BurrowConfig {
 | `maxItemBytes` | Size limit per item, measured as the UTF-8 length of `JSON.stringify({ v: 1, key, value, ts })`, so the key name counts. Values above 749 000 are clamped silently. |
 | `debug` | One `console.debug` line per sync event (`pull`, `push`, `conflict`, `backoff`, `error`, …) with revisions, counts, bytes and durations. Never ids, tokens, keys or values. |
 
-If the page URL carries `#burrow=<token>` when `burrow()` runs, the device adopts that token first
-(see [`link()`](#tokens-and-devices)), the fragment is removed with `history.replaceState`, and the
-promise resolves after the first sync attempt. This happens without asking, for any link; a site
-that does not hand out links should drop the fragment before calling `burrow()`
-([sync-and-tokens.md](sync-and-tokens.md#links)).
-
 ## `BurrowArea`
 
 What `burrow()` resolves to. It is declared, with a comment on every member, in
@@ -159,10 +153,10 @@ declare class BurrowEvent<T> extends EventTarget {
 | `"offline"` | The last pass failed with a network or quota error (`error.code` is `"backend"` or `"quota"`), or IndexedDB was unavailable at start-up. Burrow retries with exponential backoff from 2 s, capped at the larger of `syncIntervalMs` and 5 minutes. Dirty items wait. |
 | `"error"` | `decrypt-failed` (sync is paused until the device links again), or `conflict` / `item-too-large` (retried on the next trigger). |
 
-`token.source` is `"generated"` (made on this device), `"code"` (typed or pasted), `"link"` (from
-a `#burrow=` URL), `"passkey"`, `"unknown"` (stored before the source was recorded), or a custom
-provider's id. `token.remembered` is true when the token was loaded from this browser's storage on
-page load; `token.since` is when the device obtained it.
+`token.source` is `"generated"` (made on this device), `"code"` (typed or pasted), `"passkey"`,
+`"unknown"` (stored before the source was recorded), or a custom provider's id. `token.remembered`
+is true when the token was loaded from this browser's storage on page load; `token.since` is when
+the device obtained it.
 
 `protection` is what can bring the token back on another device, as far as this device knows:
 `"passkey"` after `protect("passkey")` or a passkey recovery, `"code"` after `protect("sync-code")`
@@ -256,7 +250,7 @@ anything that looks like an id or token.
 
 | `code` | Raised by | Meaning |
 | --- | --- | --- |
-| `bad-code` | `link({ code })`, a `#burrow=` link | The token is malformed, fails its checksum or has an unknown version. Nothing was changed. |
+| `bad-code` | `link({ code })` | The token is malformed, fails its checksum or has an unknown version. Nothing was changed. |
 | `item-too-large` | `set()`, `setItem()`; `onStatus` | An item exceeds `maxItemBytes`, or the encrypted document or manifest would exceed the store's limit. |
 | `would-orphan` | `link()`, `unlink()` | This app has writes that never synced; pass `discardLocal: true` to drop them. |
 | `no-provider` | `protect()`, `link()`, any call after `unlink()` | No unlock method could do the job, the passkey prompt was dismissed, or the instance was unlinked. |
@@ -374,7 +368,7 @@ interface Envelope {          // every stored document
 interface Manifest { v: 1; items: Record<string, { ts: number; deleted?: true; h?: string }> }
 interface Item { v: 1; key: string; value: unknown; ts: number; deleted?: true }
 interface TokenInfo { source: TokenSource; remembered: boolean; since: number | null }
-type TokenSource = "generated" | "code" | "link" | "passkey" | "unknown" | (string & {});
+type TokenSource = "generated" | "code" | "passkey" | "unknown" | (string & {});
 type Protection = "none" | "passkey" | "code" | (string & {});
 type Status = "idle" | "syncing" | "offline" | "error";
 interface ChangedEvent { changes: StorageChanges; source: "local" | "remote" }

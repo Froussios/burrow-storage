@@ -46,11 +46,11 @@ the core names a concrete provider or backend except `index.ts`, which supplies 
 ## 2. Runtime shape
 
 `Core` is constructed against an **`Env`**: the host services it needs (`openCache`, `channel`,
-`locks`, `win`, `doc`, `location`, `history`, `defaultBackend`). `browserEnv()` builds the page's
-`Env`; tests build their own to simulate several devices and tabs in one process
-(`test/support/devices.ts`). `createBurrow(config, env)` keeps one `Promise<Core>` per `(env, app)`
-in a `WeakMap`, which is how `burrow()` returns the same instance for the same app (API-2). A
-rejected promise, and an instance closed by `unlink()`, are removed so the next call starts fresh.
+`locks`, `win`, `doc`, `defaultBackend`). `browserEnv()` builds the page's `Env`; tests build their
+own to simulate several devices and tabs in one process (`test/support/devices.ts`).
+`createBurrow(config, env)` keeps one `Promise<Core>` per `(env, app)` in a `WeakMap`, which is how
+`burrow()` returns the same instance for the same app (API-2). A rejected promise, and an instance
+closed by `unlink()`, are removed so the next call starts fresh.
 
 `Core` holds:
 
@@ -83,10 +83,7 @@ rejected promise, and an instance closed by `unlink()`, are removed so the next 
 6. `#start()`: listen for `pagehide`, `visibilitychange` and `focus`; open
    `BroadcastChannel("burrow:" + app)`; start the poll timer (`syncIntervalMs > 0`, fires only while
    visible); subscribe to the manifest if the backend can; kick off the first sync (not awaited);
-   schedule the `onUnprotected` check.
-7. `#readFragment()`: if `location.hash` carries `burrow=<token>`, remove it with
-   `history.replaceState` and run `link()` with `source: "link"`; a failure sets `status` to
-   `"error"`. `burrow()` resolves after this.
+   schedule the `onUnprotected` check. `burrow()` resolves after this.
 
 ## 4. Data model
 
@@ -171,7 +168,7 @@ when the page is hidden.
 `#sync()` is called by: `#start()` at start-up; the debounce timer after a local write; the poll
 timer (visible only); `visibilitychange` → visible; window `focus` while visible, unless a pass
 started in the last five seconds; the backend's manifest subscription when the revision changed;
-`syncNow()`; `link()` (including a `#burrow=` link read at start-up); `get(null, { fresh: true })`;
+`syncNow()`; `link()`; `get(null, { fresh: true })`;
 and `#hide()` with `keepalive = true` when dirty items exist. Calls while a pass is running set
 `#rerun` and share the running promise; the loop repeats until nothing requested another pass. A
 pass runs under the Web Lock `burrow:<ns>:<app>:sync`, so two tabs of the same app never push at
@@ -345,7 +342,7 @@ npm provenance on a `v*` tag.
 | Property (`test/property/merge.test.ts`) | `npm test` | Node, fast-check | merge convergence, tombstones, clock skew |
 | Conformance (`test/conformance/`) | `npm test` (memory), `npm run test:firestore` (emulator), `npm run test:live` (a real project, never in CI) | Node | `backendConformance()` for every backend |
 | Rules (`firebase/tests/rules.test.mjs`) | `npm run test:rules` | `node --test` under the emulator (Java 21) | the rules matrix |
-| Browser (`test/e2e/*.spec.ts`) | `npm run test:e2e` | Playwright on Chromium, Firefox, WebKit, served by `scripts/serve.mjs` against the emulator | persistence, tabs, unload flush, `#burrow=` links, the demo journeys; passkeys on Chromium via a CDP virtual authenticator with PRF |
+| Browser (`test/e2e/*.spec.ts`) | `npm run test:e2e` | Playwright on Chromium, Firefox, WebKit, served by `scripts/serve.mjs` against the emulator | persistence, tabs, unload flush, the demo journeys; passkeys on Chromium via a CDP virtual authenticator with PRF |
 | Demo smoke (`test/smoke/demo.spec.ts`) | `npm run test:smoke` | Playwright on Chromium, against the deployed demo (`BURROW_DEMO_URL`) and its live store, or against the assembled `site/` under the emulator | the page shows the expected commit, keeps its strict CSP, loads from its own origin and the store only, logs no console errors, shows a token; two fresh contexts sync both ways |
 
 Test titles cite the requirement ids they verify. `npm run docs:check` (`scripts/check-docs.mjs`)
@@ -396,9 +393,6 @@ Things the code does not do that a reader of the interfaces might expect:
   option (D-36).
 - `link({ code })` adopts a well-formed token that has no data as a new, empty identity (the demo
   shows the token in use so a typo is visible; D-32).
-- `#readFragment()` adopts any `#burrow=` link on every start-up without asking, which allows token
-  fixation by whoever crafts the link (SECURITY.md). There is no option to turn links off; a site
-  can only drop the fragment before calling `burrow()`.
 - Nothing calls `navigator.storage.persist()`, so a browser may evict the cache and the remembered
   token (Safari after seven days of use without interaction).
 - `set()`, `remove()` and `clear()` reject with the raw IndexedDB error when the local write fails,
