@@ -335,10 +335,10 @@ interface PasskeyBackup {
 ```
 
 `PasskeyBackupOptions.backend` accepts a `Backend` instance. To use declarative
-configuration, set the page's backend config and omit this option. Invalid page config
-or a failing adapter factory rejects `backend` with a fixed message and no configuration
-error cause, before either operation prompts. A corrected page config is retried on the
-next call.
+configuration, set the page's backend config and omit this option. An invalid instance,
+invalid page config or a failing adapter factory rejects `backend` with a fixed message
+and no configuration error cause, before either operation prompts. A corrected page
+config is retried on the next call.
 
 | Member | Behaviour |
 | --- | --- |

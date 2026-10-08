@@ -76,6 +76,9 @@ labels, and the storage-token encoding are public contract: changing them is a m
   syncs), so the last writer wins across devices; only the `onChanged` event is skipped.
 
 ### Fixed (found during development)
+- A manifest conflict could re-list an item overwritten by a newer deletion whose tombstone
+  had expired. Retries now re-read unlisted item results before publishing them, preserving
+  newer offline writes (#55, D-46).
 - Bare `npm run serve` could sync the local demo with the owner's live project. Local demo and
   assembled-site pages now default to the emulator, or use an explicit project from
   `BURROW_FIRESTORE`; their CSP follows the selected backend. Invalid explicit config stops the

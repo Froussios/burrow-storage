@@ -188,8 +188,12 @@ loop (manifest conflict retries):
   1. read the manifest (one get); decrypt; maxRemoteTs ← max(ts seen)
   2. pull: for each manifest entry that beats the cached entry (compare(ts, h)):
        tombstone → adopt directly; value → fetch its item document (getMany, parallel)
+     re-read already-written items absent from this manifest; refresh saved results
+     maxRemoteTs ← max(maxRemoteTs, fetched item timestamps)
      applyRemote(fetched)                     // LWW per key, settledSince guard
-     drop synced local keys absent from an existing manifest (pruned tombstones)
+     drop synced local keys absent from an existing manifest (pruned tombstones),
+       except live item results this pass will publish
+     finish without publishing only if no dirty items or unlisted live results remain
   3. push: for each dirty item not already written this pass → pushItem (parallel)
        a result may carry `adopted` when the remote copy won; applyRemote it
   4. manifest ← mergeDirectories(remote directory, pushed versions, now)   // prunes tombstones
@@ -202,8 +206,16 @@ meta ← { manifestRev, maxRemoteTs, lastSyncAt }; broadcast and emit the remote
 
 Items are written **before** the manifest, each on its own chain, so a reader never fetches an
 item older than the manifest entry pointing at it; a crash between the two leaves items unlisted,
-and the next pass re-lists them without rewriting them (they are kept in `ok` across manifest
-retries within a pass, and remain `dirty` across passes).
+and the next pass re-lists them (they are kept in `ok` across manifest retries within a pass,
+and remain `dirty` across passes). On a manifest retry, an already-written item absent from the
+latest directory is read again: another device may have overwritten it with a tombstone that
+has already expired from the manifest. The current item version competes with the local write
+before it is re-listed, so an old result cannot resurrect a deletion (D-46). Every unlisted
+result is revalidated, including one whose local entry became clean after adopting a deletion
+on an earlier retry. A live revalidated result remains cached while the pass publishes its
+manifest entry; absence from the old directory does not briefly remove that value locally.
+Publication still runs if revalidation cleared the last dirty key but a live result remains
+unlisted; otherwise the next pass, without the saved results, could prune it again.
 
 `#pushItem` writes at `cached rev + 1` with the cached rev as the precondition (D-10). With no
 cached rev, or on `conflict`, it reads the document; if the remote version wins the comparison it
@@ -275,7 +287,8 @@ token fields from `_device`, broadcasts `identity` and closes the instance. Late
 `unlinked`.
 
 **The passkey backup** (`src/passkey.ts`, `burrow-storage/passkey`) never touches the core. It
-resolves its backend once, on first use: an `options.backend` instance, else `defaultBackend()` from
+resolves its backend once, on first use: an `options.backend` instance checked against the
+shared structural contract, else `defaultBackend()` from
 `config.ts` (which shares the page's Firebase app with the store's backend), else it rejects
 `backend` before prompting. Page config and factory exceptions become a fixed `backend`
 error without a cause, so arbitrary configuration values cannot escape. A failed resolution

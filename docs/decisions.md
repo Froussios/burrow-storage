@@ -488,7 +488,8 @@ config remains the `idle` local-only case (D-16). The first opened instance keep
 correct config and reload to enable sync. Passkey backup operations still reject if their
 backend cannot be resolved, since a keyslot needs remote storage. They discard configuration
 exception values in the same way and retry page discovery on the next call. Their explicit
-`backend` option accepts an instance; declarative config comes from the page.
+`backend` option accepts an instance checked against the same structural contract as the
+core; declarative config comes from the page.
 
 The Firestore subpath has a 2 KiB min+gzip adapter budget excluding the lazy SDK; the SDK
 has a separate 150 KiB budget. Both are enforced by `npm run size`. This leaves headroom
@@ -496,6 +497,30 @@ above the measured 1.55/135.80 KiB baselines without hiding SDK growth in the co
 No other hosted adapter is certified. The [candidate assessment](backend-candidates.md)
 records feasibility, costs, setup and missing conformance evidence; #23 stays open pending
 backend choice/privacy approval and deployment tests. Setup work is tracked separately in #36.
+
+### D-46 Revalidate unlisted item results on manifest retries (SYNC-10, #55)
+
+A successful item write is not proof that the item is still current when a manifest conflict
+forces a retry. Another device can overwrite it with a newer deletion, then prune that
+tombstone from the manifest because its logical timestamp is already more than 30 days old.
+Reusing the first writer's saved result would re-list the deleted value, and its own cache
+would not fetch the newer item because the manifest version equals its cached version.
+
+When a result from an earlier attempt is absent from the newly read directory, the engine
+reads the item again before publishing it. A newer remote version is adopted; a newer local
+offline write still wins the same `(ts, h)` comparison. Tombstone timestamps, the 30-day
+manifest lifetime, and the envelope format stay the same. Results still listed in the
+directory can be reused without an extra read.
+This applies to every saved result, including one whose local entry became clean after
+adopting a published deletion on an earlier retry; that result must still be revalidated if a
+later manifest conflict exposes the deletion's expiry.
+A live result being published remains in the cache even while absent from the old directory,
+so adopting a newer unlisted value cannot briefly remove it locally during the same pass.
+The pass publishes unlisted live results even when revalidation cleared the last dirty key,
+so the next pass sees their manifest entries and keeps them without depending on the other
+writer finishing its manifest upload.
+Forced publication lists the observed winning `(ts, h)` from the other device; it creates no
+new local write or timestamp.
 
 ## Part B: planning decisions and their status
 

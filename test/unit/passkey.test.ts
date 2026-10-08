@@ -549,6 +549,107 @@ describe("the default backend", () => {
   });
 });
 
+describe("BE-1 explicit backend instances", () => {
+  beforeEach(() => {
+    install(auth);
+  });
+
+  it.each([
+    { get: undefined },
+    { put: undefined },
+    { id: undefined },
+    { capabilities: undefined },
+    { capabilities: { writeAuth: "true", subscribe: false } },
+    { capabilities: { writeAuth: true, subscribe: undefined } },
+  ])(
+    "rejects malformed instance %j before prompting or calling it",
+    async (invalid) => {
+      const get = vi.fn(async () => null);
+      const put = vi.fn(async () => {});
+      const supplied = {
+        id: "supplied",
+        capabilities: { writeAuth: true, subscribe: false },
+        get,
+        put,
+        ...invalid,
+      };
+      const backup = passkeyBackup({ backend: supplied as never });
+      const token = await newToken();
+      for (const operation of [
+        () => backup.save(token),
+        () => backup.restore(),
+      ]) {
+        const error = await operation().catch((e: unknown) => e);
+        expect(error).toMatchObject({
+          name: "BurrowError",
+          code: "backend",
+          message: "backend configuration failed",
+        });
+        expect(error).not.toHaveProperty("cause");
+      }
+      expect(auth.create).not.toHaveBeenCalled();
+      expect(auth.get).not.toHaveBeenCalled();
+      expect(get).not.toHaveBeenCalled();
+      expect(put).not.toHaveBeenCalled();
+    },
+  );
+
+  it("drops errors from instance validation before prompting", async () => {
+    const supplied = {
+      get: vi.fn(),
+      put: vi.fn(),
+      get capabilities(): never {
+        throw new Error("private-config-value");
+      },
+    };
+    const backup = passkeyBackup({ backend: supplied as never });
+    const token = await newToken();
+    for (const operation of [
+      () => backup.save(token),
+      () => backup.restore(),
+    ]) {
+      const error = await operation().catch((e: unknown) => e);
+      expect(error).toMatchObject({
+        code: "backend",
+        message: "backend configuration failed",
+      });
+      expect(error).not.toHaveProperty("cause");
+    }
+    expect(auth.create).not.toHaveBeenCalled();
+    expect(auth.get).not.toHaveBeenCalled();
+    expect(supplied.get).not.toHaveBeenCalled();
+    expect(supplied.put).not.toHaveBeenCalled();
+  });
+
+  it("rejects explicit config or null without invoking a factory or falling back to the page", async () => {
+    vi.resetModules();
+    try {
+      const { registerBackend } = await import("../../src/config.js");
+      const { passkeyBackup: fresh } = await import("../../src/passkey.js");
+      const factory = vi.fn(() => backend);
+      registerBackend("explicit-passkey-test", factory);
+      vi.stubGlobal("BURROW", {
+        backend: { type: "explicit-passkey-test" },
+      });
+      for (const invalid of [{ type: "explicit-passkey-test" }, null]) {
+        const backup = fresh({ backend: invalid as never });
+        await expect(backup.save(await newToken())).rejects.toMatchObject({
+          code: "backend",
+          message: "backend configuration failed",
+        });
+        await expect(backup.restore()).rejects.toMatchObject({
+          code: "backend",
+        });
+      }
+      expect(factory).not.toHaveBeenCalled();
+      expect(auth.create).not.toHaveBeenCalled();
+      expect(auth.get).not.toHaveBeenCalled();
+    } finally {
+      vi.resetModules();
+    }
+  });
+});
+
 describe("KP-6 restore outcomes", () => {
   beforeEach(() => {
     install(auth);

@@ -37,6 +37,11 @@ export async function configuredBackend(
   const backend = instance
     ? (value as Backend)
     : await factory!(value as BackendConfig);
+  return validateBackend(backend);
+}
+
+/** @internal Validate an instance without resolving config. */
+export function validateBackend(backend: Backend): Backend {
   if (
     !backend ||
     typeof backend.get !== "function" ||
@@ -46,7 +51,7 @@ export async function configuredBackend(
     typeof backend.capabilities.subscribe !== "boolean" ||
     typeof backend.id !== "string"
   )
-    throw new TypeError("backend factory returned an invalid backend");
+    throw new TypeError("invalid backend instance");
   return backend;
 }
 
