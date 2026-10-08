@@ -48,7 +48,15 @@ jobs:
           prompt: "/code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}"
           # Opus runs the review session. The command still picks its own
           # subagent models: Haiku to screen, Opus for bugs.
-          claude_args: '--model opus --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr view:*),Bash(gh pr diff:*)"'
+          #
+          # Read-only access only. The reviewers may also read Claude's own
+          # tool-results folder (large diffs land there) and use tr and cut.
+          # Nothing that can write or run other programs: the action's app
+          # token can write to the repo.
+          claude_args: >-
+            --model opus
+            --add-dir /home/runner/.claude/projects
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(tr:*),Bash(cut:*)"
           # Temporary, to diagnose #37: print the session transcript to the
           # Actions log (public for this repo). Remove once #37 is resolved.
           show_full_output: true
