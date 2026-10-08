@@ -989,12 +989,26 @@ export class Core implements BurrowArea {
           });
         else fetch.push(k);
       }
+      // A concurrent delete may have overwritten an earlier item result and
+      // expired from the manifest. Revalidate every unlisted result, even if
+      // a prior retry already adopted a newer version locally (SYNC-10, D-46).
+      for (const k of ok.keys()) if (!(k in dir)) fetch.push(k);
       const ids = await Promise.all(fetch.map((k) => docId(keys, k)));
       const envs = await this.#getMany(ids);
       for (let i = 0; i < fetch.length; i++) {
+        const k = fetch[i]!;
         const env = envs[i];
-        if (env)
-          remote.set(fetch[i]!, await this.#openItem(fetch[i]!, ids[i]!, env));
+        const item = env ? await this.#openItem(k, ids[i]!, env) : undefined;
+        if (item) {
+          remote.set(k, item);
+          this.#meta.maxRemoteTs = Math.max(this.#meta.maxRemoteTs!, item.ts);
+        }
+        const written = ok.get(k);
+        if (written && !(k in dir)) {
+          if (item && compare(versionOf(item), written.ver) >= 0)
+            ok.set(k, { key: k, ver: versionOf(item), rev: env!.rev });
+          else ok.delete(k); // The dirty local entry must be pushed again.
+        }
       }
       await this.#applyRemote(remote, changes);
       let pruned = 0;

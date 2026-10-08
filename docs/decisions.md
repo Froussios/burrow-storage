@@ -466,6 +466,23 @@ targets and failures without contacting a cloud project; CI browser tests use th
 This affects local HTTP responses only. The source demo config and assembled deployment files
 still use the demo project, as does the post-deploy page smoke test in `pages.yml` (D-40).
 
+### D-46 Revalidate unlisted item results on manifest retries (SYNC-10, #55)
+
+A successful item write is not proof that the item is still current when a manifest conflict
+forces a retry. Another device can overwrite it with a newer deletion, then prune that
+tombstone from the manifest because its logical timestamp is already more than 30 days old.
+Reusing the first writer's saved result would re-list the deleted value, and its own cache
+would not fetch the newer item because the manifest version equals its cached version.
+
+When a result from an earlier attempt is absent from the newly read directory, the engine
+reads the item again before publishing it. A newer remote version is adopted; a newer local
+offline write still wins the same `(ts, h)` comparison. Tombstone timestamps, the 30-day
+manifest lifetime, and the envelope format stay the same. Results still listed in the
+directory can be reused without an extra read.
+This applies to every saved result, including one whose local entry became clean after
+adopting a published deletion on an earlier retry; that result must still be revalidated if a
+later manifest conflict exposes the deletion's expiry.
+
 ## Part B: planning decisions and their status
 
 These were proposed in the pre-implementation design review
