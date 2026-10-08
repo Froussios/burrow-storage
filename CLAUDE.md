@@ -43,6 +43,8 @@ them as history unless the owner says otherwise.
   demo page in `pages.yml`; other tests and scripts use the emulator or a caller-named project
   (D-43, #40). Live setup checks require the `BURROW_FIRESTORE` environment variable and never
   run in CI.
+  `npm run serve` always rewrites the local demo and assembled `site/` to use
+  `FIRESTORE_EMULATOR_HOST` or `127.0.0.1:8080`, including their CSP (D-44).
 - **Public contract**, major version to change: the `Envelope` format, HKDF salts `burrow/v1`,
   `burrow/slot/v1`, PRF salt `burrow/prf/v1`, the info labels, the AAD and token formats, the
   storage-token encoding (`SECURITY.md`).
@@ -83,7 +85,7 @@ npm run test:rules     # firebase emulator: node --test firebase/tests/rules.tes
 npm run test:firestore # conformance suite against the emulator
 npm run test:e2e       # playwright under the emulator (npm run build first)
 npm run test:live      # one-off setup check of your own project; set the BURROW_FIRESTORE environment variable (docs/firestore-setup.md); never in CI
-npm run serve          # static server for demo/ and test pages at http://localhost:4173 (after a build)
+npm run serve          # local demo uses the emulator at 127.0.0.1:8080 (after a build)
 npm run demo:build     # site/: the deployable demo, footer stamped with the commit (after a build)
 npm run test:smoke     # demo smoke test: BURROW_DEMO_URL=<deployed demo>, or site/ under the emulator:
                        #   node scripts/emulator.mjs "npm run test:smoke"
@@ -91,7 +93,10 @@ npm run sri            # SRI hashes for the bundles → dist/sri.json
 node scripts/gen-vectors.mjs   # regenerate test/vectors.json (output must not change within v1)
 ```
 
-`BURROW_EMULATOR_PORT` overrides port 8080. In Claude Code web sessions Chromium is preinstalled
+`node scripts/emulator.mjs "npm run serve"` starts the emulator and local demo together.
+`FIRESTORE_EMULATOR_HOST` selects an already-running emulator for bare `npm run serve`;
+`BURROW_EMULATOR_PORT` overrides port 8080 when using `scripts/emulator.mjs`.
+In Claude Code web sessions Chromium is preinstalled
 under `/opt/pw-browsers`; do not run `playwright install`. If its build is not the one Playwright
 expects, run through an untracked local config that spreads the real one and sets
 `use.launchOptions.executablePath: "/opt/pw-browsers/chromium"`. If Java is missing, say so and

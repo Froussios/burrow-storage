@@ -440,6 +440,21 @@ backend conformance and two-device sync. It leaves undeletable throwaway documen
 check Spark vs Blaze or that Auth, Storage and Functions are off. The setup guide and printed
 steps describe these limits. The earlier live runs in D-1 and D-23 remain historical records.
 
+### D-44 Local demo serving always uses the emulator (#40)
+
+D-43 isolates CI and the live setup check, but bare `npm run serve` still served the demo's
+live config whenever `FIRESTORE_EMULATOR_HOST` was absent or empty. Local development could
+therefore write undeletable documents to the owner's project.
+
+`scripts/serve.mjs` now always rewrites pages in `demo/` and the assembled `site/` to use
+`FIRESTORE_EMULATOR_HOST` or `127.0.0.1:8080` by default. It replaces the live Firestore endpoint
+in their CSP with the emulator's and refuses a page whose config cannot be rewritten, even on
+a bare run. An unavailable emulator means sync is offline; there is no fallback to a live
+project. `node scripts/emulator.mjs "npm run serve"` starts both for development.
+
+This affects local HTTP responses only. The source demo config and assembled deployment files
+still use the demo project, as does the post-deploy page smoke test in `pages.yml` (D-40).
+
 ## Part B: planning decisions and their status
 
 These were proposed in the pre-implementation design review

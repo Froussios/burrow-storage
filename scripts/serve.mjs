@@ -2,9 +2,8 @@
 // Static file server for the demo and the browser tests. Serves the repo root;
 // files missing from demo/ fall back to dist/ (burrow.min.js,
 // burrow-firestore.js), as a deployed demo has them; site/ is the assembled
-// demo (scripts/build-demo.mjs). With FIRESTORE_EMULATOR_HOST set, the
-// Firestore config and CSP of the pages in demo/ and site/ point at the
-// emulator.
+// demo (scripts/build-demo.mjs). Local pages in demo/ and site/ always use
+// the emulator: FIRESTORE_EMULATOR_HOST, or 127.0.0.1:8080 by default (#40).
 import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize, resolve, sep } from "node:path";
@@ -12,7 +11,7 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const port = Number(process.env.PORT ?? 4173);
-const emu = process.env.FIRESTORE_EMULATOR_HOST;
+const emu = process.env.FIRESTORE_EMULATOR_HOST || "127.0.0.1:8080";
 const TYPES = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript",
@@ -54,7 +53,11 @@ function forEmulator(html) {
     throw new Error("burrow-firestore config not found");
   return html
     .replace(meta, `$1${cfg}'`)
-    .replace(/connect-src ([^;"]*)/, `connect-src $1 http://${emu}`);
+    .replace(
+      /connect-src ([^;"]*)/,
+      (_, sources) =>
+        `connect-src ${sources.replace("https://firestore.googleapis.com", "").trim()} http://${emu}`,
+    );
 }
 
 createServer(async (req, res) => {
@@ -76,7 +79,6 @@ createServer(async (req, res) => {
   }
   let body = await readFile(path);
   if (
-    emu &&
     [join(root, "demo"), join(root, "site")].some((d) =>
       path.startsWith(d + sep),
     ) &&
@@ -101,7 +103,5 @@ createServer(async (req, res) => {
     })
     .end(body);
 }).listen(port, "127.0.0.1", () =>
-  console.log(
-    `serving ${root} on http://localhost:${port}${emu ? ` (emulator ${emu})` : ""}`,
-  ),
+  console.log(`serving ${root} on http://localhost:${port} (emulator ${emu})`),
 );

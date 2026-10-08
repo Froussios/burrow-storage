@@ -167,8 +167,13 @@ bounded by the size cap; the manifest forgets them after 30 days.
 npm run test:rules       # rules matrix
 npm run test:firestore   # backend conformance suite
 npm run test:e2e         # browser tests; the demo is served pointed at the emulator
+node scripts/emulator.mjs "npm run serve" # start the emulator and local demo (after a build)
 ```
 
 `scripts/emulator.mjs` runs any command under `firebase emulators:exec` and exports
-`FIRESTORE_EMULATOR_HOST` to it; `scripts/serve.mjs` then injects `emulator` into the demo's
-config and widens its CSP. Needs Java 21. Set `BURROW_EMULATOR_PORT` if 8080 is taken.
+`FIRESTORE_EMULATOR_HOST` to it. `scripts/serve.mjs` always replaces the local demo and assembled
+`site/` config with the emulator's, and replaces the live Firestore endpoint in their CSP.
+Bare `npm run serve` expects an already-running emulator at `127.0.0.1:8080`, or at
+`FIRESTORE_EMULATOR_HOST` if set. Local serving never uses the demo's live project, even if
+its source config names another project. Starting the emulator needs Java 21; set
+`BURROW_EMULATOR_PORT` if 8080 is taken.
