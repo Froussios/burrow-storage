@@ -341,7 +341,7 @@ npm provenance on a `v*` tag.
 | --- | --- | --- | --- |
 | Unit (`test/unit/*.test.ts`) | `npm test` | Node, `fake-indexeddb`, Node's `--localstorage-file` as the reference `Storage` | area API (`area.test.ts`), facade (`facade.test.ts`), codec and vectors (`codec.test.ts`), cache (`cache.test.ts`), the sample-app drop-in test |
 | Property (`test/property/merge.test.ts`) | `npm test` | Node, fast-check | merge convergence, tombstones, clock skew |
-| Conformance (`test/conformance/`) | `npm test` (memory), `npm run test:firestore` (emulator), `npm run test:live` (a real project, never in CI) | Node | `backendConformance()` for every backend |
+| Conformance (`test/conformance/`) | `npm test` (memory), `npm run test:firestore` (emulator), `npm run test:live` (one-off setup check of your own project, requires `BURROW_FIRESTORE`, never in CI) | Node | `backendConformance()` for every backend; live checks also exercise the write-chain rules, denied listing and two-device sync |
 | Rules (`firebase/tests/rules.test.mjs`) | `npm run test:rules` | `node --test` under the emulator (Java 21) | the rules matrix |
 | Browser (`test/e2e/*.spec.ts`) | `npm run test:e2e` | Playwright on Chromium, Firefox, WebKit, served by `scripts/serve.mjs` against the emulator | persistence, tabs, unload flush, the demo journeys; passkeys on Chromium via a CDP virtual authenticator with PRF |
 | Demo smoke (`test/smoke/demo.spec.ts`) | `npm run test:smoke` | Playwright on Chromium, against the deployed demo (`BURROW_DEMO_URL`) and its live store, or against the assembled `site/` under the emulator | the page shows the expected commit, keeps its strict CSP, loads from its own origin and the store only, logs no console errors, shows a token; two fresh contexts sync both ways |
@@ -351,6 +351,17 @@ typechecks every code block in the README and the guides against the built decla
 examples compile, member-signature listings must match `BurrowArea`, and interface listings must
 match the exported type of the same name. Multi-device tests build several `Env`s over
 one `MemoryBackend` store (`test/support/devices.ts`).
+
+The live suite requires the caller's explicit `BURROW_FIRESTORE` config and exits non-zero with
+setup guidance before contacting Firebase if it is absent. It checks unauthenticated create/read
+by id, refusal of a forged write token and of listing (including `in` queries), backend
+conformance and two-device sync. It writes a few KB that the client rules forbid deleting, and
+does not check Spark vs Blaze or that Auth, Storage and Functions are off. See
+[firestore-setup.md](firestore-setup.md), step 7.
+
+Only the demo may be coupled to the owner's Firebase project (D-43, #40). CI may reach it only
+through the deployed demo page in `pages.yml`; other tests and scripts use the emulator or a
+project the caller explicitly names. They do not inspect the owner's project's state directly.
 
 CI (`.github/workflows/ci.yml`): typecheck, unit/property/conformance, build, size and
 `docs:check` on Node 24 and 26; rules and emulator conformance; browser tests on three engines,

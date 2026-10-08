@@ -1,6 +1,6 @@
 import { defineConfig } from "vitest/config";
 
-// Gate 2: the live shared project. Never part of `npm test`.
+// Gate 2: your own project, explicitly named in BURROW_FIRESTORE. Never in CI.
 export default defineConfig({
   test: {
     include: ["test/conformance/live.test.ts"],

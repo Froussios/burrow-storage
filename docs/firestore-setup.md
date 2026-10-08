@@ -51,6 +51,27 @@ run the same commands from a clone as `node scripts/burrow-setup.mjs firestore`.
    which can send any referrer it likes. A page opened from `file://` has no web origin to match a
    referrer restriction, so during development serve it from `http://localhost`.
 6. Leave Authentication, Storage, Functions and Blaze off. Burrow needs none of them.
+7. **Optionally check your project** from a repository clone with dependencies installed
+   (`npm ci`). Pass the config from step 3 explicitly:
+
+   ```sh
+   BURROW_FIRESTORE='{"apiKey":"…","projectId":"your-project-id","appId":"…"}' npm run test:live
+   ```
+
+   This is a one-off setup check of your own project, never run in CI. Without
+   `BURROW_FIRESTORE`, it exits non-zero before contacting Firebase and points back to this guide.
+   Each run writes a few KB of throwaway documents that cannot be deleted through the client
+   rules (FS-6). It checks:
+
+   - a fresh unauthenticated create succeeds, and reading by id works;
+   - a forged write token is refused, showing that the Burrow write-chain rules are deployed;
+   - listing is refused, including an `in` query on ids;
+   - the backend conformance suite and a two-device sync pass.
+
+   It does **not** check Spark vs Blaze, or that Authentication, Storage and Functions are off;
+   verify those in the console. A browser-referrer restriction on the API key can also block
+   this Node-based check, which sends no `Referer`; a failure alone does not prove the rules are
+   wrong. Keep the key restricted as described in step 5.
 
 ## Put the config on the page
 

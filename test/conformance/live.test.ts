@@ -1,8 +1,10 @@
-// Gate 2 (M5): the conformance suite and the brief's three checks against a
-// LIVE store: the one in BURROW_FIRESTORE (`{"apiKey","projectId","appId"}`),
-// else the demo's. Writes go to ids derived from throwaway secrets; documents
-// cannot be deleted (FS-6). Run deliberately: `npm run test:live`.
-import { readFileSync } from "node:fs";
+// Gate 2 (M5): a one-off check of your own LIVE project, explicitly named in
+// BURROW_FIRESTORE (`{"apiKey","projectId","appId"}`). Checks unauthenticated
+// create/read by id, refusal of a forged write token and of listing, backend
+// conformance, and two-device sync. Does not check Spark vs Blaze, or whether
+// Auth, Storage and Functions are off. Writes a few KB at ids derived from
+// throwaway secrets; documents cannot be deleted (FS-6). Never runs in CI.
+// See docs/firestore-setup.md, step 7, before running `npm run test:live`.
 import { initializeApp, deleteApp } from "firebase/app";
 import {
   collection,
@@ -23,19 +25,12 @@ import { seal } from "../../src/codec/envelope.js";
 import { World } from "../support/devices.js";
 import { backendConformance } from "./suite.js";
 
-const demoConfig = () => {
-  const page = readFileSync(
-    new URL("../../demo/index.html", import.meta.url),
-    "utf8",
+const target = process.env.BURROW_FIRESTORE;
+if (!target)
+  throw new Error(
+    "Set BURROW_FIRESTORE to your project's config JSON ({ apiKey, projectId, appId }) before running npm run test:live. See docs/firestore-setup.md, step 7.",
   );
-  const m = /name="burrow-firestore"\s+content='([^']+)'/.exec(page)?.[1];
-  if (!m)
-    throw new Error(
-      "demo/index.html has no burrow-firestore meta; set BURROW_FIRESTORE",
-    );
-  return m;
-};
-const config = JSON.parse(process.env.BURROW_FIRESTORE ?? demoConfig()) as {
+const config = JSON.parse(target) as {
   apiKey: string;
   projectId: string;
   appId: string;
