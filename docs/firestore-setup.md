@@ -3,7 +3,7 @@
 > **Best effort, AI-generated.** An AI assistant wrote this guide from the repository's code and
 > scripts. The rules and the adapter are covered by tests against the Firestore emulator. The setup
 > steps, console paths, costs and quotas have not been verified end to end against a fresh Firebase
-> project, and `npx burrow-setup firestore --run` has never been run end to end. Check each step
+> project. The agent guide has never been run end to end or rerun against the same project. Check each step
 > against the [Firebase documentation](https://firebase.google.com/docs/firestore) before you rely
 > on it, and please report what you find.
 
@@ -19,16 +19,16 @@ SHA-256, which is all the write chain needs.
 npx burrow-setup firestore
 ```
 
-prints the steps. To have them performed with `gcloud` and the Firebase CLI (two browser sign-ins,
-bash, and a project id nobody else has taken):
+prints the human console steps and points at the shipped [agent instructions](../firebase/SETUP-AGENT.md).
+For step-by-step automation, tell your coding agent:
 
-```sh
-PROJECT=my-burrow-store LOCATION=us-central1 REFERRERS="https://you.github.io/*,http://localhost:*" \
-  npx burrow-setup firestore --run
-```
+> Follow `node_modules/burrow-storage/firebase/SETUP-AGENT.md` to set up a Burrow store.
 
-`REFERRERS` defaults to localhost only and `APP_NAME` to `burrow`. Before the first npm release,
-run the same commands from a clone as `node scripts/burrow-setup.mjs firestore`. By hand:
+The agent confirms your project id, permanent location, referrers and app name, checks resources
+before creating them and records safe resumable state. Sign-in belongs to you; optional gcloud
+commands have console fallbacks. It deploys the shipped rules unmodified and never enables
+billing, Auth, Storage, Functions or Hosting. Before the first npm release, run the printer
+from a clone as `node scripts/burrow-setup.mjs firestore`. By hand:
 
 1. **Create a Firebase project without a billing account**, Google Analytics off. Do not upgrade
    to Blaze.
@@ -44,35 +44,42 @@ run the same commands from a clone as `node scripts/burrow-setup.mjs firestore`.
    ```
 
 5. **Restrict the browser API key** in the Google Cloud console (APIs & Services → Credentials →
-   "Browser key (auto created by Firebase)"): API restrictions to *Cloud Firestore API* only;
+   the key matching the `apiKey` from your web app config, rather than a display name): API restrictions to *Cloud Firestore API* only;
    application restrictions to your domains (`https://you.github.io/*`, `http://localhost:*`).
    The key is an identifier, not a secret, and will sit in page source. The referrer restriction
    stops other websites from using it in their pages; it does not stop a script outside a browser,
    which can send any referrer it likes. A page opened from `file://` has no web origin to match a
    referrer restriction, so during development serve it from `http://localhost`.
-6. Leave Authentication, Storage, Functions and Blaze off. Burrow needs none of them.
-7. **Optionally check your project** from a repository clone with dependencies installed
-   (`npm ci`). Set the `BURROW_FIRESTORE` environment variable to the config JSON from step 3:
+6. Leave Authentication, Storage, Functions, Hosting and Blaze off. Burrow needs none of them.
+7. **Optionally check your own live rules** (Node 20 or newer, optional Firebase peer installed):
+
+   ```sh
+   npx burrow-setup check '{"apiKey":"…","projectId":"your-project-id","appId":"…"}'
+   ```
+
+   This packaged check uses the shipped backend and codec. It writes one throwaway encrypted
+   document that cannot be deleted through the client rules (FS-6), reads and decrypts it by
+   id, then verifies that a forged token, collection listing and an `in` query are rejected.
+   All four fixed `PASS` lines and a zero exit status are required; a network or quota error
+   never counts as a rules pass. It prints no document ids, tokens or envelopes, refuses CI,
+   and stops after 60 seconds. The config must name your project; it has no default. The
+   [agent guide, step 9](../firebase/SETUP-AGENT.md#9-optional-live-rules-check-always-repeat-on-a-verification-rerun)
+   explains consent, failure handling and rerun evidence.
+
+   Maintainers can also run the broader conformance and two-device sync suite from a clone
+   with development dependencies installed:
 
    ```sh
    BURROW_FIRESTORE='{"apiKey":"…","projectId":"your-project-id","appId":"…"}' npm run test:live
    ```
 
-   This is a one-off setup check of your own project, never run in CI. If the environment
-   variable is missing, empty or not valid JSON, it exits non-zero before contacting Firebase
-   and points back to this guide.
-   Each run writes a few KB of throwaway documents that cannot be deleted through the client
-   rules (FS-6). It checks:
+   This suite is never run in CI. Missing, empty or invalid JSON config exits non-zero before
+   contacting Firebase. Each run leaves a few KB of undeletable throwaway documents.
 
-   - a fresh unauthenticated create succeeds, and reading by id works;
-   - a forged write token is refused, showing that the Burrow write-chain rules are deployed;
-   - listing is refused, including an `in` query on ids;
-   - the backend conformance suite and a two-device sync pass.
-
-   It does **not** check Spark vs Blaze, or that Authentication, Storage and Functions are off;
-   verify those in the console. A browser-referrer restriction on the API key can also block
-   this Node-based check, which sends no `Referer`; a failure alone does not prove the rules are
-   wrong. Keep the key restricted as described in step 5.
+   Neither check verifies Spark vs Blaze, or that Auth, Storage, Functions and Hosting are off;
+   check these in the console. Browser-referrer restrictions can block Node checks, which send
+   no `Referer`. Keep the key restricted and record a blocked check; do not remove restrictions
+   to get a pass. Passing emulator tests does not establish a successful fresh-project setup.
 
 ## Put the config on the page
 

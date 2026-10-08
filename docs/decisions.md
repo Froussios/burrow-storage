@@ -466,6 +466,32 @@ targets and failures without contacting a cloud project; CI browser tests use th
 This affects local HTTP responses only. The source demo config and assembled deployment files
 still use the demo project, as does the post-deploy page smoke test in `pages.yml` (D-40).
 
+### D-49 Replace one-shot Firestore provisioning with resumable agent instructions (#36)
+
+The Bash setup script had no end-to-end evidence, guessed CLI output shapes and API key display
+names, swallowed errors as already-existing resources and silently installed a global CLI.
+Delete it and its `--run` entry point. Ship `firebase/SETUP-AGENT.md` as an agent-neutral guide
+with confirmed inputs, per-step checks and verification, safe local progress, known failures
+and stop conditions. A rerun rechecks resources, skips completed mutations and repeats live
+verification. CLI sign-in stays with the human; optional gcloud actions have console fallbacks.
+No billing, unrelated Firebase products, rule edits or deletion are allowed. FS-10 remains met
+by `burrow-setup firestore`, which prints human console steps and the agent-guide path.
+
+The recommended packaged `burrow-setup check '<config JSON>'` reuses the production backend,
+HKDF derivation and envelope codec, rather than asking an agent to invent crypto. It creates and
+reads one fresh encrypted document, decrypts it, and expects permission denial for a forged
+update, listing and an id `in` query. It refuses CI and accepts only caller-supplied public
+config. Node 20+ provides native WebCrypto; the Firebase SDK remains the optional peer. Only
+fixed check names and safe codes are printed, with SDK diagnostics suppressed. Each run leaves
+one undeletable throwaway document. The broader `npm run test:live` remains for maintainers.
+Neither check verifies billing/products, and browser-referrer restrictions may block Node;
+never relax restrictions to make it pass.
+
+The guide's CLI signatures were checked against Firebase CLI 15.32.1 source. Fresh-project
+provisioning, a small agent's end-to-end execution and the second run remain blocked on human
+sign-in/project inputs and live verification. Keep the end-to-end caveat until evidence exists;
+this implementation alone does not close #36 or establish its complete acceptance.
+
 ## Part B: planning decisions and their status
 
 These were proposed in the pre-implementation design review

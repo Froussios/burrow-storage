@@ -34,7 +34,8 @@ labels, and the storage-token encoding are public contract: changing them is a m
   `<meta name="burrow-firestore">` / `window.BURROW.firestore` page config; `passkeyBackup()`
   options (`backend`, `rpId`, `rpName`, `userName`, `timeoutMs`).
 - Firestore security rules with the SHA-256 write chain, emulator tests, `npx burrow-setup
-  firestore` guide and `--run` script.
+  firestore` human guide, shipped agent-neutral `firebase/SETUP-AGENT.md` instructions, and a
+  packaged `burrow-setup check` for live Gate 2 rules verification.
 - Static demo (theme, draft, storage token panel, passkey backup, export, debug panel) under a
   strict CSP.
 - The demo is always available at <https://froussios.github.io/burrow-storage/>, redeployed to
@@ -49,6 +50,9 @@ labels, and the storage-token encoding are public contract: changing them is a m
   decision log.
 
 ### Changed
+- Replace the unverified one-shot Firestore setup shell script and `--run` flag with checked,
+  resumable agent instructions; human console steps still satisfy FS-10 (#36, D-49).
+  Fresh-project setup and a second live verification run remain unverified.
 - `npm run test:live` requires the `BURROW_FIRESTORE` environment variable to name the caller's
   own project; it no longer falls back to the demo's store. The setup guide and printed steps
   explain this optional check, its limits and its undeletable throwaway documents (#43, D-43).

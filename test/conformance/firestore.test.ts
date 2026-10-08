@@ -3,6 +3,7 @@
 // `npm run test:firestore`).
 import { afterAll, describe, expect, it } from "vitest";
 import { FirestoreBackend } from "../../src/backends/firestore.js";
+import { checkFirestore } from "../../src/setup/check.js";
 import { World } from "../support/devices.js";
 import { backendConformance } from "./suite.js";
 
@@ -63,6 +64,26 @@ describe("Burrow over FirestoreBackend (emulator)", () => {
         .toBe(1);
     } finally {
       world.close();
+    }
+  });
+});
+
+// A real emulator rules check validates the packaged algorithm, including
+// Firestore permission-denied for a forged update and both query forms.
+describe("FS-10 setup check against shipped emulator rules", () => {
+  it("passes on a fresh run and a second run without saving secrets", async () => {
+    // The checker owns its SDK connection and closes it. Release the suite's
+    // earlier shared connections before opening that standalone connection.
+    await Promise.all(opened.splice(0).map((backend) => backend.close()));
+    for (let run = 0; run < 2; run++) {
+      const messages: string[] = [];
+      await checkFirestore(config, (line) => messages.push(line));
+      expect(messages).toEqual([
+        "PASS create-read",
+        "PASS forged-update",
+        "PASS list",
+        "PASS in-query",
+      ]);
     }
   });
 });

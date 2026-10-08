@@ -42,7 +42,7 @@ default.
 | `src/backends/memory.ts`, `backends/firestore.ts`, `backends/firestore-sdk.ts` | The backends; `firestore-sdk.ts` is the slice of the Firebase SDK the adapter uses |
 | `src/bytes.ts` | UTF-8, base64url, hex, SHA-256, random bytes, `zeroise` |
 | `firebase/` | `firestore.rules`, `firebase.json`, the rules tests (`tests/`) |
-| `scripts/` | `burrow-setup.mjs` (the `burrow-setup` bin), `setup.sh`, `emulator.mjs`, `serve.mjs`, `size.mjs`, `sri.mjs`, `gen-vectors.mjs` |
+| `scripts/` | `burrow-setup.mjs` (the `burrow-setup` bin), `emulator.mjs`, `serve.mjs`, `size.mjs`, `sri.mjs`, `gen-vectors.mjs` |
 | `demo/` | The static demo page (strict CSP) |
 | `test/` | `unit/`, `property/`, `conformance/`, `e2e/`, `sample-app/`, `support/`, `vectors.json` |
 
@@ -329,8 +329,12 @@ and tested in `firebase/tests/rules.test.mjs` under the emulator.
 | `dist/burrow-firestore.js` | `src/backends/firestore-sdk.ts` | IIFE, global `BurrowFirestoreSdk`, Firebase bundled; loaded on demand by `burrow.min.js` from its own directory |
 
 `package.json` exports `.`, `./passkey` and `./firestore`; `firebase >= 10` is an optional peer dependency;
-`files` ships `dist/`, the setup scripts, and `firebase/firestore.rules` + `firebase.json` so
-`npx burrow-setup firestore` can deploy them. `scripts/size.mjs` builds with esbuild and checks
+`files` ships `dist/`, the setup bin, `firebase/SETUP-AGENT.md`, `firebase/firestore.rules` and
+`firebase.json`. `npx burrow-setup firestore` prints the human deployment steps; shipped
+`firebase/SETUP-AGENT.md` guides an agent through provisioning and verification.
+`burrow-setup check` runs the packaged `src/setup/check.ts` Gate 2 rules check using the same
+backend and codec, with fresh throwaway keys and fixed, redacted output. It never provisions
+resources or runs in CI. `scripts/size.mjs` builds with esbuild and checks
 the core (≤ 12 KB min+gzip) and the passkey backup on top of it (≤ 2 KB); `scripts/sri.mjs` writes
 `dist/sri.json` and prints the script tags for release notes. The release workflow publishes with
 npm provenance on a `v*` tag.

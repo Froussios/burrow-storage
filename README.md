@@ -165,13 +165,15 @@ npx burrow-setup firestore
 ```
 
 It prints the console steps: create the project, create Firestore, deploy the security rules that
-ship with Burrow, and restrict the API key. To have it run those steps with `gcloud` and the
-Firebase CLI instead, list the sites that will use the store in `REFERRERS`:
+ship with Burrow, and restrict the API key. To have a coding agent perform the steps, tell it:
 
-```sh
-PROJECT=my-burrow-store LOCATION=us-central1 REFERRERS="https://you.github.io/*,http://localhost:*" \
-  npx burrow-setup firestore --run
-```
+> Follow `node_modules/burrow-storage/firebase/SETUP-AGENT.md` to set up a Burrow store.
+
+The [agent guide](firebase/SETUP-AGENT.md) asks for your project id, permanent location and
+website referrers, verifies each step before changing resources, and records resumable progress.
+Sign-in and choices that need human confirmation stay with you. It never enables billing or
+other Firebase products. The provisioning instructions still await a fresh-project end-to-end
+run and a second verification run.
 
 Either way you end up with three values: `apiKey`, `projectId` and `appId`. **They are public by
 design.** The `apiKey` identifies your project and sits in your page source. Restrict it to the

@@ -61,8 +61,9 @@ them as history unless the owner says otherwise.
 ## Toolchain
 
 TypeScript 5.9 `strict`, ES2022, browser `lib`. **Node 22 or newer** for development (`npm test`
-uses Node's `--localstorage-file`); `engines` says `>=18` because that is enough to run the
-`burrow-setup` CLI. npm. Builds with tsup (`tsup.config.ts`). Tests with vitest (unit, property
+uses Node's `--localstorage-file`); `engines` says `>=18` because that is enough to print the
+`burrow-setup` human guide; its live `check` and the agent setup CLI need Node 20 or newer. npm.
+Builds with tsup (`tsup.config.ts`). Tests with vitest (unit, property
 via fast-check, backend conformance), Playwright (`test/e2e`, three engines, a CDP virtual
 authenticator for passkeys), `node --test` for the rules under the Firestore emulator
 (firebase-tools, Java 21). No linter is configured. GitHub Actions: `ci.yml`, `pages.yml`
@@ -126,8 +127,8 @@ src/
   sync/merge.ts         pure LWW merge
   backends/             memory.ts, firestore.ts, firestore-sdk.ts
 test/                   unit/, property/, conformance/, e2e/, smoke/, sample-app/, support/, vectors.json, setup.ts
-firebase/               firestore.rules, firebase.json, README.md, tests/ (rules tests, own package.json)
-scripts/                burrow-setup.mjs (bin), setup.sh, emulator.mjs, serve.mjs, build-demo.mjs, size.mjs, sri.mjs, gen-vectors.mjs
+firebase/               SETUP-AGENT.md, firestore.rules, firebase.json, README.md, tests/ (rules tests, own package.json)
+scripts/                burrow-setup.mjs (bin), emulator.mjs, serve.mjs, build-demo.mjs, size.mjs, sri.mjs, gen-vectors.mjs
 demo/                   index.html, demo.js, demo.css, favicon.svg, burrow.config.example.html
 docs/                   guides, api, architecture, decisions, user-journeys, history/
 ```
