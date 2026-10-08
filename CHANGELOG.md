@@ -68,8 +68,9 @@ labels, and the storage-token encoding are public contract: changing them is a m
 
 ### Fixed (found during development)
 - Bare `npm run serve` could sync the local demo with the owner's live project. Local demo and
-  assembled-site pages now always use the emulator, with its endpoint replacing the live one
-  in their CSP; pages whose config cannot be rewritten are refused (#40, D-44).
+  assembled-site pages now default to the emulator, or use an explicit project from
+  `BURROW_FIRESTORE`; their CSP follows the selected backend. Invalid explicit config stops the
+  server and pages whose config cannot be rewritten are refused (#40, D-44).
 - A sync pass could drop a key written while it was reading the cache.
 - `link()` could finish against the old identity when the first sync pass was still running.
 - Firestore reads could return a stale view of a document the page also listens to; reads now go
