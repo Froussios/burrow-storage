@@ -231,7 +231,9 @@ fields to `burrow.firestore.json`; discard the rest. Do not pipe unchecked JSON 
 that assumes a shape, and do not save the complete command result.
 
 **Verify:** the local file parses as JSON and contains exactly `apiKey`, `projectId`, `appId`.
-This guide registers an app to retrieve its browser key and retains all three fields.
+Burrow requires `apiKey` and `projectId`; `appId` is optional. This guide registers an app to
+retrieve its browser key, verifies the selected app id, and retains all three public fields for
+that setup. Existing caller-owned configurations without `appId` also work with the checker.
 
 **Known failures:** app/config not yet ready: retry the read, not app creation. Changed JSON shape:
 inspect the CLI's documented schema; stop if it cannot be verified.
@@ -336,6 +338,8 @@ collection listing and an `in` query all fail specifically with `permission-deni
 quota and arbitrary errors never count as a rules pass. It uses no Auth or admin credentials,
 never prints ids/tokens/envelopes, times out after 60 seconds, and refuses CI execution. Its
 sequence is repeatable; its cryptographic secret and id are fresh each run, never fixed or saved.
+The checker requires non-empty `apiKey` and `projectId`; a supplied `appId` must be a non-empty
+string, and no other fields are accepted. The registered app's three-field config above is valid.
 Record only the fixed check results and time. This is narrower than the maintainers'
 `BURROW_FIRESTORE='<config JSON>' npm run test:live` suite (conformance and two-device sync).
 

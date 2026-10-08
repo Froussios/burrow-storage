@@ -222,16 +222,29 @@ npm install burrow-storage firebase
 
 ```js
 import { burrow } from "burrow-storage";
-import { FirestoreBackend } from "burrow-storage/firestore";
 
 const store = await burrow({
   app: "my-prototype",
-  backend: new FirestoreBackend({ apiKey: "…", projectId: "…", appId: "…" }),
+  firestore: { apiKey: "…", projectId: "your-project" },
 });
 ```
 
-With the `<meta name="burrow-firestore">` tag (or `window.BURROW = { firestore: {…} }`) on the
-page you can leave out `backend`; Burrow reads the config and loads the adapter itself.
+Use your own Firebase project; the owner's store is for the hosted demo only. `appId` is optional.
+The explicit `backend: new FirestoreBackend(config)` form from `burrow-storage/firestore` also
+works. Invalid remote configuration keeps local storage available with `status: "error"`;
+fix the config and reload the page to enable sync.
+
+Generic page configuration selects an adapter by type:
+
+```html
+<meta name="burrow-backend"
+      content='{"type":"firestore","apiKey":"…","projectId":"your-project"}'>
+```
+
+With this tag (or `window.BURROW = { backend: { type: "firestore", … } }`) you can omit
+`backend` and `firestore`. The legacy `burrow-firestore` tag and `window.BURROW.firestore`
+also work. The adapter loads on demand. See [backend configuration](docs/extending.md#page-configuration)
+and the [candidate assessment](docs/backend-candidates.md) for other stores.
 
 ### 3. Use it
 

@@ -19,6 +19,7 @@ import { FirestoreBackend } from "burrow-storage/firestore";
 | `MemoryBackend` | `burrow-storage` | In-memory store for tests and demos |
 | `BurrowError`, `BackendError` | `burrow-storage` | Error classes with a stable `code` |
 | `BurrowEvent` | `burrow-storage` | The event class used by `onChanged` and friends |
+| `registerBackend(type, factory)` | `burrow-storage` | Register a lazy adapter factory before opening stores |
 | `readFirestoreConfig()` | `burrow-storage` | Reads the page's Firestore config, if you need it yourself |
 | `passkeyBackup(options?)` | `burrow-storage/passkey` | Optional: back up the storage token behind a passkey |
 | `FirestoreBackend` | `burrow-storage/firestore` | The reference backend (needs the optional `firebase` peer dependency) |
@@ -38,7 +39,8 @@ ignored. It needs a secure context (HTTPS or `localhost`), because WebCrypto doe
 ```ts
 interface BurrowConfig {
   app: string;                              // required, /^[a-z0-9-]{1,64}$/
-  backend?: Backend;                        // default: from the page, see below
+  backend?: Backend | BackendConfig;        // default: from the page, see below
+  firestore?: FirestoreConfig;              // shorthand, appId optional
   cache?: "indexeddb" | "memory";           // default: "indexeddb" ("memory" when rememberDevice is false)
   rememberDevice?: boolean;                 // default: true
   syncIntervalMs?: number;                  // default: 30_000; 0 disables polling
@@ -51,7 +53,8 @@ interface BurrowConfig {
 | Option | Behaviour |
 | --- | --- |
 | `app` | Namespaces the cache and the derived keys. Two apps on one origin share the storage token but never see each other's data. An invalid id throws `TypeError`. |
-| `backend` | When omitted, Burrow reads `<meta name="burrow-firestore" content='{"apiKey","projectId","appId"}'>`, then `window.BURROW.firestore`, and builds a `FirestoreBackend` from it (loading the adapter on demand). With neither present it runs **local-only**: everything works, nothing leaves the device, and one `console.warn` says so. |
+| `backend` | An adapter instance or `{ type, …options }` for a registered factory. Takes precedence over `firestore` and page config. Without either caller option, discovery reads `burrow-backend` meta, then `window.BURROW.backend`, then legacy `burrow-firestore` meta / `window.BURROW.firestore`. Generic config wins over legacy config. With none present Burrow runs **local-only** (`idle`, one warning). Invalid config or a rejected factory also resolves a usable local store, with `status: "error"` and a fixed `backend` error. It does not fall back to another project. Correct the config and reload to enable sync. |
+| `firestore` | Shorthand for `backend: { type: "firestore", …config }`. Requires non-empty `apiKey` and `projectId`; `appId` is optional. The Firestore adapter and SDK load on demand. Use your own project. |
 | `cache` | `"memory"` keeps items in memory for the page's lifetime. If IndexedDB cannot be opened, Burrow falls back to memory and sets `status` to `"offline"` until a sync succeeds. |
 | `rememberDevice` | `false` keeps the token in memory only and defaults the cache to memory, for shared computers. Every page load then starts with a fresh token until the user links. |
 | `syncIntervalMs` | Polling interval while the page is visible. The Firestore backend also pushes changes through a listener, so a long interval is fine when live updates matter more than cost. |
@@ -146,7 +149,7 @@ declare class BurrowEvent<T> extends EventTarget {
 | `"idle"` | Nothing in flight. Also the local-only state when no backend is configured. |
 | `"syncing"` | A sync pass is running. |
 | `"offline"` | The last pass failed with a network or quota error (`error.code` is `"backend"` or `"quota"`), or IndexedDB was unavailable at start-up. Burrow retries with exponential backoff from 2 s, capped at the larger of `syncIntervalMs` and 5 minutes. Dirty items wait. |
-| `"error"` | `decrypt-failed` (sync is paused until the device links again), or `conflict` / `item-too-large` (retried on the next trigger). |
+| `"error"` | Invalid backend config (`backend`, local operation continues; correct config and reload), `decrypt-failed` (sync is paused until the device links again), or `conflict` / `item-too-large` (retried on the next trigger). |
 
 `token.source` is `"generated"` (made on this device), `"token"` (passed to `link()` without a
 `source`), the `source` label the site passed to `link()` (such as `"passkey"`), or `"unknown"`
@@ -242,7 +245,7 @@ anything that looks like an id or token.
 | `decrypt-failed` | `onStatus`, `passkeyBackup().restore()` | A document does not decrypt under this token (corruption or a version mismatch). Sync pauses, the cache is untouched; `link()` resumes it. |
 | `conflict` | `onStatus`, `syncNow()`, `passkeyBackup().save()` | Writes kept colliding with another writer after retries. Retried on the next trigger. |
 | `quota` | `onStatus`, `syncNow()` | The store's daily quota is exhausted. Sync pauses and retries with backoff. |
-| `backend` | `onStatus`, `syncNow()`, `passkeyBackup()` | A network or store failure (retried), or a passkey backup was used with no backend. |
+| `backend` | `onStatus`, `syncNow()`, `passkeyBackup()` | A network or store failure (retried), invalid backend configuration (correct and reload), or a passkey backup was used with no backend. |
 
 ```ts
 declare class BackendError extends Error {
@@ -280,7 +283,7 @@ Exported by `burrow-storage/firestore`.
 interface FirestoreConfig {
   apiKey: string;
   projectId: string;
-  appId: string;
+  appId?: string;                            // optional; Firestore does not require it
   collection?: string;                       // default "burrow", the collection the bundled rules name
   emulator?: { host: string; port: number }; // the Firestore emulator
 }
@@ -331,10 +334,16 @@ interface PasskeyBackup {
 }
 ```
 
+`PasskeyBackupOptions.backend` accepts a `Backend` instance. To use declarative
+configuration, set the page's backend config and omit this option. An invalid instance,
+invalid page config or a failing adapter factory rejects `backend` with a fixed message
+and no configuration error cause, before either operation prompts. A corrected page
+config is retried on the next call.
+
 | Member | Behaviour |
 | --- | --- |
 | `available()` | Never prompts. True in a secure context with `PublicKeyCredential`, a user-verifying platform authenticator, and no `getClientCapabilities()` report denying `extension:prf`. |
-| `save(token)` | Creates a discoverable passkey with user verification and no attestation, evaluates its PRF, and writes the token to a keyslot document only that passkey can open. One prompt, sometimes two when the authenticator returns no PRF output at creation. Rejects `bad-token` before prompting, `cancelled` when the prompt is dismissed, `prf-unsupported`, `backend` (no backend, before prompting) or `conflict`; a failing store may surface a raw `BackendError`. Saving again with the same passkey replaces its keyslot. |
+| `save(token)` | Creates a discoverable passkey with user verification and no attestation, evaluates its PRF, and writes the token to a keyslot document only that passkey can open. One prompt, sometimes two when the authenticator returns no PRF output at creation. Rejects `bad-token` before prompting, `cancelled` when the prompt is dismissed, `prf-unsupported`, `backend` (missing or invalid backend config, before prompting) or `conflict`; a failing store may surface a raw `BackendError`. Saving again with the same passkey replaces its keyslot. |
 | `restore()` | One prompt; the user picks the passkey. Resolves the token from its keyslot, or `null` when the prompt is dismissed or that passkey has no keyslot. Rejects `prf-unsupported`, `decrypt-failed` (the keyslot was tampered with) or `backend`. |
 
 Call `save()` and `restore()` from a user gesture: browsers allow passkey prompts only then. The

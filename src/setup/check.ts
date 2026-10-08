@@ -39,14 +39,7 @@ function codeOf(error: unknown): SetupCheckError["code"] {
   if (code === "resource-exhausted" || code === "quota") return "quota";
   if (
     typeof code === "string" &&
-    [
-      "network",
-      "unavailable",
-      "deadline-exceeded",
-      "cancelled",
-      "unknown",
-      "internal",
-    ].includes(code)
+    ["network", "unavailable", "deadline-exceeded", "cancelled"].includes(code)
   )
     return "network";
   return "unexpected-result";

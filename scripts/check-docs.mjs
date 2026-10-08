@@ -12,12 +12,22 @@
 //     type of that name (a `declare class` listing only has to be a subset of
 //     the real class)
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const out = join(root, "node_modules/.cache/doc-snippets");
+// Isolate concurrent checks, including checkouts sharing installed
+// dependencies.
+const out = mkdtempSync(join(tmpdir(), "burrow-doc-snippets-"));
+process.on("exit", () => rmSync(out, { recursive: true, force: true }));
 const DOCS = [
   "README.md",
   "docs/api.md",
@@ -36,6 +46,8 @@ const EXPORTED = [
   "Item",
   "BackendCapabilities",
   "Backend",
+  "BackendConfig",
+  "BackendFactory",
   "BurrowConfig",
   "Status",
   "TokenSource",

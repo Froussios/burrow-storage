@@ -13,7 +13,7 @@ const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const port = Number(process.env.PORT ?? 4173);
 const LIVE = "https://firestore.googleapis.com";
 const guidance =
-  "BURROW_FIRESTORE must be config JSON with non-empty apiKey, projectId and appId strings and an optional non-empty collection string; omit emulator. See docs/firestore-setup.md#local-development.";
+  "BURROW_FIRESTORE must be config JSON with non-empty apiKey and projectId strings; appId and collection are optional non-empty strings. Omit emulator. See docs/firestore-setup.md#local-development.";
 
 function localTarget() {
   const supplied = process.env.BURROW_FIRESTORE;
@@ -27,9 +27,11 @@ function localTarget() {
     if (
       !cfg ||
       Array.isArray(cfg) ||
-      ["apiKey", "projectId", "appId"].some(
+      ["apiKey", "projectId"].some(
         (key) => typeof cfg[key] !== "string" || !cfg[key].trim(),
       ) ||
+      (cfg.appId !== undefined &&
+        (typeof cfg.appId !== "string" || !cfg.appId.trim())) ||
       (cfg.collection !== undefined &&
         (typeof cfg.collection !== "string" || !cfg.collection.trim())) ||
       cfg.emulator !== undefined
@@ -44,7 +46,7 @@ function localTarget() {
       config: {
         apiKey,
         projectId,
-        appId,
+        ...(appId !== undefined ? { appId } : {}),
         ...(collection ? { collection } : {}),
       },
       endpoint: LIVE,

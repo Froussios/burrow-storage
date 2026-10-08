@@ -14,7 +14,7 @@ const emulator = { host: host!, port: Number(port) };
 const config = {
   apiKey: "emulator",
   projectId: "burrow-rules-test",
-  appId: "1:0:web:0",
+  // #23: Firestore does not require Firebase's web-app identifier.
   emulator,
 };
 

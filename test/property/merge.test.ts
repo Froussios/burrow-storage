@@ -3,6 +3,9 @@
 import fc from "fast-check";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Core } from "../../src/core.js";
+import { deriveAppKeys } from "../../src/codec/derive.js";
+import { open } from "../../src/codec/envelope.js";
+import { decodeToken } from "../../src/codec/token.js";
 import {
   type Versioned,
   TOMBSTONE_TTL_MS,
@@ -206,6 +209,185 @@ async function runScenario(ops: Op[], skews: number[]) {
 }
 
 describe("multi-device convergence (MemoryBackend)", () => {
+  it("SYNC-10 #55 an offline delete still wins when first published after expiry", async () => {
+    const { states, dirty } = await runScenario(
+      [
+        { t: "set", dev: 0, key: "k1", value: 0 },
+        { t: "set", dev: 2, key: "k3", value: 0 },
+        { t: "set", dev: 1, key: "k3", value: 0 },
+        { t: "sync", dev: 2 },
+        { t: "remove", dev: 1, key: "k1" },
+        { t: "remove", dev: 2, key: "k3" },
+        { t: "wait", ms: 94620546 },
+        { t: "wait", ms: 3271742419 },
+        { t: "remove", dev: 2, key: "k2" },
+      ],
+      [0, 0, 0],
+    );
+    expect(dirty).toEqual([0, 0, 0]);
+    for (const state of states) expect(state).toEqual({ k1: 0 });
+  });
+
+  it.each([
+    // Older offline value loses to the expired delete; k3 stays absent.
+    { scenario: "older", expected: { k1: 0 } },
+    // Newer offline value beats the delete; k3 is restored intentionally.
+    { scenario: "newer", expected: { k1: 0, k3: 9 } },
+    // Two conflicts: B sees a delete, then expiry; k3 stays absent, k2
+    // survives.
+    { scenario: "observed-delete", expected: { k1: 0, k2: 2 } },
+    // B adopts an unlisted live item while k2 still requires publication.
+    { scenario: "unlisted-live", expected: { k1: 0, k2: 2, k3: 9 } },
+    // Same live item with no other dirty key: B must still publish k3.
+    { scenario: "unlisted-live-only", expected: { k1: 0, k3: 9 } },
+  ] as const)(
+    "SYNC-10 #55 manifest retries revalidate unlisted results: $scenario",
+    async ({ scenario, expected }) => {
+      const unlistedLive = scenario.startsWith("unlisted-live");
+      const world = new World();
+      let clock = 1_700_000_000_000;
+      vi.spyOn(Date, "now").mockImplementation(() => clock);
+      try {
+        const devs = Array.from({ length: 3 }, () =>
+          world.device({ cache: "memory" }),
+        );
+        // Drive the same publication race explicitly, without subscription
+        // timing.
+        for (const d of devs) d.backend.capabilities.subscribe = false;
+        const [a, b, c] = await Promise.all(
+          devs.map((d) => d.open({ debounceMs: 1e9 })),
+        );
+        const token = await a!.exportToken();
+        await b!.link({ token });
+        await c!.link({ token });
+        const keys = await deriveAppKeys(await decodeToken(token), "test");
+        const { base } = keys;
+        const readManifest = async () =>
+          JSON.parse(
+            new TextDecoder().decode(
+              await open(
+                { key: keys.encKey, mac: keys.macKey, aad: base + "test" },
+                world.store.get(base)!,
+              ),
+            ),
+          );
+        clock += 1000;
+        await a!.set({ k1: 0 });
+        clock += 1000;
+        await c!.set({ k3: 0 });
+        clock += 1000;
+        await b!.set({ k3: 0 });
+        if (scenario === "observed-delete" || scenario === "unlisted-live")
+          await b!.set({ k2: 2 });
+        await c!.syncNow();
+        clock += 1000;
+        await b!.remove("k1");
+        clock += 1000;
+        await c!.remove("k3");
+        if (scenario !== "observed-delete") clock += 94620546 + 3271742419;
+        await c!.remove("k2");
+        if (scenario === "newer") await b!.set({ k3: 9 });
+        await a!.syncNow();
+
+        const barrier = () => {
+          let entered!: () => void;
+          const writingManifest = new Promise<void>(
+            (resolve) => (entered = resolve),
+          );
+          let release!: () => void;
+          const gate = new Promise<void>((resolve) => (release = resolve));
+          return { entered, writingManifest, release, gate };
+        };
+        const barriers = Array.from({ length: 2 }, barrier);
+        const liveBarrier = barrier();
+        let livePush: Promise<void> | undefined;
+        const backend = devs[1]!.backend;
+        const put = backend.put.bind(backend);
+        let attempt = 0;
+        vi.spyOn(backend, "put").mockImplementation(async (id, env, rev) => {
+          if (id === base) {
+            const barrier = barriers[attempt++];
+            if (barrier && (attempt === 1 || scenario === "observed-delete")) {
+              barrier.entered();
+              await barrier.gate;
+            }
+          }
+          return put(id, env, rev);
+        });
+        const stalePush = b!.syncNow();
+        // B's value is written; its manifest is not.
+        await barriers[0]!.writingManifest;
+        try {
+          // C overwrites an older item, or adopts a valid newer offline write.
+          await c!.syncNow();
+          if (unlistedLive) {
+            // Publish a newer live item but hold back its manifest, so B's
+            // retry must adopt the value before its directory entry exists.
+            const liveBackend = devs[2]!.backend;
+            const livePut = liveBackend.put.bind(liveBackend);
+            let paused = false;
+            vi.spyOn(liveBackend, "put").mockImplementation(
+              async (id, env, rev) => {
+                if (id === base && !paused) {
+                  paused = true;
+                  liveBarrier.entered();
+                  await liveBarrier.gate;
+                }
+                return livePut(id, env, rev);
+              },
+            );
+            await c!.set({ k3: 9 });
+            livePush = c!.syncNow();
+            await liveBarrier.writingManifest;
+          }
+        } finally {
+          barriers[0]!.release();
+        }
+        if (scenario === "observed-delete") {
+          // B sees the published deletion on its first retry and is no longer
+          // dirty for k3. Force a second conflict after C prunes the tombstone.
+          await barriers[1]!.writingManifest;
+          try {
+            clock += 94620546 + 3271742419;
+            await c!.set({ k1: 0 });
+            await c!.syncNow();
+          } finally {
+            barriers[1]!.release();
+          }
+        }
+        // B loses the manifest race and retries with its old result.
+        try {
+          await stalePush;
+          if (unlistedLive) {
+            // Check immediately after one sync, before C publishes or another
+            // pass could repair a wrongly pruned cache entry.
+            expect(await b!.get()).toEqual(expected);
+            expect(b!.inspect().dirtyKeys).toBe(0);
+            expect((await readManifest()).items).toHaveProperty("k3");
+            // C still cannot publish: the next pass must retain k3 using the
+            // manifest B published, without any other dirty item forcing it.
+            await b!.syncNow();
+            expect(await b!.get()).toEqual(expected);
+          }
+        } finally {
+          liveBarrier.release();
+        }
+        await livePush;
+        for (let round = 0; round < 2; round++)
+          for (const area of [a!, b!, c!]) await area.syncNow();
+        for (const area of [a!, b!, c!]) {
+          expect(await area.get()).toEqual(expected);
+          expect(area.inspect().dirtyKeys).toBe(0);
+        }
+        const manifest = await readManifest();
+        if (scenario !== "newer" && !unlistedLive)
+          expect(manifest.items).not.toHaveProperty("k3");
+      } finally {
+        world.close();
+      }
+    },
+  );
+
   it("with synchronised clocks every device converges on the last write per key", async () => {
     await fc.assert(
       fc.asyncProperty(

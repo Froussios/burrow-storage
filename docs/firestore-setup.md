@@ -33,8 +33,8 @@ from a clone as `node scripts/burrow-setup.mjs firestore`. By hand:
 1. **Create a Firebase project without a billing account**, Google Analytics off. Do not upgrade
    to Blaze.
 2. **Create Firestore in production mode.** Pick a location near your users; it cannot change.
-3. **Register a web app** (Project settings → Your apps → Web). Keep three values from its
-   config: `apiKey`, `projectId`, `appId`.
+3. **Register a web app** (Project settings → Your apps → Web). Keep `apiKey` and `projectId`
+   from its config; `appId` is optional for Burrow.
 4. **Deploy the bundled rules.** From the package's `firebase/` folder (`node_modules/burrow-storage/firebase`,
    or the repository):
 
@@ -57,7 +57,9 @@ from a clone as `node scripts/burrow-setup.mjs firestore`. By hand:
    npx burrow-setup check '{"apiKey":"…","projectId":"your-project-id","appId":"…"}'
    ```
 
-   This packaged check uses the shipped backend and codec. It writes one throwaway encrypted
+   The checker requires non-empty `apiKey` and `projectId`; `appId` is optional but must be a
+   non-empty string if supplied. It accepts only those public fields and targets the shipped
+   `burrow` collection rules. This packaged check uses the shipped backend and codec. It writes one throwaway encrypted
    document that cannot be deleted through the client rules (FS-6), reads and decrypts it by
    id, then verifies that a forged token, collection listing and an `in` query are rejected.
    All four fixed `PASS` lines and a zero exit status are required; a network or quota error
@@ -188,20 +190,21 @@ To run the page locally against your own live or pre-production Firebase project
 public config explicitly in `BURROW_FIRESTORE` and run the server directly after building:
 
 ```sh
-BURROW_FIRESTORE='{"apiKey":"your-api-key","projectId":"your-project-id","appId":"your-app-id"}' npm run serve
+BURROW_FIRESTORE='{"apiKey":"your-api-key","projectId":"your-project-id"}' npm run serve
 ```
 
 In PowerShell:
 
 ```powershell
-$env:BURROW_FIRESTORE = '{"apiKey":"your-api-key","projectId":"your-project-id","appId":"your-app-id"}'
+$env:BURROW_FIRESTORE = '{"apiKey":"your-api-key","projectId":"your-project-id"}'
 npm run serve
 ```
 
 Open <http://localhost:4173/demo/>. The server replaces both `demo/` and assembled `site/` page
 configs with the supplied project and allows `https://firestore.googleapis.com` in their CSP.
-`apiKey`, `projectId` and `appId` must be non-empty strings. An optional non-empty `collection`
-string selects a collection whose rules you have configured. Other Firebase SDK config fields
+`apiKey` and `projectId` must be non-empty strings. `appId` is optional and, when supplied,
+must be a non-empty string. An optional non-empty `collection` string selects a collection
+whose rules you have configured. Other Firebase SDK config fields
 are ignored; omit the `emulator` field. An empty, malformed or incomplete config stops the
 server before it listens, without falling back to the source page or the emulator. Validation
 checks the config's shape, not whether the project exists or its rules and key restrictions are

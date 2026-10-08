@@ -5,15 +5,16 @@ import { randomBytes, utf8, zeroise } from "./bytes.js";
 import { PRF_SALT_V1, deriveSlotKeys, type SlotKeys } from "./codec/derive.js";
 import { type DocCipher, open, seal } from "./codec/envelope.js";
 import { decodeToken, encodeToken } from "./codec/token.js";
-import { defaultBackend } from "./config.js";
+import { defaultBackend, validateBackend } from "./config.js";
 import { BackendError, BurrowError } from "./errors.js";
 import type { Backend } from "./types.js";
 
 export interface PasskeyBackupOptions {
   /**
-   * Where the keyslot lives. Default: a FirestoreBackend from the page's
-   * config, like `burrow()`; `save()` and `restore()` reject `backend` when
-   * there is none.
+   * Backend instance where the keyslot lives. Default: resolve the page's
+   * config, like `burrow()`. This option does not accept BackendConfig.
+   * `save()` and `restore()` reject `backend` before prompting when the
+   * backend is missing, invalid, or the page config cannot be resolved.
    */
   backend?: Backend;
   /**
@@ -113,15 +114,23 @@ export function passkeyBackup(
   let backend: Promise<Backend> | undefined;
   const store = () =>
     (backend ??= (async () => {
-      const b = options.backend ?? (await defaultBackend());
+      let b: Backend | null;
+      try {
+        b =
+          options.backend === undefined
+            ? await defaultBackend()
+            : validateBackend(options.backend);
+      } catch {
+        // Factory exceptions can contain arbitrary config values, even in a
+        // BurrowError. Match the core's fixed config error without a cause.
+        throw new BurrowError("backend", "backend configuration failed");
+      }
       if (!b)
         throw new BurrowError("backend", "a passkey keyslot needs a backend");
       return b;
     })().catch((e) => {
       backend = undefined; // try again on the next call
-      throw e instanceof BurrowError
-        ? e
-        : new BurrowError("backend", undefined, { cause: e });
+      throw e;
     }));
 
   /**

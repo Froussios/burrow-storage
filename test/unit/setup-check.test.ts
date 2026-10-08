@@ -88,7 +88,7 @@ describe("FS-10 packaged rules check", () => {
     expect(messages).toEqual([]);
     expect(state.forged).toBeNull();
   });
-  it.each(["conflict", "too-large"])(
+  it.each(["conflict", "too-large", "unknown", "internal"])(
     "reports %s as an unexpected result rather than a network failure",
     async (code) => {
       state.createCode = code;
@@ -146,6 +146,8 @@ describe("FS-10 bin guardrails before remote access", () => {
     "[]",
     '{"apiKey":"test","projectId":"test","emulator":{}}',
     '{"apiKey":"test","projectId":"test","appId":""}',
+    '{"apiKey":"test","projectId":"test","appId":null}',
+    '{"apiKey":"test","projectId":"test","appId":123}',
   ])(
     "refuses unsafe or malformed config without echoing it",
     async (config) => {
@@ -155,13 +157,14 @@ describe("FS-10 bin guardrails before remote access", () => {
       expect(result.stderr).not.toContain(config);
     },
   );
-  it("refuses a live check in CI", async () => {
-    const result = await run(
-      ["check", '{"apiKey":"test","projectId":"test","appId":"test"}'],
-      { ...process.env, CI: "1" },
-    );
+  it.each([
+    '{"apiKey":"test","projectId":"test","appId":"test"}',
+    '{"apiKey":"test","projectId":"test"}',
+  ])("accepts config %s then refuses live access in CI", async (config) => {
+    const result = await run(["check", config], { ...process.env, CI: "1" });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("must not run in CI");
+    expect(result.stderr).not.toContain("Supply your own config JSON");
   });
   it("prints the human guide and shipped agent path", async () => {
     const result = await run(["firestore"]);

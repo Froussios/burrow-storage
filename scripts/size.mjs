@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // CI size check (NF table): core + memory backend ≤ 12 KB min+gzip; the passkey
-// backup (burrow-storage/passkey) ≤ 2 KB on top of it. The Firestore SDK is
-// lazy-loaded and not counted.
+// backup (burrow-storage/passkey) ≤ 2 KB on top of it. The Firestore adapter
+// and lazy SDK have separate 2 KB and 150 KB budgets outside the core budget.
 import { build } from "esbuild";
 import { gzipSync } from "node:zlib";
 
@@ -63,4 +63,19 @@ await measure(
   /firestore-sdk\.js$/,
   Infinity,
 );
-process.exit(core.ok && pkOk ? 0 : 1);
+// #23: adapters have independent budgets and never consume the core budget.
+// These limits leave room above the existing adapter/SDK baseline while
+// catching accidental dependencies or eager SDK inclusion.
+const firestore = await measure(
+  "Firestore adapter (SDK excluded)",
+  `export { FirestoreBackend } from "./src/backends/firestore.ts";`,
+  /firestore-sdk\.js$/,
+  2 * 1024,
+);
+const sdk = await measure(
+  "Firestore SDK (lazy chunk)",
+  `export * from "./src/backends/firestore-sdk.ts";`,
+  undefined,
+  150 * 1024,
+);
+process.exit(core.ok && pkOk && firestore.ok && sdk.ok ? 0 : 1);

@@ -19,9 +19,11 @@ if (target === "check") {
       !config ||
       typeof config !== "object" ||
       Array.isArray(config) ||
-      ["apiKey", "projectId", "appId"].some(
+      ["apiKey", "projectId"].some(
         (field) => typeof config[field] !== "string" || !config[field].trim(),
       ) ||
+      (config.appId !== undefined &&
+        (typeof config.appId !== "string" || !config.appId.trim())) ||
       Object.keys(config).some(
         (field) => !["apiKey", "projectId", "appId"].includes(field),
       )
@@ -29,7 +31,7 @@ if (target === "check") {
       throw new Error();
   } catch {
     console.error(
-      "Supply your own config JSON with apiKey, projectId and appId only.",
+      "Supply your own config JSON with apiKey, projectId and optional appId only.",
     );
     process.exit(1);
   }
@@ -63,7 +65,7 @@ if (target === "check") {
       await checkFirestore(config, (message) => console.log(message));
     } catch (error) {
       if (error instanceof SetupCheckError) console.error(error.message);
-      else console.error("FAIL setup-check: network");
+      else console.error("FAIL setup-check: unexpected-result");
       process.exitCode = 1;
     }
   } catch {
@@ -98,9 +100,9 @@ One project serves every prototype. Do this once.
       Build -> Firestore Database -> Create database -> Production mode
       Pick a location close to your users. It cannot be changed later.
 
- 3. Register a web app and copy its config (three fields are used):
+ 3. Register a web app and copy its config (appId is optional for Burrow):
       Project settings -> Your apps -> Web -> register "burrow"
-      { apiKey, projectId, appId }  ->  put them in <meta name="burrow-firestore" content='{…}'>
+      { apiKey, projectId, appId } (appId optional)  ->  put them in <meta name="burrow-firestore" content='{…}'>
 
  4. Deploy the Burrow rules (they ship in this package):
       cd ${join(pkg, "firebase")}
