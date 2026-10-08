@@ -37,7 +37,19 @@ function codeOf(error: unknown): SetupCheckError["code"] {
   if (code === "permission-denied" || code === "unauthorized")
     return "permission-denied";
   if (code === "resource-exhausted" || code === "quota") return "quota";
-  return "network";
+  if (
+    typeof code === "string" &&
+    [
+      "network",
+      "unavailable",
+      "deadline-exceeded",
+      "cancelled",
+      "unknown",
+      "internal",
+    ].includes(code)
+  )
+    return "network";
+  return "unexpected-result";
 }
 
 /** Internal entry used by the bin and emulator tests; no credentials needed. */

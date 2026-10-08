@@ -8,13 +8,13 @@ const state = vi.hoisted(() => ({
   denial: "permission-denied" as string | null,
   close: vi.fn(),
   forged: null as Envelope | null,
-  createDenial: false,
+  createCode: null as string | null,
 }));
 vi.mock("../../src/backends/firestore.js", () => ({
   FirestoreBackend: class {
     async put(_id: string, env: Envelope) {
-      if (state.createDenial)
-        throw { code: "unauthorized", message: "private-referrer-error" };
+      if (state.createCode)
+        throw { code: state.createCode, message: "private-referrer-error" };
       state.stored = env;
     }
     async get() {
@@ -56,7 +56,7 @@ import { checkFirestore, SetupCheckError } from "../../src/setup/check.js";
 beforeEach(() => {
   state.stored = null;
   state.forged = null;
-  state.createDenial = false;
+  state.createCode = null;
   state.denial = "permission-denied";
   state.close.mockClear();
 });
@@ -77,7 +77,7 @@ describe("FS-10 packaged rules check", () => {
     expect(state.close).toHaveBeenCalledOnce();
   });
   it("a blocked create cannot produce passes for the denial probes", async () => {
-    state.createDenial = true;
+    state.createCode = "unauthorized";
     const messages: string[] = [];
     await expect(
       checkFirestore(config, (line) => messages.push(line)),
@@ -88,6 +88,16 @@ describe("FS-10 packaged rules check", () => {
     expect(messages).toEqual([]);
     expect(state.forged).toBeNull();
   });
+  it.each(["conflict", "too-large"])(
+    "reports %s as an unexpected result rather than a network failure",
+    async (code) => {
+      state.createCode = code;
+      await expect(checkFirestore(config, () => {})).rejects.toMatchObject({
+        check: "create-read",
+        code: "unexpected-result",
+      });
+    },
+  );
   it.each(["unavailable", "resource-exhausted"])(
     "does not count %s as evidence of a rules denial",
     async (denial) => {
