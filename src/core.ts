@@ -989,20 +989,37 @@ export class Core implements BurrowArea {
           });
         else fetch.push(k);
       }
+      // A concurrent delete may have overwritten an earlier item result and
+      // expired from the manifest. Revalidate every unlisted result, even if
+      // a prior retry already adopted a newer version locally (SYNC-10, D-46).
+      for (const k of ok.keys()) if (!(k in dir)) fetch.push(k);
       const ids = await Promise.all(fetch.map((k) => docId(keys, k)));
       const envs = await this.#getMany(ids);
       for (let i = 0; i < fetch.length; i++) {
+        const k = fetch[i]!;
         const env = envs[i];
-        if (env)
-          remote.set(fetch[i]!, await this.#openItem(fetch[i]!, ids[i]!, env));
+        const item = env ? await this.#openItem(k, ids[i]!, env) : undefined;
+        if (item) {
+          remote.set(k, item);
+          this.#meta.maxRemoteTs = Math.max(this.#meta.maxRemoteTs!, item.ts);
+        }
+        const written = ok.get(k);
+        if (written && !(k in dir)) {
+          if (item && compare(versionOf(item), written.ver) >= 0)
+            ok.set(k, { key: k, ver: versionOf(item), rev: env!.rev });
+          else ok.delete(k); // The dirty local entry must be pushed again.
+        }
       }
       await this.#applyRemote(remote, changes);
+      const unlistedLive = new Set<string>();
+      for (const [k, r] of ok)
+        if (!r.ver.deleted && !(k in dir)) unlistedLive.add(k);
       let pruned = 0;
       // Synced keys missing from an existing manifest were pruned tombstones:
-      // drop them.
+      // drop them, except live item results this pass will publish.
       if (menv) {
         const gone = [...this.#mirror]
-          .filter(([k, e]) => !e.dirty && !(k in dir))
+          .filter(([k, e]) => !e.dirty && !(k in dir) && !unlistedLive.has(k))
           .map(([k]) => k);
         const mark = this.#mark();
         const dropped = await this.#cache.updateItems(gone, (_k, cur) =>
@@ -1027,7 +1044,9 @@ export class Core implements BurrowArea {
 
       // 3. push dirty items, each on its own chain, in parallel
       const dirty = [...this.#mirror].filter(([, e]) => e.dirty);
-      if (!dirty.length) {
+      // Revalidation can adopt a newer live result and clear the last dirty
+      // key. It still needs a manifest entry before this pass can finish.
+      if (!dirty.length && !unlistedLive.size) {
         this.#meta.manifestRev = menv?.rev ?? null;
         break;
       }
