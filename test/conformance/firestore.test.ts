@@ -39,7 +39,7 @@ describe("Burrow over FirestoreBackend (emulator)", () => {
       const b = await B.open({ backend: make() });
       await a.set({ theme: "dark", draft: "hello" });
       await a.syncNow();
-      await b.link({ code: await a.exportCode() });
+      await b.link({ token: await a.exportToken() });
       expect(await b.get()).toEqual({ theme: "dark", draft: "hello" });
       await b.remove("draft");
       await b.syncNow();
@@ -55,7 +55,7 @@ describe("Burrow over FirestoreBackend (emulator)", () => {
     try {
       const a = await world.device().open({ backend: make() });
       const b = await world.device().open({ backend: make() });
-      await b.link({ code: await a.exportCode() });
+      await b.link({ token: await a.exportToken() });
       await a.set({ live: 1 });
       await a.syncNow();
       await expect

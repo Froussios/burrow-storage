@@ -48,8 +48,6 @@ export function backendConformance(
       expect(typeof b.id).toBe("string");
       expect(b.capabilities).toMatchObject({ writeAuth: true });
       expect(typeof b.capabilities.subscribe).toBe("boolean");
-      expect(typeof b.capabilities.keepalive).toBe("boolean");
-      expect(b.capabilities.maxEnvelopeBytes).toBeGreaterThan(0);
     });
 
     it("get of an unknown id is null", async () => {

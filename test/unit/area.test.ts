@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryBackend } from "../../src/backends/memory.js";
 import { deriveAppKeys, docId } from "../../src/codec/derive.js";
-import { decodeSyncCode } from "../../src/codec/synccode.js";
+import { decodeToken } from "../../src/codec/token.js";
 import { BackendError, BurrowError } from "../../src/errors.js";
 import type { ChangedEvent, Envelope, StatusEvent } from "../../src/types.js";
 import { World, until } from "../support/devices.js";
@@ -14,18 +14,10 @@ afterEach(() => {
 const fresh = () => (world = new World());
 
 describe("API-1/API-2 entry point", () => {
-  it("API-1 resolves with no interaction and no providers invoked", async () => {
-    const w = fresh();
-    const d = w.device();
-    const enrol = vi.fn(),
-      recover = vi.fn();
-    const a = await d.open({
-      keyProvider: { id: "x", available: async () => true, enrol, recover },
-    });
+  it("API-1 resolves with a generated token and no interaction", async () => {
+    const a = await fresh().device().open();
     expect(a.status).not.toBe("error");
-    expect(a.protection).toBe("none");
-    expect(enrol).not.toHaveBeenCalled();
-    expect(recover).not.toHaveBeenCalled();
+    expect(a.token).toMatchObject({ source: "generated", remembered: false });
   });
 
   it("API-2 same app on one page returns the same instance; other apps differ", async () => {
@@ -46,11 +38,11 @@ describe("API-1/API-2 entry point", () => {
     const d = fresh().device();
     const a = await d.open();
     await a.set({ theme: "dark" });
-    const code = await a.exportCode();
+    const code = await a.exportToken();
     a.close();
     const b = await d.open();
     expect(b).not.toBe(a);
-    expect(await b.exportCode()).toBe(code);
+    expect(await b.exportToken()).toBe(code);
     expect(await b.get("theme")).toEqual({ theme: "dark" });
   });
 
@@ -96,14 +88,14 @@ describe("API-1/API-2 entry point", () => {
     await a.syncNow();
     expect(a.status).toBe("idle");
     const b = await w.device().open({ app });
-    await b.link({ code: await a.exportCode() });
+    await b.link({ token: await a.exportToken() });
     expect(await b.get()).toEqual({ k: "from private mode" });
   });
 
   it("KP-1 different devices start with different secrets", async () => {
     const w = fresh();
-    expect(await (await w.device().open()).exportCode()).not.toBe(
-      await (await w.device().open()).exportCode(),
+    expect(await (await w.device().open()).exportToken()).not.toBe(
+      await (await w.device().open()).exportToken(),
     );
   });
 });
@@ -266,13 +258,12 @@ describe("API-3..6 StorageArea", () => {
     await a.set({ k: 1 });
     await a.syncNow();
     const i = a.inspect();
-    expect(i).toMatchObject({
+    expect(i).toEqual({
       status: "idle",
-      protection: "none",
       manifestRev: 0,
       dirtyKeys: 0,
+      lastSyncAt: expect.any(Number),
       backend: "memory",
-      provider: null,
     });
     expect(typeof i.lastSyncAt).toBe("number");
     expect(JSON.stringify(i)).not.toMatch(/[A-Za-z0-9_-]{40,}/);
@@ -286,11 +277,11 @@ describe("§8 sync between devices", () => {
       B = w.device();
     const a = await A.open();
     const b = await B.open();
-    await b.link({ code: await a.exportCode() });
+    await b.link({ token: await a.exportToken() });
     return { w, A, B, a, b };
   }
 
-  it("a second device linked by sync code sees the data (with no account)", async () => {
+  it("a second device linked by its storage token sees the data (with no account)", async () => {
     const w = fresh();
     const a = await w.device().open();
     await a.set({ theme: "dark", draft: "hello" });
@@ -298,9 +289,9 @@ describe("§8 sync between devices", () => {
     const b = await w.device().open();
     const events: ChangedEvent[] = [];
     b.onChanged.addListener((e) => events.push(e));
-    await b.link({ code: await a.exportCode() });
+    await b.link({ token: await a.exportToken() });
     expect(await b.get()).toEqual({ theme: "dark", draft: "hello" });
-    expect(b.protection).toBe("code");
+    expect(b.token.source).toBe("token");
     expect(events).toEqual([
       {
         source: "remote",
@@ -363,7 +354,7 @@ describe("§8 sync between devices", () => {
     const be = new ManifestFails({ store: w.store });
     const a = await d.open({ backend: be, debounceMs: 1e9 });
     const keys = await deriveAppKeys(
-      (await decodeSyncCode(await a.exportCode())).secret,
+      await decodeToken(await a.exportToken()),
       "test",
     );
     const [idOld, idNew] = await Promise.all([
@@ -396,7 +387,7 @@ describe("§8 sync between devices", () => {
     expect(w.store.get(idNew)!.rev).toBe(0);
 
     const b = await w.device().open();
-    await b.link({ code: await a.exportCode() });
+    await b.link({ token: await a.exportToken() });
     expect(await b.get()).toEqual({ old: 2, new: "n" });
   });
 
@@ -465,11 +456,11 @@ describe("§8 sync between devices", () => {
     const a = await w.device().open();
     await a.set({ gone: "soon", stays: 1 });
     await a.syncNow();
-    const code = await a.exportCode();
+    const code = await a.exportToken();
     const b = await w.device().open();
-    await b.link({ code });
+    await b.link({ token: code });
     const c = await w.device().open();
-    await c.link({ code });
+    await c.link({ token: code });
     expect(await c.get("gone")).toEqual({ gone: "soon" });
     await a.remove("gone");
     await a.syncNow();
@@ -528,7 +519,7 @@ describe("§8 sync between devices", () => {
     (B.backend.capabilities as { subscribe: boolean }).subscribe = false;
     const a = await A.open();
     const b = await B.open();
-    await b.link({ code: await a.exportCode() });
+    await b.link({ token: await a.exportToken() });
     await a.set({ k: 1 });
     await a.syncNow();
     expect(await b.get("k")).toEqual({});
@@ -585,60 +576,59 @@ describe("§8 sync between devices", () => {
     await b.set({ local: "still works" });
     expect(await b.get("local")).toEqual({ local: "still works" });
   });
+
+  it("ENC-6 linking the same token again resumes a sync paused by decrypt-failed, keeping its source", async () => {
+    const { a, b, w } = await pair();
+    await a.set({ k: 1 });
+    await a.syncNow();
+    await b.syncNow();
+    const good = new Map(w.store);
+    for (const [id, env] of w.store)
+      w.store.set(id, {
+        ...env,
+        ct: env.ct.replace(/^./, (c) => (c === "A" ? "B" : "A")),
+      });
+    await expect(b.syncNow()).rejects.toMatchObject({ code: "decrypt-failed" });
+    for (const [id, env] of good) w.store.set(id, env);
+    // A third device writes once the store is sound again (A itself may have
+    // paused on the corrupted documents too).
+    const token = await a.exportToken();
+    const c = await w.device().open();
+    await c.link({ token });
+    await c.set({ k: 2 });
+    await c.syncNow();
+    await b.link({ token, source: "passkey" });
+    expect(b.status).toBe("idle");
+    expect(await b.get()).toEqual({ k: 2 });
+    expect(b.token.source).toBe("token");
+  });
 });
 
-describe("§6 link, protect, unlink", () => {
-  it("KP-12 a bad code is rejected before any network call", async () => {
+describe("§6 link, unlink", () => {
+  it("KP-12 a bad token is rejected before any network call", async () => {
     const d = fresh().device();
     const a = await d.open();
     const g = d.backend.stats.gets;
-    await expect(a.link({ code: "0000-0000" })).rejects.toMatchObject({
-      code: "bad-code",
+    await expect(a.link({ token: "0000-0000" })).rejects.toMatchObject({
+      code: "bad-token",
     });
+    for (const bad of [undefined, 42, {}])
+      await expect(
+        a.link({ token: bad as unknown as string }),
+      ).rejects.toMatchObject({ code: "bad-token" });
     expect(d.backend.stats.gets).toBe(g);
   });
 
-  it("API-7 link() with no provider able to recover rejects no-provider", async () => {
-    const a = await fresh()
-      .device()
-      .open({
-        keyProvider: {
-          id: "x",
-          available: async () => true,
-          enrol: async () => {},
-          recover: async () => null,
-        },
-      });
-    await expect(a.link()).rejects.toMatchObject({ code: "no-provider" });
-  });
-
-  it("API-7 link() tries providers in order", async () => {
-    const w = fresh();
-    const a = await w.device().open();
-    await a.set({ k: 1 });
-    await a.syncNow();
-    const code = await a.exportCode();
-    const calls: string[] = [];
-    const p = (id: string, out: string | null) => ({
-      id,
-      available: async () => true,
-      enrol: async () => {},
-      recover: async () => {
-        calls.push(id);
-        return out
-          ? (await import("../../src/codec/synccode.js"))
-              .decodeSyncCode(out)
-              .then((r) => r.secret)
-          : null;
-      },
-    });
-    const b = await w.device().open({
-      keyProvider: [p("one", null), p("two", code), p("three", null)],
-    });
-    await b.link();
-    expect(calls).toEqual(["one", "two"]);
-    expect(b.protection).toBe("two");
-    expect(await b.get()).toEqual({ k: 1 });
+  it("link() rejects an empty or non-string source before any network call", async () => {
+    const d = fresh().device();
+    const a = await d.open();
+    const token = await (await fresh().device().open()).exportToken();
+    const g = d.backend.stats.gets;
+    for (const source of ["", 7])
+      await expect(
+        a.link({ token, source: source as unknown as string }),
+      ).rejects.toBeInstanceOf(TypeError);
+    expect(d.backend.stats.gets).toBe(g);
   });
 
   it("link() while the first sync pass is still in flight pulls the new identity's data", async () => {
@@ -648,7 +638,7 @@ describe("§6 link, protect, unlink", () => {
     await a.syncNow();
     // its first pass is still running
     const b = await w.device({ latencyMs: 80 }).open();
-    await b.link({ code: await a.exportCode() });
+    await b.link({ token: await a.exportToken() });
     expect(await b.get()).toEqual({ theme: "dark" });
   });
 
@@ -659,7 +649,9 @@ describe("§6 link, protect, unlink", () => {
     const b = await B.open();
     B.backend.failWith = "network";
     await b.set({ unsynced: 1 });
-    await expect(b.link({ code: await a.exportCode() })).rejects.toMatchObject({
+    await expect(
+      b.link({ token: await a.exportToken() }),
+    ).rejects.toMatchObject({
       code: "would-orphan",
     });
     expect(await b.get()).toEqual({ unsynced: 1 });
@@ -668,7 +660,7 @@ describe("§6 link, protect, unlink", () => {
     await a.syncNow();
     // With discardLocal the device adopts the other secret.
     B.backend.failWith = "network";
-    await b.link({ code: await a.exportCode(), discardLocal: true });
+    await b.link({ token: await a.exportToken(), discardLocal: true });
     B.backend.failWith = null;
     await b.syncNow();
     expect(await b.get()).toEqual({ fromA: 1 });
@@ -678,11 +670,11 @@ describe("§6 link, protect, unlink", () => {
     const w = fresh();
     const a = await w.device().open();
     const b = await w.device().open();
-    const oldCode = await b.exportCode();
+    const oldCode = await b.exportToken();
     await b.set({ mine: 1 });
-    await b.link({ code: await a.exportCode() });
+    await b.link({ token: await a.exportToken() });
     const c = await w.device().open();
-    await c.link({ code: oldCode });
+    await c.link({ token: oldCode });
     expect(await c.get()).toEqual({ mine: 1 });
   });
 
@@ -692,17 +684,20 @@ describe("§6 link, protect, unlink", () => {
     const a = await d.open();
     await a.set({ k: 1 });
     await a.syncNow();
-    const code = await a.exportCode();
+    const code = await a.exportToken();
     const docs = w.store.size;
     await a.unlink();
     expect(await d.idb.databases()).toHaveLength(1);
     expect(w.store.size).toBe(docs);
-    await expect(a.get()).rejects.toBeInstanceOf(BurrowError);
+    await expect(a.get()).rejects.toMatchObject({
+      name: "BurrowError",
+      code: "unlinked",
+    });
     const b = await d.open();
     expect(b).not.toBe(a);
-    expect(await b.exportCode()).not.toBe(code);
+    expect(await b.exportToken()).not.toBe(code);
     expect(await b.get()).toEqual({});
-    await b.link({ code });
+    await b.link({ token: code });
     expect(await b.get()).toEqual({ k: 1 });
   });
 
@@ -715,45 +710,12 @@ describe("§6 link, protect, unlink", () => {
     await a.unlink({ discardLocal: true });
   });
 
-  it("protect('sync-code') marks the secret protected; exportCode() alone does not (D-27)", async () => {
-    const a = await fresh().device().open();
-    await a.exportCode();
-    expect(a.protection).toBe("none");
-    expect(a.inspect().provider).toBeNull();
-    await a.protect("sync-code");
-    expect(a.protection).toBe("code");
-    expect(a.inspect().provider).toBe("sync-code");
-  });
-
-  it("protect() with an unknown provider rejects no-provider", async () => {
-    const a = await fresh().device().open();
-    await expect(a.protect("nope")).rejects.toMatchObject({
-      code: "no-provider",
-    });
-  });
-
-  it("KP-14 onUnprotected fires once per device when data exists and nothing protects it", async () => {
-    const d = fresh().device();
-    const a = await d.open();
-    let fired = 0;
-    a.onUnprotected.addListener(() => fired++);
-    await a.set({ k: 1 });
-    await until(() => fired === 1);
-    await a.set({ k: 2 });
-    a.close();
-    const b = await d.open();
-    b.onUnprotected.addListener(() => fired++);
-    await b.set({ k: 3 });
-    await new Promise((r) => setTimeout(r, 20));
-    expect(fired).toBe(1);
-  });
-
   it("KP-13 (not implemented, D-41) a #burrow=<code> fragment is ignored and left in the URL", async () => {
     const w = fresh();
     const a = await w.device().open();
     await a.set({ k: "shared" });
     await a.syncNow();
-    const code = await a.exportCode();
+    const code = await a.exportToken();
     const href = `https://example.test/app#burrow=${code}`;
     const replaceState = vi.fn();
     vi.stubGlobal("location", { href, hash: `#burrow=${code}` });
@@ -761,7 +723,7 @@ describe("§6 link, protect, unlink", () => {
     try {
       const b = await w.device().open();
       expect(b.token.source).toBe("generated");
-      expect(await b.exportCode()).not.toBe(code);
+      expect(await b.exportToken()).not.toBe(code);
       expect(await b.get()).toEqual({});
       expect(location.href).toBe(href);
       expect(replaceState).not.toHaveBeenCalled();
@@ -773,10 +735,10 @@ describe("§6 link, protect, unlink", () => {
   it("rememberDevice: false keeps the secret in memory only", async () => {
     const d = fresh().device();
     const a = await d.open({ rememberDevice: false });
-    const code = await a.exportCode();
+    const code = await a.exportToken();
     a.close();
     expect(
-      await (await d.open({ rememberDevice: false })).exportCode(),
+      await (await d.open({ rememberDevice: false })).exportToken(),
     ).not.toBe(code);
   });
 });
@@ -787,7 +749,7 @@ describe("SYNC-14 tabs", () => {
     const t1 = await d.open({}, d.env());
     const t2 = await d.open({}, d.env());
     expect(t1).not.toBe(t2);
-    expect(await t1.exportCode()).toBe(await t2.exportCode());
+    expect(await t1.exportToken()).toBe(await t2.exportToken());
     const seen: ChangedEvent[] = [];
     t2.onChanged.addListener((e) => seen.push(e));
     await t1.set({ k: "from t1" });
@@ -808,7 +770,7 @@ describe("SYNC-14 tabs", () => {
     await t2.set({ b: 2 });
     await Promise.all([t1.syncNow(), t2.syncNow()]);
     const other = await w.device().open();
-    await other.link({ code: await t1.exportCode() });
+    await other.link({ token: await t1.exportToken() });
     expect(await other.get()).toEqual({ a: 1, b: 2 });
   });
 
@@ -820,7 +782,7 @@ describe("SYNC-14 tabs", () => {
     await src.syncNow();
     const t1 = await d.open({}, d.env());
     const t2 = await d.open({}, d.env());
-    await t1.link({ code: await src.exportCode() });
+    await t1.link({ token: await src.exportToken() });
     await until(async () => (await t2.get("x")).x === "linked");
   });
 });
@@ -830,60 +792,51 @@ describe("token source (demo journeys)", () => {
     const d = fresh().device();
     const a = await d.open();
     expect(a.token).toMatchObject({ source: "generated", remembered: false });
-    expect(a.inspect().tokenSource).toBe("generated");
     a.close();
     const b = await d.open();
     expect(b.token).toMatchObject({ source: "generated", remembered: true });
     expect(b.token.since).toBe(a.token.since);
   });
 
-  it("linking by token records 'code', fires onToken, and survives a reload", async () => {
+  it("linking by token records 'token', fires onToken, and survives a reload", async () => {
     const w = fresh();
     const a = await w.device().open();
     const D = w.device();
     const b = await D.open();
     const seen: string[] = [];
     b.onToken.addListener((t) => seen.push(`${t.source}:${t.remembered}`));
-    await b.link({ code: await a.exportCode() });
-    expect(b.token).toMatchObject({ source: "code", remembered: false });
-    expect(seen).toEqual(["code:false"]);
+    await b.link({ token: await a.exportToken() });
+    expect(b.token).toMatchObject({ source: "token", remembered: false });
+    expect(seen).toEqual(["token:false"]);
     b.close();
     expect((await D.open()).token).toMatchObject({
-      source: "code",
+      source: "token",
       remembered: true,
     });
   });
 
-  it("a provider records its own id", async () => {
+  it("link({ source }) records the site's label, and it survives a reload", async () => {
     const w = fresh();
-    const code = await (await w.device().open()).exportCode();
-    const { decodeSyncCode } = await import("../../src/codec/synccode.js");
-    const b = await w.device().open({
-      keyProvider: {
-        id: "vault",
-        available: async () => true,
-        enrol: async () => {},
-        recover: async () => (await decodeSyncCode(code)).secret,
-      },
+    const token = await (await w.device().open()).exportToken();
+    const D = w.device();
+    const b = await D.open();
+    await b.link({ token, source: "passkey" });
+    expect(b.token.source).toBe("passkey");
+    b.close();
+    expect((await D.open()).token).toMatchObject({
+      source: "passkey",
+      remembered: true,
     });
-    await b.link();
-    expect(b.token.source).toBe("vault");
-  });
-
-  it("exportCode() no longer counts as protecting the token", async () => {
-    const a = await fresh().device().open();
-    await a.exportCode();
-    expect(a.protection).toBe("none");
   });
 
   it("another tab sees the new source after a link", async () => {
     const w = fresh();
     const d = w.device();
-    const code = await (await w.device().open()).exportCode();
+    const code = await (await w.device().open()).exportToken();
     const t1 = await d.open({}, d.env());
     const t2 = await d.open({}, d.env());
-    await t1.link({ code });
-    await until(() => t2.token.source === "code");
+    await t1.link({ token: code, source: "vault" });
+    await until(() => t2.token.source === "vault");
     expect(t2.token.remembered).toBe(true);
   });
 });

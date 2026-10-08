@@ -19,7 +19,11 @@ const stubSdk = {
 
 export default defineConfig([
   {
-    entry: { index: "src/index.ts", firestore: "src/backends/firestore.ts" },
+    entry: {
+      index: "src/index.ts",
+      passkey: "src/passkey.ts",
+      firestore: "src/backends/firestore.ts",
+    },
     format: ["esm"],
     platform: "browser",
     target: "es2022",

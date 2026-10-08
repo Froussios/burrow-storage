@@ -26,7 +26,6 @@ export interface AppMeta {
   /** Greatest remote ts seen, for clock-skew correction (SYNC-11). */
   maxRemoteTs?: number;
   lastSyncAt?: number | null;
-  unprotectedFired?: boolean;
 }
 
 /**
@@ -40,15 +39,9 @@ export interface DeviceMeta {
    * Non-extractable AES-KW key; IndexedDB stores the CryptoKey object itself.
    */
   kw?: CryptoKey;
-  /** Which unlock method protects the current secret on this device. */
-  protection?: string;
   /** How this device obtained the secret, and when (TokenInfo). */
   tokenSource?: string;
   tokenSince?: number;
-  /**
-   * Provider-owned values (KP-9: the passkey credential id), keyed "p:<name>".
-   */
-  [provider: `p:${string}`]: string | undefined;
 }
 
 export interface Cache {

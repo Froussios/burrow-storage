@@ -7,10 +7,13 @@ what a site should show. Signatures are in [api.md](api.md).
 
 | Term | Meaning |
 | --- | --- |
-| **Storage token** (or just **token**) | The 32-byte secret that owns a user's data. Whoever holds it can read and write that data from any device. Shown to people as 56 characters in groups of four, `07DV-1XKY-…`. The API calls it `code`: `exportCode()`, `link({ code })`, `bad-code`. |
-| **Passkey backup** | The token stored in a *keyslot* document in the shared store, wrapped under a key that only the passkey's PRF output can derive. One passkey, one keyslot. |
-| **Protection** | What this device knows could bring the token back elsewhere: `"passkey"`, `"code"` (the user has kept the token) or `"none"`. |
+| **Storage token** (or just **token**) | The 32-byte secret that owns a user's data. Whoever holds it can read and write that data from any device. Shown to people as 56 characters in groups of four, `07DV-1XKY-…`, which is also the form the API takes and returns: `exportToken()`, `link({ token })`. |
+| **Passkey backup** | The token stored in a *keyslot* document in the shared store, wrapped under a key that only the passkey's PRF output can derive. One passkey, one keyslot. Optional, from `burrow-storage/passkey`. |
 | **Linking** | Making this device use an existing token instead of the one it generated. |
+
+The store only ever deals in the token. Getting it from one device to the next is the site's
+choice: the user types or pastes it, a password manager fills it, a passkey backup returns it, or
+the site's own mechanism does. Each one ends in `link({ token })`.
 
 ## First device: nothing to do
 
@@ -34,19 +37,19 @@ synced under the old one.
 
 ```js
 // first device
-tokenEl.textContent = await store.exportCode();
+tokenEl.textContent = await store.exportToken();
 
 // second device
 try {
-  await store.link({ code: input.value });
+  await store.link({ token: input.value });
 } catch (e) {
-  if (e.code === "bad-code") say("That token is not right. Check it and try again.");
+  if (e.code === "bad-token") say("That token is not right. Check it and try again.");
 }
 ```
 
 - Decoding is forgiving: case, spaces and hyphens are ignored, `O` reads as `0`, `I` and `L` as
   `1`. The alphabet has no `I`, `L`, `O` or `U`.
-- A 16-bit checksum catches typos: a wrong token rejects with `bad-code` before any network call
+- A 16-bit checksum catches typos: a wrong token rejects with `bad-token` before any network call
   and nothing changes. A random well-formed string passes the checksum about once in 65 536
   attempts and is then adopted as a new, empty token. The demo therefore always shows the token
   in use, so the user can compare it with the one they meant to enter.
@@ -58,30 +61,39 @@ try {
 ## Second device, option 2: a passkey backup
 
 ```js
+import { passkeyBackup } from "burrow-storage/passkey";
+const backup = passkeyBackup();
+
 // first device, from a click
-try {
-  await store.protect("passkey");
-} catch (e) {
-  if (e.code === "prf-unsupported") say("This browser cannot use passkeys for this. Keep your token instead.");
+if (await backup.available()) {
+  try {
+    await backup.save(await store.exportToken());
+  } catch (e) {
+    if (e.code === "prf-unsupported") say("This browser cannot use passkeys for this. Keep your token instead.");
+  }
 }
 
-// second device, from a click
-await store.link({ provider: "passkey" });   // one passkey prompt; no-provider if declined
+// second device, from a click: one passkey prompt
+const token = await backup.restore();      // null if declined or no backup
+if (token) await store.link({ token, source: "passkey" });
 ```
 
-`protect("passkey")` creates a discoverable passkey (user verification required, no attestation)
-and evaluates the WebAuthn PRF extension with a fixed salt. From the PRF output it derives a
-wrapping key, a write-token key and a document id, and writes the token, encrypted, at that id in
-the shared store. The passkey itself never becomes the secret, so several passkeys (one per
-platform) can each hold a keyslot for the same token.
+`save(token)` creates a discoverable passkey (user verification required, no attestation) and
+evaluates the WebAuthn PRF extension with a fixed salt. From the PRF output it derives a wrapping
+key, a write-token key and a document id, and writes the token, encrypted, at that id in the
+shared store. The passkey itself never becomes the secret, so several passkeys (one per platform)
+can each hold a keyslot for the same token.
 
-`link({ provider: "passkey" })` evaluates the PRF again, derives the same id, reads and unwraps the
-keyslot. If the chosen passkey has no keyslot, or the user cancels, the call rejects with
-`no-provider` and nothing changes.
+`restore()` evaluates the PRF again, derives the same id, reads and unwraps the keyslot, and
+returns the token. If the chosen passkey has no keyslot, or the user cancels, it returns `null`
+and nothing changes. Because the token comes back as a value, a `would-orphan` retry of `link()`
+reuses it without a second prompt. `source: "passkey"` labels it in `store.token.source`, so the
+UI can say where it came from.
 
 PRF support varies by browser, operating system and authenticator, and not every security key
-offers it. `passkey().available()` checks without prompting. Cross-ecosystem use (an Apple passkey on Windows) goes through the browser's QR/hybrid
-flow. **The storage token is the path that always works**; offer it alongside the passkey.
+offers it. `backup.available()` checks without prompting. Cross-ecosystem use (an Apple passkey on
+Windows) goes through the browser's QR/hybrid flow. **The storage token is the path that always
+works**; offer it alongside the passkey.
 
 ## What to show
 
@@ -89,11 +101,21 @@ The demo (`demo/`, [user-journeys.md](user-journeys.md)) is the reference UI. It
 
 1. **Always show the token in use** and where it came from (`BurrowArea.token`): generated here,
    pasted, restored from a passkey, remembered from an earlier visit.
-2. **Nudge once.** `onUnprotected` fires once per device when there is data and no protection,
-   usually soon after the first write. Register the listener right after `burrow()` resolves: the
-   event is not repeated for listeners added later. Use it for a low-key banner, not a modal on
-   first load. When the user confirms they saved the token, call `protect("sync-code")`, which
-   records the copy (`protection` becomes `"code"`); `exportCode()` alone does not.
+2. **Nudge once.** A token whose `source` is `"generated"` was made on this device and, as far
+   as Burrow knows, exists nowhere else. Once there is something worth keeping, show a low-key
+   banner, not a modal on first load. Burrow cannot know whether the user kept the token, so
+   remember a confirmed backup yourself. The demo stores it in the area, where it syncs with the
+   data:
+
+   ```js
+   let nudged = false;
+   store.onChanged.addListener(({ source }) => {
+     if (nudged || source !== "local" || store.token.source !== "generated") return;
+     if (store.storage.getItem("backup")) return; // the site's own record
+     nudged = true;
+     showBanner("Keep your storage token, or create a passkey backup, to get this back elsewhere.");
+   });
+   ```
 3. **Confirm before discarding.** `link()` and `unlink()` reject with `would-orphan` when this
    device has writes that never synced. Ask, then retry with `discardLocal: true`.
 4. **Say it plainly:** "Burrow cannot reset your data. Keep your storage token."

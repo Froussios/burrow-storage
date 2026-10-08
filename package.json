@@ -18,6 +18,10 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./passkey": {
+      "types": "./dist/passkey.d.ts",
+      "import": "./dist/passkey.js"
+    },
     "./firestore": {
       "types": "./dist/firestore.d.ts",
       "import": "./dist/firestore.js"

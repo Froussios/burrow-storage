@@ -24,18 +24,24 @@ export async function openArea(
   return p;
 }
 
-type Store = {
+export type Store = {
   set(i: object): Promise<void>;
   get(k?: unknown): Promise<Record<string, unknown>>;
   syncNow(): Promise<void>;
-  exportCode(): Promise<string>;
+  exportToken(): Promise<string>;
   link(o: object): Promise<void>;
-  protect(p?: string): Promise<void>;
   unlink(o?: object): Promise<void>;
   inspect(): Record<string, unknown>;
   storage: Storage;
   status: string;
-  protection: string;
+  token: { source: string; remembered: boolean; since: number | null };
+};
+
+/** `Burrow.passkeyBackup()` in the page, as the e2e specs use it. */
+export type PasskeyBackup = {
+  available(): Promise<boolean>;
+  save(token: string): Promise<void>;
+  restore(): Promise<string | null>;
 };
 
 /** Run `fn` in the page with the area as its argument. */

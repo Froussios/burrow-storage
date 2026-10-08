@@ -11,8 +11,8 @@ still links back to the data.
 - **Storage token** (or just **token**): the secret that owns a user's data. Whoever holds it can
   read and write that data from any device. It is 56 characters, shown in 14 groups of four
   (`07DV-1XKY-…`). The requirements brief calls it the *root secret*, and its typed form the *sync
-  code* (KP-11); the API keeps those names (`exportCode()`, `link({ code })`), see
-  [decisions.md](decisions.md) D-28.
+  code* (KP-11); the API calls it the token (`exportToken()`, `link({ token })`), see
+  [decisions.md](decisions.md) D-42.
 - **Backup**: the user's data in the shared store, encrypted under keys derived from the token.
 - **Passkey backup**: the token stored in a passkey's keyslot, so that passkey can bring it back
   on any device (KP-5, KP-6).
@@ -57,8 +57,10 @@ this device (new)* and *Passkey backup: None yet*.
 **Outcome:** the token is stored in a new passkey. The panel says *Passkey backup: Yes, in a
 passkey*. The data the user writes syncs to the store under that token.
 
-**How:** `BurrowArea.protect("passkey")` creates a discoverable passkey, evaluates its PRF, and
-writes a keyslot holding the token wrapped under the PRF output.
+**How:** `passkeyBackup().save(await store.exportToken())` creates a discoverable passkey,
+evaluates its PRF, and writes a keyslot holding the token wrapped under the PRF output. The demo
+then records the backup in the store under its own `backup` key, so every device linked to the
+token shows it.
 
 **Notes:**
 - Data syncs within seconds of being written, before any passkey exists. The passkey is what
@@ -77,16 +79,18 @@ the prompt.
 **Outcome:** the panel shows the original token, *Restored from your passkey*. The user's
 existing data appears, typically within a few seconds.
 
-**How:** `BurrowArea.link({ provider: "passkey" })` reads the keyslot, unwraps the token, makes it
-this device's token, and pulls the data.
+**How:** `passkeyBackup().restore()` reads the keyslot and unwraps the token;
+`BurrowArea.link({ token, source: "passkey" })` makes it this device's token and pulls the data.
 
 **Notes:**
 - If the user wrote anything under the fresh token first, linking would abandon it. The page
-  asks before discarding it (`would-orphan`).
+  asks before discarding it (`would-orphan`), then links the token it already has, without a
+  second prompt.
 - A passkey from another ecosystem works only through the QR/hybrid flow. This has not been
   tested on real hardware.
-- If the user picks a passkey that has no backup, the page says "No passkey was used". A clearer
-  message is a known gap.
+- If the user picks a passkey that has no backup, the page says "No passkey backup was used", the
+  same as for a dismissed prompt: `restore()` returns `null` in both cases. A clearer message is a
+  known gap.
 
 ## 3. Paste a token
 
@@ -98,7 +102,7 @@ device**.
 **Outcome:** the panel shows the pasted token, *Pasted or typed in*.
 Their existing data appears.
 
-**How:** `BurrowArea.link({ code })` checks the token's checksum before any network call, adopts it
+**How:** `BurrowArea.link({ token })` checks the token's checksum before any network call, adopts it
 and pulls the data. Case, spaces and hyphens are ignored, and `O`/`0` and `I`/`L`/`1` count as
 the same.
 

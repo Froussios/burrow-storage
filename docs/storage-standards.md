@@ -37,7 +37,7 @@ the six members; `getItem()` reads such a key. It differs from `localStorage` in
 | Size limit | An origin-wide quota, typically about 5 MB; exceeding it throws `QuotaExceededError` | No total quota of its own. Each item is limited to `maxItemBytes` (200 000 bytes of JSON by default); exceeding it throws `BurrowError("item-too-large")` |
 | Key order for `key(i)` | Implementation-defined | Also implementation-defined: keys loaded from the cache come in sorted order, and keys added later follow in insertion order |
 | `instanceof Storage` | `true` | `false`; `Object.prototype.toString.call(s)` still gives `"[object Storage]"` |
-| After `BurrowArea.unlink()` | Not applicable | Writes throw `BurrowError("no-provider")`; call `burrow()` again for a new `BurrowArea` |
+| After `BurrowArea.unlink()` | Not applicable | Writes throw `BurrowError("unlinked")`; call `burrow()` again for a new `BurrowArea` |
 | Clearing site data | Deletes the data | Deletes the local copy; the data stays in the store, reachable with the storage token |
 | Other devices | Never | Writes sync to every device that uses the same storage token |
 
@@ -58,8 +58,8 @@ It differs in these ways:
 | Errors | Rejections with a message | `BurrowError` with a stable `code` (see [api.md](api.md#errors)) |
 | Not implemented | | `setAccessLevel()`, `getKeys()`, the `QUOTA_*` constants and the area name |
 
-`BurrowArea` adds members of its own for sync and tokens (`status`, `token`, `protect()`, `link()`,
-`unlink()`, `exportCode()`, `syncNow()` and others), described in the [API reference](api.md).
+`BurrowArea` adds members of its own for sync and tokens (`status`, `token`, `link()`, `unlink()`,
+`exportToken()`, `syncNow()` and others), described in the [API reference](api.md).
 
 Writing a key to the value it already has is still a new write that syncs, so the last writer
 wins across devices; like `chrome.storage`, Burrow fires no `onChanged` event for it.

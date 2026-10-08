@@ -154,8 +154,8 @@ async function runScenario(ops: Op[], skews: number[]) {
     const devs = skews.map(() => world.device({ cache: "memory" }));
     const areas: Core[] = [];
     for (const d of devs) areas.push(await d.open({ debounceMs: 1e9 }));
-    const code = await areas[0]!.exportCode();
-    for (const a of areas.slice(1)) await a.link({ code });
+    const code = await areas[0]!.exportToken();
+    for (const a of areas.slice(1)) await a.link({ token: code });
     const lastOp = new Map<
       string,
       { t: "set"; value: number } | { t: "remove" }

@@ -31,3 +31,4 @@ setFirestoreSdkLoader(
 
 export * from "./index.js";
 export { FirestoreBackend } from "./backends/firestore.js";
+export { passkeyBackup } from "./passkey.js";

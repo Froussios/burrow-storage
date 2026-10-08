@@ -276,46 +276,45 @@ Full reference with every signature and error: [docs/api.md](docs/api.md).
 | `onChanged` | `{ changes: { key: { oldValue?, newValue? } }, source }`. Use `addListener(fn)`, or `addEventListener("changed", e => e.detail)`. |
 | `status`, `onStatus` | `"idle"`, `"syncing"`, `"offline"` or `"error"`; the event carries the last `BurrowError`. |
 | `token`, `onToken` | Where this device's storage token came from: `{ source, remembered, since }`. |
-| `protection`, `onUnprotected` | Whether an unlock method is recorded for the token on this device. `onUnprotected` fires once per device when there is data and nothing protects it. |
-| `exportCode()` | The storage token: 56 characters in groups of four. |
-| `link({ code })`, `link({ provider })`, `link()` | Adopt an existing token on this device: typed in, or recovered with a passkey. |
-| `protect("passkey")`, `protect("sync-code")` | Create a passkey backup of the token, or record that the user kept a copy. |
+| `exportToken()` | The storage token: 56 characters in groups of four. |
+| `link({ token, source? })` | Adopt an existing token on this device: typed in, or returned by a backup such as a passkey. `source` labels it in `token.source`. |
 | `unlink()` | Forget the token on this device, like logging out, and close this instance. The cached data stays, in plaintext, until the next `burrow()` clears it. |
 | `syncNow()` | Run one sync pass now; rejects if it failed. |
 | `exportJSON()`, `importJSON(json)` | A plaintext export of the app's data, and its inverse. |
 | `inspect()` | A plain object for a debug panel. |
 | `storage` | The synchronous `Storage` facade. |
+| `passkeyBackup()` | From `burrow-storage/passkey`, optional: `save(token)` behind a passkey, `restore()` it on another device. |
 
 Failures that Burrow detects reject with a `BurrowError` that carries a stable `code`:
-`bad-code`, `item-too-large`, `would-orphan`, `no-provider`, `prf-unsupported`, `decrypt-failed`,
-`conflict`, `quota` or `backend`. Invalid arguments reject with a `TypeError`, or throw one from
-the synchronous facade. Two calls can also pass on an error from below: `set()` when the browser
-refuses the local write (for example, its storage is full), and `protect("passkey")` when the store
-fails.
+`bad-token`, `item-too-large`, `would-orphan`, `unlinked`, `cancelled`, `prf-unsupported`,
+`decrypt-failed`, `conflict`, `quota` or `backend`. Invalid arguments reject with a `TypeError`, or
+throw one from the synchronous facade. Two calls can also pass on an error from below: `set()` when
+the browser refuses the local write (for example, its storage is full), and
+`passkeyBackup().save()` when the store fails.
 
 ## Reaching the data from another device
 
-The first device generates the storage token on first use and remembers it. Another device obtains
-the same token in one of two ways:
+The first device generates the storage token on first use and remembers it. Another device gets
+the same token to `link()`; the store does not care how. Burrow supports two ways:
 
 | Way | First device | Other device |
 | --- | --- | --- |
-| Storage token | `BurrowArea.exportCode()` | `BurrowArea.link({ code })` |
-| Passkey backup | `BurrowArea.protect("passkey")` | `BurrowArea.link({ provider: "passkey" })` |
+| Storage token | `BurrowArea.exportToken()`, shown to the user | `BurrowArea.link({ token })` with what they type |
+| Passkey backup | `PasskeyBackup.save(token)` | `BurrowArea.link({ token: await PasskeyBackup.restore(), source: "passkey" })` |
 
 - **Storage token.** 56 characters, such as
   `07DV-1XKY-2X98-DRCP-DJV6-FC2E-459V-AJTY-26K2-XJFQ-9BXZ-QRNF-X0F5-Z1XS` (made up; it fails its
   checksum). Case, spaces and hyphens are ignored, and `O`/`0` and `I`/`L`/`1` read the same. A
-  bad checksum rejects with `bad-code` before any network call. The natural place to keep it is a
+  bad checksum rejects with `bad-token` before any network call. The natural place to keep it is a
   password manager.
-- **Passkey backup.** Stores the token in a *keyslot* document, encrypted under a key that only
-  the passkey can derive (WebAuthn PRF). Needs HTTPS or `localhost` and PRF support, which still
-  varies; without it `protect("passkey")` rejects with `prf-unsupported`.
+- **Passkey backup.** `passkeyBackup()` from `burrow-storage/passkey` stores the token in a
+  *keyslot* document, encrypted under a key that only the passkey can derive (WebAuthn PRF), and
+  gives it back on another device with one prompt. Needs HTTPS or `localhost` and PRF support,
+  which still varies: `available()` says whether it can work, without prompting.
 
-`BurrowArea.protection` reads `"none"` until an unlock method is recorded: `protect("passkey")`, or
-`protect("sync-code")`, which records that the user kept the storage token. `onUnprotected` fires
-once per device when data exists and `protection` is `"none"`; it is not repeated for listeners
-added later.
+Burrow does not track whether the token is kept anywhere. `token.source === "generated"` means it
+was made on this device and exists nowhere else as far as Burrow knows: the moment to nudge the
+user to keep it ([how](docs/sync-and-tokens.md#what-to-show)).
 
 `link()` with a different token replaces the token for every Burrow app on the origin, refills the
 cache from the store, and fires `onToken` and `onChanged`. Writes this app has not synced are pushed
@@ -395,7 +394,7 @@ protect against: copied browser profiles, junk filling the store, and timing met
 | [docs/sync-and-tokens.md](docs/sync-and-tokens.md) | Storage tokens, passkey backups, `rememberDevice`, what to show users |
 | [docs/storage-standards.md](docs/storage-standards.md) | Setting up, and how Burrow differs from Web Storage and `chrome.storage` |
 | [docs/firestore-setup.md](docs/firestore-setup.md) | Creating and running the store: rules, costs, quotas, abuse |
-| [docs/extending.md](docs/extending.md) | Writing a backend for another store, or a custom unlock method |
+| [docs/extending.md](docs/extending.md) | Writing a backend for another store, or another way to carry the token |
 | [SECURITY.md](SECURITY.md) | Cryptographic design and threat model |
 | [docs/architecture.md](docs/architecture.md) | How the implementation fits together, for contributors |
 | [docs/decisions.md](docs/decisions.md) | Decision log |

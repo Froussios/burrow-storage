@@ -2,9 +2,10 @@
 // reject BackendError.
 
 export type BurrowErrorCode =
-  | "no-provider"
+  | "unlinked"
+  | "cancelled"
   | "prf-unsupported"
-  | "bad-code"
+  | "bad-token"
   | "item-too-large"
   | "backend"
   | "conflict"

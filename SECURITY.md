@@ -33,9 +33,16 @@ A user's identity is a **storage token** (the *root secret* below): 32 bytes fro
 serves every Burrow app on the origin; each app derives its own keys from it. The token leaves the
 device only when the user carries it:
 
-- typed or pasted, encoded as 56 Crockford base32 characters (`exportCode()`), or
+- typed or pasted, encoded as 56 Crockford base32 characters (`exportToken()`, `link()`), or
 - wrapped inside a **passkey keyslot** in the store, which only that passkey's PRF output can
-  unwrap.
+  unwrap (`burrow-storage/passkey`).
+
+Between the store and a backup, the token crosses the site's own code as that encoded string:
+`exportToken()` returns it and `link({ token })` takes it, and the passkey backup's `save()` and
+`restore()` take and return it too. JavaScript strings cannot be zeroised, so the string lives
+until the garbage collector reclaims it, like any password the page handles. The store's own copy
+stays wrapped as described below, and the passkey backup zeroises the raw bytes and the PRF output
+it derives from the string.
 
 On the device the token is kept in IndexedDB wrapped with AES-KW under a non-extractable
 `CryptoKey`, and in memory only in that wrapped form; it is unwrapped for the duration of one
@@ -69,10 +76,10 @@ performs extract and expand in one `deriveBits` call. Test vectors produced by a
 implementation (`node:crypto`, `scripts/gen-vectors.mjs`) are committed in `test/vectors.json`,
 and the unit tests check the WebCrypto code against them.
 
-A token derived from something the user types (a passphrase) must first pass through
-PBKDF2-SHA-256 with at least 600 000 iterations. v1 ships only random tokens; the PBKDF2 path
-exists in the code but is not exported, and the storage-token encoding reserves version byte
-`0x02` for it.
+A token derived from something the user types (a passphrase) would have to pass through
+PBKDF2-SHA-256 with at least 600 000 iterations first. v1 has no such path and accepts only random
+tokens (version byte `0x01`); the storage-token encoding reserves `0x02` for a passphrase-derived
+token, and v1 rejects it as `bad-token`.
 
 ## Formats
 
@@ -163,11 +170,11 @@ read it.
 | An id leaks (URL, logs) | Reading it yields ciphertext only; writing needs the token chain. Burrow never logs ids, and error causes are scrubbed of anything that looks like one. |
 | Overwrite or vandalism of a known id | Hash-chained tokens; `rev` must advance by exactly one. |
 | Replay of an old document | `id`, `app` and `rev` are GCM additional data; the store rejects `rev ≤ current`. |
-| Brute force of a weak typed secret | Tokens are random 256-bit; a passphrase must go through PBKDF2 ≥ 600 000 (not shipped in v1). |
-| Malicious script on the site (XSS, bad CDN) | **Out of scope**, as for `localStorage`: a script on your origin can read the cache and call `exportCode()`. Use a strict CSP and SRI; Burrow runs without `eval`, inline scripts or third-party script hosts when self-hosted. |
+| Brute force of a weak typed secret | Tokens are random 256-bit; a passphrase would have to go through PBKDF2 ≥ 600 000 (not in v1). |
+| Malicious script on the site (XSS, bad CDN) | **Out of scope**, as for `localStorage`: a script on your origin can read the cache and call `exportToken()`. Use a strict CSP and SRI; Burrow runs without `eval`, inline scripts or third-party script hosts when self-hosted. |
 | Copied browser profile | The wrapped token is **an obstacle, not a guarantee**. The AES-KW key that wraps it is stored beside it in IndexedDB. "Non-extractable" stops a script from exporting that key; it does not stop someone who copies the browser's profile directory, where the key material lives with the rest of IndexedDB. Treat a copied profile as a copied token. `rememberDevice: false` plus a passkey keeps nothing on disk. |
 | Junk writes to the shared project | Anyone who knows the project id can create documents. Daily read and write quotas reset, so traffic abuse only pauses sync and can never produce a bill on Spark. **Stored bytes (1 GiB) do not reset**: the rules forbid delete, so only the project owner can remove junk, from the console or with the Admin SDK. Accepted for prototypes. Burrow has no built-in defence: the Firestore adapter creates its own Firebase app instance, so a site cannot attach Firebase App Check to it today. |
-| Lost token | Not recoverable by design. A browser can also lose it: Safari deletes a site's IndexedDB after seven days of Safari use without the user interacting with the site, and other browsers may evict storage under disk pressure (Burrow does not request persistent storage). Burrow offers the storage token, passkey keyslots, JSON export, and the `onUnprotected` event so sites can prompt users to keep a copy. |
+| Lost token | Not recoverable by design. A browser can also lose it: Safari deletes a site's IndexedDB after seven days of Safari use without the user interacting with the site, and other browsers may evict storage under disk pressure (Burrow does not request persistent storage). Burrow offers the storage token, passkey keyslots, JSON export, and `token.source === "generated"` so sites can prompt users to keep a copy. |
 | Compression side channel | Ciphertext length reveals how compressible the plaintext was. Irrelevant for a user's own settings; there is no switch to disable compression in v1. |
 | Operator rollback or deletion | Rules bind clients, not the project's owner: through the console or the Admin SDK the owner (or Google) can delete a document, restore an older one, or write garbage. A restored document still decrypts, and clients write on top of it at the next revision. Garbage fails to decrypt (`decrypt-failed`, sync pauses). Availability and freshness depend on the operator; confidentiality does not. |
 

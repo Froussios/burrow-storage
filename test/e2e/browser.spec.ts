@@ -8,7 +8,7 @@ test("KP-1/KP-2 data and secret persist across reloads; burrow() is fast when wa
 }) => {
   const page = await openArea(context);
   await withStore(page, (s) => s.set({ theme: "dark" }));
-  const code = await withStore(page, (s) => s.exportCode());
+  const code = await withStore(page, (s) => s.exportToken());
   await page.reload();
   const t = await page.evaluate(async () => {
     const w = window as unknown as {
@@ -22,7 +22,7 @@ test("KP-1/KP-2 data and secret persist across reloads; burrow() is fast when wa
   expect(await withStore(page, (s) => s.get("theme"))).toEqual({
     theme: "dark",
   });
-  expect(await withStore(page, (s) => s.exportCode())).toBe(code);
+  expect(await withStore(page, (s) => s.exportToken())).toBe(code);
   test
     .info()
     .annotations.push({ type: "burrow() warm ms", description: t.toFixed(1) });
@@ -37,10 +37,10 @@ test("a second device (another browser profile) gets the data via the sync code 
   const a = await openArea(deviceA);
   await withStore(a, (s) => s.set({ theme: "dark", draft: "written on A" }));
   await withStore(a, (s) => s.syncNow());
-  const code = await withStore(a, (s) => s.exportCode());
+  const code = await withStore(a, (s) => s.exportToken());
   const b = await openArea(deviceB);
   const t0 = Date.now();
-  await withStore(b, (s, code) => s.link({ code }), code);
+  await withStore(b, (s, code) => s.link({ token: code }), code);
   expect(await withStore(b, (s) => s.get())).toEqual({
     theme: "dark",
     draft: "written on A",
@@ -92,8 +92,8 @@ test("offline: writes work locally, status goes offline, sync resumes when back 
   const b = await openArea(deviceB);
   await withStore(
     b,
-    (s, code) => s.link({ code }),
-    await withStore(a, (s) => s.exportCode()),
+    (s, code) => s.link({ token: code }),
+    await withStore(a, (s) => s.exportToken()),
   );
   await deviceA.setOffline(true);
   await withStore(a, (s) => s.set({ offlineEdit: 1 }));
@@ -137,7 +137,7 @@ test("KP-13 (not implemented, D-41) a #burrow=<code> fragment is ignored and sta
   const a = await openArea(deviceA);
   await withStore(a, (s) => s.set({ k: "shared" }));
   await withStore(a, (s) => s.syncNow());
-  const code = await withStore(a, (s) => s.exportCode());
+  const code = await withStore(a, (s) => s.exportToken());
   const deviceB = await browser.newContext();
   const b = await deviceB.newPage();
   await b.goto(`/test/e2e/harness.html?emu=${EMU}#burrow=${code}`);
@@ -148,7 +148,7 @@ test("KP-13 (not implemented, D-41) a #burrow=<code> fragment is ignored and sta
     };
     w.store = await w.Burrow.burrow({ app: "e2e" });
   });
-  expect(await withStore(b, (s) => s.exportCode())).not.toBe(code);
+  expect(await withStore(b, (s) => s.exportToken())).not.toBe(code);
   expect(await withStore(b, (s) => s.get())).toEqual({});
   expect(new URL(b.url()).hash).toBe(`#burrow=${code}`);
   await deviceA.close();

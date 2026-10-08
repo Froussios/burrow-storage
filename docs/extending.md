@@ -1,8 +1,9 @@
-# Extending Burrow: backends and unlock methods
+# Extending Burrow: backends and token carriers
 
-Two seams are pluggable: the **backend** (where encrypted documents live) and the **unlock
-methods** (how a token reaches another device). Both are plain interfaces from `burrow-storage`;
-nothing in the core special-cases the built-ins.
+Two things are yours to choose: the **backend**, where encrypted documents live, is a plain
+interface from `burrow-storage` that nothing in the core special-cases; and **how a token reaches
+another device**, which needs no interface at all, because the store only takes and gives a
+string.
 
 ## A backend for another store
 
@@ -43,8 +44,6 @@ optional `getMany(ids)` and `subscribe(id, onChange)`.
 - `subscribe(id, onChange)` is called with the user's manifest id only; call `onChange` with the
   new envelope when it changes and return an unsubscribe function. Burrow falls back to polling
   when it is absent.
-- `keepalive` and `opts.keepalive` are declared for adapters that can honour them (a `fetch` with
-  `keepalive: true`); the shipped backends do not use them yet.
 
 ### Verifying it
 
@@ -67,42 +66,28 @@ adapter passes it against the emulator (`npm run test:firestore`); `MemoryBacken
 The underlying store must offer an atomic compare-and-set for `put`; Workers KV alone, for
 example, does not.
 
-## An unlock method
+## Another way to carry the token
 
-> **Planned change.** [#28](https://github.com/Froussios/burrow-storage/issues/28) proposes
-> replacing this interface: only the token would cross the API, with passkey storage as a separate,
-> optional utility.
+There is no plug-in interface for this. The store deals only in the storage token, a 56-character
+string: `exportToken()` hands it out and `link({ token, source })` takes it in. Anything that can
+keep a string for the user and give it back can carry it: a password manager, a QR code shown on
+one device and scanned on another, a file the user saves, your own service.
 
-An unlock method is a `KeyProvider`: it stores the storage token somewhere off the device and
-returns it later. Burrow ships `passkey()` and `syncCode()`. `KeyProvider` and the context types
-it receives (`EnrolContext`, `RecoverContext`, `ProviderStore`) are defined with a comment on every
-member in [`src/types.ts`](../src/types.ts).
+```js
+// Keep it somewhere, from a click.
+await myVault.put(await store.exportToken());
 
-### How Burrow calls a provider
+// Later, on another device, from a click.
+const token = await myVault.get();
+if (token) await store.link({ token, source: "vault" });
+```
 
-Providers are configured with `BurrowConfig.keyProvider`; the list replaces the default
-`[passkey(), syncCode()]`. Only Burrow calls them:
+`source` is a label that Burrow records with the token and reports in `store.token.source`, so
+the page can say where the token came from. It has no other effect.
 
-| `BurrowArea` method | Provider calls | Records the provider's id in |
-| --- | --- | --- |
-| `protect(id?)` | `available()`, then `enrol(ctx)` on the provider named `id`, or on the first available one | `BurrowArea.protection` |
-| `link({ provider? })` | `available()`, then `recover(ctx)` on the provider named `provider`, or on each in order until one returns a token | `BurrowArea.protection` and `BurrowArea.token.source` |
+Treat the token like a password. Whoever obtains it can read and overwrite the user's data, from
+anywhere, for good: Burrow cannot revoke it. So do not put it in a URL, a log, analytics or an
+error report, and encrypt it at rest under something only the user has, as the passkey backup does.
 
-The id `"sync-code"` is recorded as `"code"`. When `link()` recovers the token already in use, only
-a `protection` of `"none"` is updated.
-
-### Contract
-
-- `available()` must answer without prompting the user.
-- `enrol(ctx)` receives the token as `ctx.rootSecret`, zeroised after the call; do not keep a
-  reference. A provider that writes to the backend should store an envelope chained under a key
-  derived from its own material, as `passkey()` does.
-- `recover(ctx)` may prompt (`ctx.interactive` is true). It returns the 32-byte token, or `null`
-  when the user declined or nothing was found. If it throws, Burrow tries the next provider.
-- On a local-only page, `ctx.backend` is `null` at runtime despite its type.
-- A token derived from user input (a passphrase) must go through PBKDF2-SHA-256 with at least
-  600 000 iterations and is tagged with version byte `0x02` in the storage-token encoding
-  (reserved; v1 ships only random tokens, `0x01`).
-
-The built-in providers, [`src/providers/passkey.ts`](../src/providers/passkey.ts) and
-[`src/providers/synccode.ts`](../src/providers/synccode.ts), are the reference implementations.
+The passkey backup, [`src/passkey.ts`](../src/passkey.ts), is the reference: it is built only on
+`exportToken()` and `link()` plus a backend for its keyslot, with no access to the store's state.

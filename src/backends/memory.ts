@@ -48,8 +48,6 @@ export class MemoryBackend implements Backend {
   readonly capabilities = {
     writeAuth: true,
     subscribe: true,
-    keepalive: true,
-    maxEnvelopeBytes: 1_048_576,
   };
   readonly store: Map<string, Envelope>;
   /** Test hook: when set, every call rejects with this error code. */

@@ -24,9 +24,9 @@ function cacheSuite(name: string, factory: () => Make) {
       await c.setMeta({ manifestRev: 3 });
       await c.setMeta({ lastSyncAt: 9 });
       expect(await c.getMeta()).toEqual({ manifestRev: 3, lastSyncAt: 9 });
-      await c.setDevice({ protection: "code", "p:cred": "abc" });
-      await c.setDevice({ "p:cred": undefined });
-      expect(await c.getDevice()).toEqual({ protection: "code" });
+      await c.setDevice({ tokenSource: "token", tokenSince: 7 });
+      await c.setDevice({ tokenSince: undefined });
+      expect(await c.getDevice()).toEqual({ tokenSource: "token" });
     });
 
     it("SYNC-2 putItems is atomic: one record that cannot be stored mid-batch writes nothing", async () => {
@@ -90,8 +90,8 @@ function cacheSuite(name: string, factory: () => Make) {
     it("device state is shared by every app on the origin (KP-4)", async () => {
       const make = factory();
       const a = await make("a");
-      await a.setDevice({ protection: "passkey" });
-      expect((await (await make("b")).getDevice()).protection).toBe("passkey");
+      await a.setDevice({ tokenSource: "passkey" });
+      expect((await (await make("b")).getDevice()).tokenSource).toBe("passkey");
     });
 
     it("KP-2 persists a non-extractable CryptoKey", async () => {

@@ -104,7 +104,7 @@ describe("API-9..12 Storage facade", () => {
       () => b.inspect().dirtyKeys === 0 && b.inspect().manifestRev !== null,
     );
     const other = await world.device().open();
-    await other.link({ code: await b.exportCode() });
+    await other.link({ token: await b.exportToken() });
     expect(other.storage.getItem("late")).toBe("1");
   });
 
@@ -148,7 +148,7 @@ describe("API-9..12 Storage facade", () => {
 
   it("a facade write on one device reaches another", async () => {
     const b = await world.device().open();
-    await b.link({ code: await a.exportCode() });
+    await b.link({ token: await a.exportToken() });
     a.storage.setItem("shared", "yes");
     await a.syncNow();
     await b.syncNow();

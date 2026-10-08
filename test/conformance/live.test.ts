@@ -108,7 +108,7 @@ describe("Burrow over the live store", () => {
           `${s.status}${s.error ? `:${s.error.code}:${String((s.error.cause as Error)?.message ?? "")}` : ""}`,
         ),
       );
-      await b.link({ code: await a.exportCode() });
+      await b.link({ token: await a.exportToken() });
       const data = await b.get();
       if (!Object.keys(data).length)
         throw new Error(

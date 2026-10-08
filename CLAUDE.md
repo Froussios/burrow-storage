@@ -42,9 +42,13 @@ them as history unless the owner says otherwise.
 - **Public contract**, major version to change: the `Envelope` format, HKDF salts `burrow/v1`,
   `burrow/slot/v1`, PRF salt `burrow/prf/v1`, the info labels, the AAD and token formats, the
   storage-token encoding (`SECURITY.md`).
-- Size budgets (min+gzip, `npm run size`): core + memory backend ≤ 12 KB; passkey provider ≤ 2 KB.
-- Terminology: user-facing text says **storage token** for the sync code and **passkey backup**
-  for a keyslot; the API names stay (`exportCode`, `link({ code })`, `bad-code`, `"code"`), see D-28.
+- Size budgets (min+gzip, `npm run size`): core + memory backend ≤ 12 KB; the passkey backup
+  (`burrow-storage/passkey`) ≤ 2 KB on top.
+- Terminology: the **storage token** (`exportToken()`, `link({ token })`, `bad-token`) and the
+  **passkey backup** for a keyslot, in user-facing text and the API alike (D-42). The requirements
+  brief's *sync code* and *root secret* are the same token.
+- The store deals only in the token string. Ways to carry it (passkey backup, a site's own) live
+  outside the core and call `exportToken()` / `link()`; there is no provider interface (D-42).
 
 ## Toolchain
 
@@ -64,7 +68,7 @@ npm run format         # prettier --write ., then scripts/wrap-comments.mjs wrap
 npm run format:check   # both in check mode (runs in CI)
 npm test               # vitest: test/unit, test/property, test/conformance/memory.test.ts
 npm run test:watch
-npm run build          # tsup → dist/index.js, dist/firestore.js, dist/burrow.min.js, dist/burrow-firestore.js
+npm run build          # tsup → dist/index.js, dist/passkey.js, dist/firestore.js, dist/burrow.min.js, dist/burrow-firestore.js
 npm run size           # scripts/size.mjs budgets
 npm run docs:check     # typecheck every README/guide code block against dist/*.d.ts (after a build)
 npm run check          # typecheck + test + build + size + docs:check
@@ -90,18 +94,19 @@ skip the emulator suites.
 
 ```
 src/
-  index.ts              public entry: burrow(), re-exports, default backend discovery, per-page Env
+  index.ts              public entry: burrow(), re-exports, per-page Env
+  config.ts             default backend discovery (page config), shared with passkey.ts
+  passkey.ts            burrow-storage/passkey: passkeyBackup() (save/restore the token)
   iife.ts               script-tag entry (global Burrow) and the burrow-firestore.js loader
   types.ts              every public interface (single source of truth)
   errors.ts  events.ts  BurrowError/BackendError/scrub(); BurrowEvent
-  core.ts               Core: mirror, cache, local writes, sync engine, tabs, link/unlink/protect
+  core.ts               Core: mirror, cache, local writes, sync engine, tabs, link/unlink
   facade.ts             synchronous Storage facade (Proxy)
   secret.ts             SecretHolder: AES-KW wrapped token
   bytes.ts              utf8/base64url/hex/sha256/random/zeroise
-  codec/                derive.ts (HKDF, ids, tokens), envelope.ts (seal/open), synccode.ts
+  codec/                derive.ts (HKDF, ids, tokens), envelope.ts (seal/open), token.ts
   cache/                types.ts, indexeddb.ts, memory.ts
   sync/merge.ts         pure LWW merge
-  providers/            passkey.ts, synccode.ts
   backends/             memory.ts, firestore.ts, firestore-sdk.ts
 test/                   unit/, property/, conformance/, e2e/, smoke/, sample-app/, support/, vectors.json, setup.ts
 firebase/               firestore.rules, firebase.json, README.md, tests/ (rules tests, own package.json)

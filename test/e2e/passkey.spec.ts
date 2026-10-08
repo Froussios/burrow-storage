@@ -1,7 +1,12 @@
-// KP-5..10 with Chromium's virtual authenticator (PRF): enrol, full site-data
-// reset, recover.
+// KP-5..8 with Chromium's virtual authenticator (PRF): burrow-storage/passkey's
+// save, a full site-data reset, restore, then link().
 import { type CDPSession, type Page, expect, test } from "@playwright/test";
-import { openArea, withStore } from "./helpers.js";
+import {
+  type PasskeyBackup,
+  type Store,
+  openArea,
+  withStore,
+} from "./helpers.js";
 
 test.skip(
   ({ browserName }) => browserName !== "chromium",
@@ -25,26 +30,31 @@ async function authenticator(page: Page): Promise<CDPSession> {
   return cdp;
 }
 
-test("passkey: enrol, wipe all site data, recover the same data with one passkey prompt", async ({
+/** Run `fn` in the page with `Burrow.passkeyBackup()` and the area. */
+function withBackup<T>(
+  page: Page,
+  fn: (backup: PasskeyBackup, store: Store) => Promise<T>,
+): Promise<T> {
+  return page.evaluate(
+    (src) =>
+      new Function("w", `return (${src})(w.Burrow.passkeyBackup(), w.store)`)(
+        window,
+      ),
+    fn.toString(),
+  ) as Promise<T>;
+}
+
+test("passkey: save, wipe all site data, restore the same data with one passkey prompt", async ({
   context,
 }) => {
   const page = await context.newPage();
   const cdp = await authenticator(page);
   await openArea(context, "e2e", page);
-  expect(
-    await page.evaluate(() =>
-      (
-        window as unknown as {
-          Burrow: { passkey(): { available(): Promise<boolean> } };
-        }
-      ).Burrow.passkey().available(),
-    ),
-  ).toBe(true);
+  expect(await withBackup(page, (b) => b.available())).toBe(true);
   await withStore(page, (s) => s.set({ theme: "dark", draft: "keep me" }));
   await withStore(page, (s) => s.syncNow());
-  await withStore(page, (s) => s.protect("passkey"));
-  expect(await withStore(page, (s) => s.protection)).toBe("passkey");
-  const code = await withStore(page, (s) => s.exportCode());
+  await withBackup(page, async (b, s) => b.save(await s.exportToken()));
+  const code = await withStore(page, (s) => s.exportToken());
 
   // A full browser data reset for this site: IndexedDB, cookies, storage —
   // everything.
@@ -55,27 +65,35 @@ test("passkey: enrol, wipe all site data, recover the same data with one passkey
   await page.reload();
   await openArea(context, "e2e", page);
   expect(await withStore(page, (s) => s.get())).toEqual({});
-  expect(await withStore(page, (s) => s.exportCode())).not.toBe(code);
+  expect(await withStore(page, (s) => s.exportToken())).not.toBe(code);
 
-  await withStore(page, (s) => s.link({ provider: "passkey" }));
+  const restored = await withBackup(page, (b) => b.restore());
+  expect(restored).toBe(code);
+  await withStore(
+    page,
+    (s, token) => s.link({ token, source: "passkey" }),
+    restored,
+  );
   expect(await withStore(page, (s) => s.get())).toEqual({
     theme: "dark",
     draft: "keep me",
   });
-  expect(await withStore(page, (s) => s.exportCode())).toBe(code);
-  expect(await withStore(page, (s) => s.protection)).toBe("passkey");
+  expect(await withStore(page, (s) => s.exportToken())).toBe(code);
+  expect(await withStore(page, (s) => s.token.source)).toBe("passkey");
 });
 
-test("passkey: enrol -> unlink -> recover", async ({ context }) => {
+test("passkey: save -> unlink -> restore", async ({ context }) => {
   const page = await context.newPage();
   await authenticator(page);
   await openArea(context, "e2e", page);
   await withStore(page, (s) => s.set({ k: "v" }));
-  await withStore(page, (s) => s.protect("passkey"));
+  await withBackup(page, async (b, s) => b.save(await s.exportToken()));
   await withStore(page, (s) => s.unlink());
   await openArea(context, "e2e", page);
   expect(await withStore(page, (s) => s.get())).toEqual({});
-  await withStore(page, (s) => s.link({ provider: "passkey" }));
+  await withBackup(page, async (b, s) =>
+    s.link({ token: (await b.restore())!, source: "passkey" }),
+  );
   expect(await withStore(page, (s) => s.get())).toEqual({ k: "v" });
 });
 
@@ -113,7 +131,7 @@ test("journeys 1 and 2 in the demo: create a backup with a passkey, wipe the sit
   );
 });
 
-test("KP-7 without a PRF authenticator the passkey provider is unavailable and protect() falls through", async ({
+test("KP-7 without a PRF authenticator the passkey backup is unavailable and save() rejects prf-unsupported", async ({
   context,
 }) => {
   const page = await context.newPage();
@@ -131,14 +149,12 @@ test("KP-7 without a PRF authenticator the passkey provider is unavailable and p
     },
   });
   await openArea(context, "e2e", page);
-  const err = await withStore(page, (s) =>
-    s.protect("passkey").then(
+  expect(await withBackup(page, (b) => b.available())).toBe(false);
+  const err = await withBackup(page, async (b, s) =>
+    b.save(await s.exportToken()).then(
       () => "ok",
       (e: { code: string }) => e.code,
     ),
   );
-  expect(["prf-unsupported", "no-provider"]).toContain(err);
-  // first available provider: the sync code
-  await withStore(page, (s) => s.protect());
-  expect(await withStore(page, (s) => s.protection)).toBe("code");
+  expect(err).toBe("prf-unsupported");
 });
