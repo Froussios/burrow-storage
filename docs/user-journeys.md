@@ -44,7 +44,7 @@ The **Storage token** panel is always visible. It shows:
 | --- | --- | --- | --- | --- |
 | 1 | No token | Create new backup with key | The token is stored in a passkey; data is backed up | `passkey.spec.ts`, demo journeys 1 and 2 |
 | 2 | No token | Use my passkey | The existing token and data appear | `passkey.spec.ts`, demo journeys 1 and 2 |
-| 3 | No token | Paste a token | The existing data appears | `demo.spec.ts`; `test/smoke/firestore.spec.ts` against the deployed demo |
+| 3 | No token | Paste a token | The existing data appears | `demo.spec.ts`; `test/smoke/demo.spec.ts` against the deployed demo |
 | 4 | No token | Paste an invalid token | An error, or empty data with working sync | `demo.spec.ts`, journey 4 |
 | 5 | Has a token | Open the page | Previous data appears immediately | `demo.spec.ts` (reload) |
 

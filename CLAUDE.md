@@ -74,7 +74,7 @@ npm run test:e2e       # playwright under the emulator (npm run build first)
 npm run test:live      # conformance against a real project from BURROW_FIRESTORE or the demo page; writes throwaway docs; never in CI
 npm run serve          # static server for demo/ and test pages at http://localhost:4173 (after a build)
 npm run demo:build     # site/: the deployable demo, footer stamped with the commit (after a build)
-npm run test:smoke     # demo smoke checks, page + Firestore (D-41): BURROW_DEMO_URL=<deployed demo>, or site/ under the emulator:
+npm run test:smoke     # demo smoke test: BURROW_DEMO_URL=<deployed demo>, or site/ under the emulator:
                        #   node scripts/emulator.mjs "npm run test:smoke"
 npm run sri            # SRI hashes for the bundles → dist/sri.json
 node scripts/gen-vectors.mjs   # regenerate test/vectors.json (output must not change within v1)

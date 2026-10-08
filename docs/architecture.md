@@ -346,7 +346,7 @@ npm provenance on a `v*` tag.
 | Conformance (`test/conformance/`) | `npm test` (memory), `npm run test:firestore` (emulator), `npm run test:live` (a real project, never in CI) | Node | `backendConformance()` for every backend |
 | Rules (`firebase/tests/rules.test.mjs`) | `npm run test:rules` | `node --test` under the emulator (Java 21) | the rules matrix |
 | Browser (`test/e2e/*.spec.ts`) | `npm run test:e2e` | Playwright on Chromium, Firefox, WebKit, served by `scripts/serve.mjs` against the emulator | persistence, tabs, unload flush, `#burrow=` links, the demo journeys; passkeys on Chromium via a CDP virtual authenticator with PRF |
-| Demo smoke (`test/smoke/`, D-41) | `npm run test:smoke` (`-- --project=page` or `firestore` for one) | Playwright on Chromium, against the deployed demo (`BURROW_DEMO_URL`) and its live Firebase project, or against the assembled `site/` under the emulator | **page**: the page shows the expected commit, keeps its strict CSP, connects only where its CSP allows, logs no console errors, shows a token. **firestore**: the CSP allows Firestore only; two fresh contexts sync both ways through the demo's Firebase project |
+| Demo smoke (`test/smoke/demo.spec.ts`) | `npm run test:smoke` | Playwright on Chromium, against the deployed demo (`BURROW_DEMO_URL`) and its live store, or against the assembled `site/` under the emulator | the page shows the expected commit, keeps its strict CSP, loads from its own origin and the store only, logs no console errors, shows a token; two fresh contexts sync both ways |
 
 Test titles cite the requirement ids they verify. `npm run docs:check` (`scripts/check-docs.mjs`)
 typechecks every code block in the README and the guides against the built declarations: usage
@@ -360,8 +360,8 @@ then the demo smoke test against `site/` under the emulator. `pages.yml` runs on
 `main`: `scripts/build-demo.mjs` assembles `site/` (the demo files plus the two bundles, one
 origin, so `script-src 'self'` covers them, and the page footer stamped with the commit and build
 time), the job deploys it to GitHub Pages at <https://froussios.github.io/burrow-storage/>, and a
-second job runs the smoke checks against the deployed page, the page and its Firestore backend as
-separate steps; a failure fails the run (D-39, D-40, D-41). `release.yml` publishes on tags.
+second job runs the smoke test against the deployed page; a smoke failure fails the run (D-39,
+D-40). `release.yml` publishes on tags.
 
 Contributors need Node 22 or newer (`--localstorage-file`), Java 21 for the emulator, and
 Playwright browsers for the e2e suite (`npx playwright install --with-deps`).

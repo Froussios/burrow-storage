@@ -421,7 +421,7 @@ npm run test:firestore # backend conformance against the emulator
 npm run test:e2e       # Chromium, Firefox and WebKit via Playwright, against the emulator
 npm run serve          # demo at http://localhost:4173/demo/ (after npm run build)
 npm run demo:build     # site/: the deployable demo, stamped with the commit (after npm run build)
-npm run test:smoke     # demo smoke checks, page + Firestore: BURROW_DEMO_URL=<deployed demo>, or site/ under the emulator
+npm run test:smoke     # demo smoke test: BURROW_DEMO_URL=<deployed demo>, or site/ under the emulator
 ```
 
 `npm run check` runs typecheck, tests, build, size and `docs:check` in one go. Development needs
