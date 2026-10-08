@@ -484,6 +484,9 @@ adopting a published deletion on an earlier retry; that result must still be rev
 later manifest conflict exposes the deletion's expiry.
 A live result being published remains in the cache even while absent from the old directory,
 so adopting a newer unlisted value cannot briefly remove it locally during the same pass.
+The pass publishes unlisted live results even when revalidation cleared the last dirty key,
+so the next pass sees their manifest entries and keeps them without depending on the other
+writer finishing its manifest upload.
 
 ## Part B: planning decisions and their status
 

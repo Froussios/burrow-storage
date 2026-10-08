@@ -189,6 +189,7 @@ loop (manifest conflict retries):
      applyRemote(fetched)                     // LWW per key, settledSince guard
      drop synced local keys absent from an existing manifest (pruned tombstones),
        except live item results this pass will publish
+     finish without publishing only if no dirty items or unlisted live results remain
   3. push: for each dirty item not already written this pass → pushItem (parallel)
        a result may carry `adopted` when the remote copy won; applyRemote it
   4. manifest ← mergeDirectories(remote directory, pushed versions, now)   // prunes tombstones
@@ -209,6 +210,8 @@ before it is re-listed, so an old result cannot resurrect a deletion (D-46). Eve
 result is revalidated, including one whose local entry became clean after adopting a deletion
 on an earlier retry. A live revalidated result remains cached while the pass publishes its
 manifest entry; absence from the old directory does not briefly remove that value locally.
+Publication still runs if revalidation cleared the last dirty key but a live result remains
+unlisted; otherwise the next pass, without the saved results, could prune it again.
 
 `#pushItem` writes at `cached rev + 1` with the cached rev as the precondition (D-10). With no
 cached rev, or on `conflict`, it reads the document; if the remote version wins the comparison it

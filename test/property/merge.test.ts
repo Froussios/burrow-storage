@@ -228,9 +228,22 @@ describe("multi-device convergence (MemoryBackend)", () => {
     for (const state of states) expect(state).toEqual({ k1: 0 });
   });
 
-  it.each(["older", "newer", "observed-delete", "unlisted-live"] as const)(
-    "SYNC-10 #55 manifest retries revalidate unlisted results: %s",
-    async (version) => {
+  it.each([
+    // Older offline value loses to the expired delete; k3 stays absent.
+    { scenario: "older", expected: { k1: 0 } },
+    // Newer offline value beats the delete; k3 is restored intentionally.
+    { scenario: "newer", expected: { k1: 0, k3: 9 } },
+    // Two conflicts: B sees a delete, then expiry; k3 stays absent, k2
+    // survives.
+    { scenario: "observed-delete", expected: { k1: 0, k2: 2 } },
+    // B adopts an unlisted live item while k2 still requires publication.
+    { scenario: "unlisted-live", expected: { k1: 0, k2: 2, k3: 9 } },
+    // Same live item with no other dirty key: B must still publish k3.
+    { scenario: "unlisted-live-only", expected: { k1: 0, k3: 9 } },
+  ] as const)(
+    "SYNC-10 #55 manifest retries revalidate unlisted results: $scenario",
+    async ({ scenario, expected }) => {
+      const unlistedLive = scenario.startsWith("unlisted-live");
       const world = new World();
       let clock = 1_700_000_000_000;
       vi.spyOn(Date, "now").mockImplementation(() => clock);
@@ -249,22 +262,31 @@ describe("multi-device convergence (MemoryBackend)", () => {
         await c!.link({ token });
         const keys = await deriveAppKeys(await decodeToken(token), "test");
         const { base } = keys;
+        const readManifest = async () =>
+          JSON.parse(
+            new TextDecoder().decode(
+              await open(
+                { key: keys.encKey, mac: keys.macKey, aad: base + "test" },
+                world.store.get(base)!,
+              ),
+            ),
+          );
         clock += 1000;
         await a!.set({ k1: 0 });
         clock += 1000;
         await c!.set({ k3: 0 });
         clock += 1000;
         await b!.set({ k3: 0 });
-        if (version === "observed-delete" || version === "unlisted-live")
+        if (scenario === "observed-delete" || scenario === "unlisted-live")
           await b!.set({ k2: 2 });
         await c!.syncNow();
         clock += 1000;
         await b!.remove("k1");
         clock += 1000;
         await c!.remove("k3");
-        if (version !== "observed-delete") clock += 94620546 + 3271742419;
+        if (scenario !== "observed-delete") clock += 94620546 + 3271742419;
         await c!.remove("k2");
-        if (version === "newer") await b!.set({ k3: 9 });
+        if (scenario === "newer") await b!.set({ k3: 9 });
         await a!.syncNow();
 
         const barrier = () => {
@@ -285,7 +307,7 @@ describe("multi-device convergence (MemoryBackend)", () => {
         vi.spyOn(backend, "put").mockImplementation(async (id, env, rev) => {
           if (id === base) {
             const barrier = barriers[attempt++];
-            if (barrier && (attempt === 1 || version === "observed-delete")) {
+            if (barrier && (attempt === 1 || scenario === "observed-delete")) {
               barrier.entered();
               await barrier.gate;
             }
@@ -298,7 +320,7 @@ describe("multi-device convergence (MemoryBackend)", () => {
         try {
           // C overwrites an older item, or adopts a valid newer offline write.
           await c!.syncNow();
-          if (version === "unlisted-live") {
+          if (unlistedLive) {
             // Publish a newer live item but hold back its manifest, so B's
             // retry must adopt the value before its directory entry exists.
             const liveBackend = devs[2]!.backend;
@@ -321,7 +343,7 @@ describe("multi-device convergence (MemoryBackend)", () => {
         } finally {
           barriers[0]!.release();
         }
-        if (version === "observed-delete") {
+        if (scenario === "observed-delete") {
           // B sees the published deletion on its first retry and is no longer
           // dirty for k3. Force a second conflict after C prunes the tombstone.
           await barriers[1]!.writingManifest;
@@ -336,10 +358,17 @@ describe("multi-device convergence (MemoryBackend)", () => {
         // B loses the manifest race and retries with its old result.
         try {
           await stalePush;
-          if (version === "unlisted-live")
+          if (unlistedLive) {
             // Check immediately after one sync, before C publishes or another
             // pass could repair a wrongly pruned cache entry.
-            expect(await b!.get()).toEqual({ k1: 0, k2: 2, k3: 9 });
+            expect(await b!.get()).toEqual(expected);
+            expect(b!.inspect().dirtyKeys).toBe(0);
+            expect((await readManifest()).items).toHaveProperty("k3");
+            // C still cannot publish: the next pass must retain k3 using the
+            // manifest B published, without any other dirty item forcing it.
+            await b!.syncNow();
+            expect(await b!.get()).toEqual(expected);
+          }
         } finally {
           liveBarrier.release();
         }
@@ -347,26 +376,11 @@ describe("multi-device convergence (MemoryBackend)", () => {
         for (let round = 0; round < 2; round++)
           for (const area of [a!, b!, c!]) await area.syncNow();
         for (const area of [a!, b!, c!]) {
-          expect(await area.get()).toEqual(
-            version === "newer"
-              ? { k1: 0, k3: 9 }
-              : version === "unlisted-live"
-                ? { k1: 0, k2: 2, k3: 9 }
-                : version === "observed-delete"
-                  ? { k1: 0, k2: 2 }
-                  : { k1: 0 },
-          );
+          expect(await area.get()).toEqual(expected);
           expect(area.inspect().dirtyKeys).toBe(0);
         }
-        const manifest = JSON.parse(
-          new TextDecoder().decode(
-            await open(
-              { key: keys.encKey, mac: keys.macKey, aad: base + "test" },
-              world.store.get(base)!,
-            ),
-          ),
-        );
-        if (version !== "newer" && version !== "unlisted-live")
+        const manifest = await readManifest();
+        if (scenario !== "newer" && !unlistedLive)
           expect(manifest.items).not.toHaveProperty("k3");
       } finally {
         world.close();

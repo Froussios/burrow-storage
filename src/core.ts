@@ -1044,7 +1044,12 @@ export class Core implements BurrowArea {
 
       // 3. push dirty items, each on its own chain, in parallel
       const dirty = [...this.#mirror].filter(([, e]) => e.dirty);
-      if (!dirty.length) {
+      // Revalidation can adopt a newer live result and clear the last dirty
+      // key. It still needs a manifest entry before this pass can finish.
+      const unlistedLive = [...ok].some(
+        ([k, r]) => !r.ver.deleted && !(k in dir),
+      );
+      if (!dirty.length && !unlistedLive) {
         this.#meta.manifestRev = menv?.rev ?? null;
         break;
       }
