@@ -29,7 +29,7 @@ default.
 | Path | Responsibility |
 | --- | --- |
 | `src/index.ts` | Public entry: `burrow()`, re-exports, the per-page `Env`, one `Core` per app |
-| `src/config.ts` | Default backend discovery shared by `burrow()` and `passkeyBackup()`: `readFirestoreConfig`, `defaultBackend` |
+| `src/config.ts` | Default backend discovery shared by `burrow()` and `passkeyBackup()`: `registerBackend`, `configuredBackend`, `readFirestoreConfig`, `defaultBackend` |
 | `src/iife.ts` | Entry of `burrow.min.js`: global `Burrow` (with `passkeyBackup`), plus the loader that fetches `burrow-firestore.js` on demand |
 | `src/types.ts` | Every public interface; `src/errors.ts` the two error classes and `scrub()`; `src/events.ts` `BurrowEvent` |
 | `src/core.ts` | `Core implements BurrowArea`: the in-memory mirror, local writes, the sync engine, tabs, link/unlink |
@@ -67,10 +67,14 @@ closed by `unlink()`, are removed so the next call starts fresh.
 
 ## 3. Start-up (`Core.create` → `#init`)
 
-1. Validate `app` (`/^[a-z0-9-]{1,64}$/`, else `TypeError`). Resolve the backend: the config's,
-   else `env.defaultBackend()`, which reads `<meta name="burrow-firestore">` or
-   `window.BURROW.firestore` and lazy-imports `FirestoreBackend`; with neither it is `null`
-   (local-only, one `console.warn`).
+1. Validate `app` (`/^[a-z0-9-]{1,64}$/`, else `TypeError`). Resolve `config.backend` (instance
+   or registered type), then `config.firestore`, else `env.defaultBackend()`. Page discovery
+   prefers generic `burrow-backend` meta / `window.BURROW.backend`, then legacy Firestore
+   meta / global config. Factories load adapters on demand; only the Firestore factory is
+   built in. No page data is evaluated or used as a script URL. No config means `null`
+   (local-only, one warning). Failed config/factory resolution also uses `null`, and sets
+   `status: "error"` with a fixed `backend` error after local initialization. No exception
+   details are retained; no fallback to another project occurs. Reload after correction.
 2. Open the cache: `config.cache`, defaulting to `"indexeddb"`, or `"memory"` when
    `rememberDevice` is `false`. If IndexedDB cannot be opened, fall back to `MemoryCache` and
    remember to set `status` to `"offline"`.

@@ -91,3 +91,60 @@ error report, and encrypt it at rest under something only the user has, as the p
 
 The passkey backup, [`src/passkey.ts`](../src/passkey.ts), is the reference: it is built only on
 `exportToken()` and `link()` plus a backend for its keyslot, with no access to the store's state.
+
+## Page configuration
+
+The built-in `firestore` factory loads the adapter on demand. Configure a store directly:
+
+```js
+import { burrow } from "burrow-storage";
+
+const store = await burrow({
+  app: "my-app",
+  backend: { type: "firestore", apiKey: "…", projectId: "your-project" },
+});
+```
+
+`firestore: { apiKey, projectId }` is shorthand; `appId` is optional. An explicit backend
+instance still works. Caller `backend` takes precedence over `firestore`, which takes
+precedence over page config. The first call for an app fixes its configuration for the page.
+
+Without either caller option, discovery checks, in order:
+
+1. `<meta name="burrow-backend" content='{"type":"firestore","apiKey":"…","projectId":"your-project"}'>`;
+2. `window.BURROW.backend`, using the same config object;
+3. legacy `<meta name="burrow-firestore">` and then `window.BURROW.firestore`.
+
+Malformed or incomplete config and an unregistered type produce a usable local store with
+`status: "error"`; `syncNow()` rejects `BurrowError("backend")`. Local writes stay dirty in
+the cache. Burrow never silently selects a different project after a config error. Correct
+configuration and reload the page to enable sync. No config gives the ordinary `idle`
+local-only store. `readFirestoreConfig()` reads only the legacy Firestore config and throws
+on malformed JSON; it does not interpret generic config.
+
+Register your adapter factory before opening a store. Config is publishable data; keep admin
+credentials on the server. A factory may use a dynamic import for its own adapter subpath.
+Here is a small test-store example using an existing adapter:
+
+```js
+import { burrow, registerBackend, MemoryBackend } from "burrow-storage";
+
+registerBackend("test-store", async () => new MemoryBackend());
+const store = await burrow({ app: "my-app", backend: { type: "test-store" } });
+```
+
+`registerBackend(type, factory)` accepts a lowercase letters/digits/hyphens type of 1–64
+characters and a factory `(config: BackendConfig) => Backend | Promise<Backend>`. Duplicate
+registration throws, including attempts to replace `firestore`. The factory receives the
+entire `{ type, …options }` object and validates its own fields. Registration does not run it;
+only selecting its type does. Page JSON never supplies a module URL or executable code.
+
+The ESM Firestore adapter remains in `burrow-storage/firestore`; the script-tag build exposes
+`Burrow.FirestoreBackend` and loads its SDK from the same-origin `burrow-firestore.js` file.
+New adapters should use their own subpath and a separate measured budget. `npm run size`
+enforces 2 KiB min+gzip for the Firestore adapter excluding its SDK, and 150 KiB for that
+lazy SDK. Core + memory remains 12 KiB and passkey backup adds at most 2 KiB.
+
+See [backend candidates](backend-candidates.md) for the current feasibility assessment. A
+registered adapter is not certified merely because a factory can instantiate it: its actual
+server policy, concurrency, quota behavior, CORS and access restrictions need verification.

@@ -466,6 +466,30 @@ targets and failures without contacting a cloud project; CI browser tests use th
 This affects local HTTP responses only. The source demo config and assembled deployment files
 still use the demo project, as does the post-deploy page smoke test in `pages.yml` (D-40).
 
+### D-45 Public backend configuration and lazy adapter factories (#23)
+
+`backend` accepts an instance or `{ type, …options }`; `firestore` is shorthand. Explicit
+`backend` wins over shorthand. Page discovery prefers `burrow-backend` meta, then
+`window.BURROW.backend`, then legacy Firestore meta/global config. Registered factories
+load adapters on demand; the Firestore factory is built in. Registration cannot replace an
+existing type. Page data selects a registered type, never a script URL or executable code.
+The script-tag Firestore SDK still comes from its same-origin chunk (D-17, D-24).
+
+Firestore needs `apiKey` and `projectId`, not a Firebase web-app `appId`; the latter is optional.
+Invalid remote config or failed adapter loading must not reject local initialization (API-1,
+API-3). A usable local store resolves with `status: "error"` and a fixed `backend` error,
+without retaining config/parser/factory exception values. Dirty writes stay cached. Missing
+config remains the `idle` local-only case (D-16). The first opened instance keeps its backend;
+correct config and reload to enable sync. Passkey backup operations still reject if their
+backend cannot be resolved, since a keyslot needs remote storage.
+
+The Firestore subpath has a 2 KiB min+gzip adapter budget excluding the lazy SDK; the SDK
+has a separate 150 KiB budget. Both are enforced by `npm run size`. This leaves headroom
+above the measured 1.55/135.80 KiB baselines without hiding SDK growth in the core budget.
+No other hosted adapter is certified. The [candidate assessment](backend-candidates.md)
+records feasibility, costs, setup and missing conformance evidence; #23 stays open pending
+backend choice/privacy approval and deployment tests. Setup work is tracked separately in #36.
+
 ## Part B: planning decisions and their status
 
 These were proposed in the pre-implementation design review

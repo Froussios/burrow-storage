@@ -8,6 +8,10 @@ labels, and the storage-token encoding are public contract: changing them is a m
 ## [Unreleased]
 
 ### Added
+- Generic backend configuration (`burrow-backend` meta / `window.BURROW.backend`), lazy
+  `registerBackend(type, factory)`, caller `{ backend: { type, …options } }` and Firestore
+  shorthand. Invalid backend config preserves local reads/writes and reports an error status
+  (#23, D-45). Firestore `appId` is optional. Separate adapter and SDK size budgets.
 - `burrow()` entry point with a `chrome.storage`-shaped `BurrowArea` and a synchronous `Storage`
   facade (`store.storage`) that supports property-style access like `localStorage`.
 - Codec: HKDF id and key derivation, AES-256-GCM envelopes bound to id, app and revision,
