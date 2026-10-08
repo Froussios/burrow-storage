@@ -175,7 +175,7 @@ Sign-in and choices that need human confirmation stay with you. It never enables
 other Firebase products. The provisioning instructions still await a fresh-project end-to-end
 run and a second verification run.
 
-Either way you end up with three values: `apiKey`, `projectId` and `appId`. **They are public by
+Burrow requires `apiKey` and `projectId`; `appId` is optional. **These values are public by
 design.** The `apiKey` identifies your project and sits in your page source. Restrict it to the
 Cloud Firestore API and to your own domains: that stops other websites from using it in their
 pages, though not a script running outside a browser. Details, costs and quotas:
