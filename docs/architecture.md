@@ -275,9 +275,11 @@ token fields from `_device`, broadcasts `identity` and closes the instance. Late
 `unlinked`.
 
 **The passkey backup** (`src/passkey.ts`, `burrow-storage/passkey`) never touches the core. It
-resolves its backend once, on first use: `options.backend`, else `defaultBackend()` from
+resolves its backend once, on first use: an `options.backend` instance, else `defaultBackend()` from
 `config.ts` (which shares the page's Firebase app with the store's backend), else it rejects
-`backend` before prompting. It keeps no state on the device.
+`backend` before prompting. Page config and factory exceptions become a fixed `backend`
+error without a cause, so arbitrary configuration values cannot escape. A failed resolution
+is retried on the next call. It keeps no state on the device.
 
 - `available()`: a secure context, `PublicKeyCredential` and `navigator.credentials` exist,
   `getClientCapabilities()` does not report `extension:prf: false`, and

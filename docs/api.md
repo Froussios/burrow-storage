@@ -334,10 +334,16 @@ interface PasskeyBackup {
 }
 ```
 
+`PasskeyBackupOptions.backend` accepts a `Backend` instance. To use declarative
+configuration, set the page's backend config and omit this option. Invalid page config
+or a failing adapter factory rejects `backend` with a fixed message and no configuration
+error cause, before either operation prompts. A corrected page config is retried on the
+next call.
+
 | Member | Behaviour |
 | --- | --- |
 | `available()` | Never prompts. True in a secure context with `PublicKeyCredential`, a user-verifying platform authenticator, and no `getClientCapabilities()` report denying `extension:prf`. |
-| `save(token)` | Creates a discoverable passkey with user verification and no attestation, evaluates its PRF, and writes the token to a keyslot document only that passkey can open. One prompt, sometimes two when the authenticator returns no PRF output at creation. Rejects `bad-token` before prompting, `cancelled` when the prompt is dismissed, `prf-unsupported`, `backend` (no backend, before prompting) or `conflict`; a failing store may surface a raw `BackendError`. Saving again with the same passkey replaces its keyslot. |
+| `save(token)` | Creates a discoverable passkey with user verification and no attestation, evaluates its PRF, and writes the token to a keyslot document only that passkey can open. One prompt, sometimes two when the authenticator returns no PRF output at creation. Rejects `bad-token` before prompting, `cancelled` when the prompt is dismissed, `prf-unsupported`, `backend` (missing or invalid backend config, before prompting) or `conflict`; a failing store may surface a raw `BackendError`. Saving again with the same passkey replaces its keyslot. |
 | `restore()` | One prompt; the user picks the passkey. Resolves the token from its keyslot, or `null` when the prompt is dismissed or that passkey has no keyslot. Rejects `prf-unsupported`, `decrypt-failed` (the keyslot was tampered with) or `backend`. |
 
 Call `save()` and `restore()` from a user gesture: browsers allow passkey prompts only then. The

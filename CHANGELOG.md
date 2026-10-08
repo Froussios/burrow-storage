@@ -56,7 +56,8 @@ labels, and the storage-token encoding are public contract: changing them is a m
 - Malformed legacy `burrow-firestore` JSON now produces a usable local store with
   `status: "error"`; it no longer warns and falls back to `window.BURROW.firestore` or
   another project. Passkey backup operations reject `backend` for that invalid config
-  (#23, D-45). Local serving and the live setup check also accept omitted Firestore `appId`.
+  or failed adapter factory without retaining exception values (#23, D-45). Local serving
+  and the live setup check also accept omitted Firestore `appId`.
 - `npm run test:live` requires the `BURROW_FIRESTORE` environment variable to name the caller's
   own project; it no longer falls back to the demo's store. The setup guide and printed steps
   explain this optional check, its limits and its undeletable throwaway documents (#43, D-43).

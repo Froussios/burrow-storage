@@ -486,7 +486,9 @@ API-3). A usable local store resolves with `status: "error"` and a fixed `backen
 without retaining config/parser/factory exception values. Dirty writes stay cached. Missing
 config remains the `idle` local-only case (D-16). The first opened instance keeps its backend;
 correct config and reload to enable sync. Passkey backup operations still reject if their
-backend cannot be resolved, since a keyslot needs remote storage.
+backend cannot be resolved, since a keyslot needs remote storage. They discard configuration
+exception values in the same way and retry page discovery on the next call. Their explicit
+`backend` option accepts an instance; declarative config comes from the page.
 
 The Firestore subpath has a 2 KiB min+gzip adapter budget excluding the lazy SDK; the SDK
 has a separate 150 KiB budget. Both are enforced by `npm run size`. This leaves headroom

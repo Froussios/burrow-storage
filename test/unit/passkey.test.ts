@@ -15,6 +15,7 @@ import { PRF_SALT_V1, deriveSlotKeys } from "../../src/codec/derive.js";
 import { encodeToken } from "../../src/codec/token.js";
 import { BackendError, BurrowError } from "../../src/errors.js";
 import { type PasskeyBackup, passkeyBackup } from "../../src/passkey.js";
+import type { BackendConfig } from "../../src/types.js";
 import { World } from "../support/devices.js";
 
 const fresh = (b: Uint8Array): ArrayBuffer => b.slice().buffer;
@@ -440,6 +441,86 @@ describe("the default backend", () => {
   beforeEach(() => {
     install(auth);
   });
+
+  it("rejects invalid page config before prompting, without retaining its values", async () => {
+    vi.resetModules();
+    try {
+      vi.stubGlobal("document", {
+        querySelector: (selector: string) =>
+          selector === 'meta[name="burrow-backend"]'
+            ? { getAttribute: () => '{"projectId":"short-private' }
+            : null,
+      });
+      const { passkeyBackup: fresh } = await import("../../src/passkey.js");
+      const backup = fresh();
+      const token = await newToken();
+      for (const operation of [
+        () => backup.save(token),
+        () => backup.restore(),
+      ]) {
+        const error = await operation().catch((e: unknown) => e);
+        expect(error).toMatchObject({
+          name: "BurrowError",
+          code: "backend",
+          message: "backend configuration failed",
+        });
+        expect(error).not.toHaveProperty("cause");
+      }
+      expect(auth.create).not.toHaveBeenCalled();
+      expect(auth.get).not.toHaveBeenCalled();
+    } finally {
+      vi.resetModules();
+    }
+  });
+
+  it.each(["error", "burrow", "backend"])(
+    "drops values from a factory-thrown %s error and retries corrected config",
+    async (kind) => {
+      vi.resetModules();
+      try {
+        const { registerBackend } = await import("../../src/config.js");
+        const errors = await import("../../src/errors.js");
+        const { passkeyBackup: fresh } = await import("../../src/passkey.js");
+        const factory = vi.fn((config: BackendConfig) => {
+          if (config.privateValue) {
+            const message = `bad config: ${config.privateValue}`;
+            throw kind === "burrow"
+              ? new errors.BurrowError("backend", message)
+              : kind === "backend"
+                ? new errors.BackendError("network", message)
+                : new Error(message);
+          }
+          return backend;
+        });
+        registerBackend("passkey-test", factory);
+        vi.stubGlobal("BURROW", {
+          backend: { type: "passkey-test", privateValue: "short-private" },
+        });
+        const backup = fresh();
+        const token = await newToken();
+        for (const operation of [
+          () => backup.save(token),
+          () => backup.restore(),
+        ]) {
+          const error = await operation().catch((e: unknown) => e);
+          expect(error).toMatchObject({
+            name: "BurrowError",
+            code: "backend",
+            message: "backend configuration failed",
+          });
+          expect(error).not.toHaveProperty("cause");
+        }
+        expect(auth.create).not.toHaveBeenCalled();
+        expect(auth.get).not.toHaveBeenCalled();
+        vi.stubGlobal("BURROW", { backend: { type: "passkey-test" } });
+        await backup.save(token);
+        expect(await backup.restore()).toBe(token);
+        expect(factory).toHaveBeenCalledTimes(3);
+      } finally {
+        vi.resetModules();
+      }
+    },
+  );
 
   it("is looked up again after a failure, not cached", async () => {
     vi.resetModules();
