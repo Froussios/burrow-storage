@@ -481,7 +481,10 @@ The recommended packaged `burrow-setup check '<config JSON>'` reuses the product
 HKDF derivation and envelope codec, rather than asking an agent to invent crypto. It creates and
 reads one fresh encrypted document, decrypts it, and expects permission denial for a forged
 update, listing and an id `in` query. It refuses CI and accepts only caller-supplied public
-config. Node 20+ provides native WebCrypto; the Firebase SDK remains the optional peer. Only
+config. This amends D-43's literal environment-variable requirement: `npm run test:live` uses
+`BURROW_FIRESTORE`, while `burrow-setup check` takes the public config argument. Both require
+an explicit caller-owned project, never fall back to the owner's store and never run in CI.
+Node 20+ provides native WebCrypto; the Firebase SDK remains the optional peer. Only
 fixed check names and safe codes are printed, with SDK diagnostics suppressed. Each run leaves
 one undeletable throwaway document. The broader `npm run test:live` remains for maintainers.
 Neither check verifies billing/products, and browser-referrer restrictions may block Node;

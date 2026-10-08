@@ -41,8 +41,9 @@ them as history unless the owner says otherwise.
 - Unsynced writes are never dropped by the engine (SYNC-9).
 - Only the demo may use the owner's Firebase project. CI reaches it only through the deployed
   demo page in `pages.yml`; other tests and scripts use the emulator or a caller-named project
-  (D-43, #40). Live setup checks require the `BURROW_FIRESTORE` environment variable and never
-  run in CI.
+  (D-43, #40). Live setup checks require caller-supplied config (`BURROW_FIRESTORE` for
+  `npm run test:live`, the argument to `burrow-setup check`) and never run in CI. They have no
+  fallback to the owner's project (D-49 amends D-43).
   `npm run serve` rewrites the local demo and assembled `site/` to use the emulator
   (`FIRESTORE_EMULATOR_HOST` or `127.0.0.1:8080`) by default. Set `BURROW_FIRESTORE` to an
   explicit project config to use your own live or pre-production store; invalid config or

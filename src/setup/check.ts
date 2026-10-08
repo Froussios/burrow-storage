@@ -68,10 +68,12 @@ export async function checkFirestore(
     const env = await seal(cipher, keys.base, 0, plaintext, Date.now());
     await backend.put(keys.base, env, null);
     const stored = await backend.get(keys.base);
+    if (!stored || JSON.stringify(stored) !== JSON.stringify(env))
+      throw new SetupCheckError(check, "unexpected-result");
+    const decoded = await open(cipher, stored);
     if (
-      !stored ||
-      JSON.stringify(stored) !== JSON.stringify(env) ||
-      !Buffer.from(await open(cipher, stored)).equals(Buffer.from(plaintext))
+      decoded.length !== plaintext.length ||
+      !decoded.every((byte, index) => byte === plaintext[index])
     )
       throw new SetupCheckError(check, "unexpected-result");
     report(`PASS ${check}`);
@@ -90,6 +92,8 @@ export async function checkFirestore(
       }
       throw new SetupCheckError(check, "unexpected-result");
     };
+    // Successful create/read is a prerequisite: a referrer-blocked key can
+    // also report permission-denied, so never run these denial probes first.
     check = "forged-update";
     // Keep the forged token and every other field structurally valid: denial
     // must exercise the write chain, not a token-shape restriction.

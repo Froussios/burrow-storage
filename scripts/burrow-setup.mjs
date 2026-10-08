@@ -37,7 +37,10 @@ if (target === "check") {
     console.error("Live setup checks must not run in CI.");
     process.exit(1);
   }
-  if (!globalThis.crypto?.subtle) {
+  if (
+    Number(process.versions.node.split(".")[0]) < 20 ||
+    !globalThis.crypto?.subtle
+  ) {
     console.error(
       "The check command needs Node 20 or newer with native WebCrypto.",
     );
