@@ -185,8 +185,10 @@ loop (manifest conflict retries):
   2. pull: for each manifest entry that beats the cached entry (compare(ts, h)):
        tombstone → adopt directly; value → fetch its item document (getMany, parallel)
      re-read already-written items absent from this manifest; refresh saved results
+     maxRemoteTs ← max(maxRemoteTs, fetched item timestamps)
      applyRemote(fetched)                     // LWW per key, settledSince guard
-     drop synced local keys absent from an existing manifest (pruned tombstones)
+     drop synced local keys absent from an existing manifest (pruned tombstones),
+       except live item results this pass will publish
   3. push: for each dirty item not already written this pass → pushItem (parallel)
        a result may carry `adopted` when the remote copy won; applyRemote it
   4. manifest ← mergeDirectories(remote directory, pushed versions, now)   // prunes tombstones
@@ -205,7 +207,8 @@ latest directory is read again: another device may have overwritten it with a to
 has already expired from the manifest. The current item version competes with the local write
 before it is re-listed, so an old result cannot resurrect a deletion (D-46). Every unlisted
 result is revalidated, including one whose local entry became clean after adopting a deletion
-on an earlier retry.
+on an earlier retry. A live revalidated result remains cached while the pass publishes its
+manifest entry; absence from the old directory does not briefly remove that value locally.
 
 `#pushItem` writes at `cached rev + 1` with the cached rev as the precondition (D-10). With no
 cached rev, or on `conflict`, it reads the document; if the remote version wins the comparison it

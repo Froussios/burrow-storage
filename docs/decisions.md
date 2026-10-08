@@ -482,6 +482,8 @@ directory can be reused without an extra read.
 This applies to every saved result, including one whose local entry became clean after
 adopting a published deletion on an earlier retry; that result must still be revalidated if a
 later manifest conflict exposes the deletion's expiry.
+A live result being published remains in the cache even while absent from the old directory,
+so adopting a newer unlisted value cannot briefly remove it locally during the same pass.
 
 ## Part B: planning decisions and their status
 

@@ -1013,10 +1013,13 @@ export class Core implements BurrowArea {
       await this.#applyRemote(remote, changes);
       let pruned = 0;
       // Synced keys missing from an existing manifest were pruned tombstones:
-      // drop them.
+      // drop them, except live item results this pass will publish.
       if (menv) {
         const gone = [...this.#mirror]
-          .filter(([k, e]) => !e.dirty && !(k in dir))
+          .filter(
+            ([k, e]) =>
+              !e.dirty && !(k in dir) && (!ok.has(k) || ok.get(k)!.ver.deleted),
+          )
           .map(([k]) => k);
         const mark = this.#mark();
         const dropped = await this.#cache.updateItems(gone, (_k, cur) =>

@@ -228,7 +228,7 @@ describe("multi-device convergence (MemoryBackend)", () => {
     for (const state of states) expect(state).toEqual({ k1: 0 });
   });
 
-  it.each(["older", "newer", "observed-delete"] as const)(
+  it.each(["older", "newer", "observed-delete", "unlisted-live"] as const)(
     "SYNC-10 #55 manifest retries revalidate unlisted results: %s",
     async (version) => {
       const world = new World();
@@ -255,7 +255,8 @@ describe("multi-device convergence (MemoryBackend)", () => {
         await c!.set({ k3: 0 });
         clock += 1000;
         await b!.set({ k3: 0 });
-        if (version === "observed-delete") await b!.set({ k2: 2 });
+        if (version === "observed-delete" || version === "unlisted-live")
+          await b!.set({ k2: 2 });
         await c!.syncNow();
         clock += 1000;
         await b!.remove("k1");
@@ -266,7 +267,7 @@ describe("multi-device convergence (MemoryBackend)", () => {
         if (version === "newer") await b!.set({ k3: 9 });
         await a!.syncNow();
 
-        const barriers = Array.from({ length: 2 }, () => {
+        const barrier = () => {
           let entered!: () => void;
           const writingManifest = new Promise<void>(
             (resolve) => (entered = resolve),
@@ -274,7 +275,10 @@ describe("multi-device convergence (MemoryBackend)", () => {
           let release!: () => void;
           const gate = new Promise<void>((resolve) => (release = resolve));
           return { entered, writingManifest, release, gate };
-        });
+        };
+        const barriers = Array.from({ length: 2 }, barrier);
+        const liveBarrier = barrier();
+        let livePush: Promise<void> | undefined;
         const backend = devs[1]!.backend;
         const put = backend.put.bind(backend);
         let attempt = 0;
@@ -294,6 +298,26 @@ describe("multi-device convergence (MemoryBackend)", () => {
         try {
           // C overwrites an older item, or adopts a valid newer offline write.
           await c!.syncNow();
+          if (version === "unlisted-live") {
+            // Publish a newer live item but hold back its manifest, so B's
+            // retry must adopt the value before its directory entry exists.
+            const liveBackend = devs[2]!.backend;
+            const livePut = liveBackend.put.bind(liveBackend);
+            let paused = false;
+            vi.spyOn(liveBackend, "put").mockImplementation(
+              async (id, env, rev) => {
+                if (id === base && !paused) {
+                  paused = true;
+                  liveBarrier.entered();
+                  await liveBarrier.gate;
+                }
+                return livePut(id, env, rev);
+              },
+            );
+            await c!.set({ k3: 9 });
+            livePush = c!.syncNow();
+            await liveBarrier.writingManifest;
+          }
         } finally {
           barriers[0]!.release();
         }
@@ -310,16 +334,27 @@ describe("multi-device convergence (MemoryBackend)", () => {
           }
         }
         // B loses the manifest race and retries with its old result.
-        await stalePush;
+        try {
+          await stalePush;
+          if (version === "unlisted-live")
+            // Check immediately after one sync, before C publishes or another
+            // pass could repair a wrongly pruned cache entry.
+            expect(await b!.get()).toEqual({ k1: 0, k2: 2, k3: 9 });
+        } finally {
+          liveBarrier.release();
+        }
+        await livePush;
         for (let round = 0; round < 2; round++)
           for (const area of [a!, b!, c!]) await area.syncNow();
         for (const area of [a!, b!, c!]) {
           expect(await area.get()).toEqual(
             version === "newer"
               ? { k1: 0, k3: 9 }
-              : version === "observed-delete"
-                ? { k1: 0, k2: 2 }
-                : { k1: 0 },
+              : version === "unlisted-live"
+                ? { k1: 0, k2: 2, k3: 9 }
+                : version === "observed-delete"
+                  ? { k1: 0, k2: 2 }
+                  : { k1: 0 },
           );
           expect(area.inspect().dirtyKeys).toBe(0);
         }
@@ -331,7 +366,7 @@ describe("multi-device convergence (MemoryBackend)", () => {
             ),
           ),
         );
-        if (version !== "newer")
+        if (version !== "newer" && version !== "unlisted-live")
           expect(manifest.items).not.toHaveProperty("k3");
       } finally {
         world.close();
