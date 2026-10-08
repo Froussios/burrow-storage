@@ -53,6 +53,10 @@ labels, and the storage-token encoding are public contract: changing them is a m
   decision log.
 
 ### Changed
+- Explicit `backend: null` from untyped callers now counts as invalid configuration
+  instead of falling back to page discovery. `burrow()` opens local storage with error
+  status; passkey operations reject `backend` before prompting. Omit `backend` to discover
+  page config (#23, D-45).
 - Malformed legacy `burrow-firestore` JSON now produces a usable local store with
   `status: "error"`; it no longer warns and falls back to `window.BURROW.firestore` or
   another project. Passkey backup operations reject `backend` for that invalid config

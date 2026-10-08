@@ -139,6 +139,12 @@ registration throws, including attempts to replace `firestore`. The factory rece
 entire `{ type, …options }` object and validates its own fields. Registration does not run it;
 only selecting its type does. Page JSON never supplies a module URL or executable code.
 
+Factories create or load an adapter and must settle promptly. Keep remote connectivity
+checks and document requests in the backend's I/O methods (`get`, `put`, `getMany`,
+`subscribe`), so initialization can open local storage while the remote service is
+unavailable. Initialization awaits the factory: one that never settles prevents local
+storage from opening.
+
 The ESM Firestore adapter remains in `burrow-storage/firestore`; the script-tag build exposes
 `Burrow.FirestoreBackend` and loads its SDK from the same-origin `burrow-firestore.js` file.
 New adapters should use their own subpath and a separate measured budget. `npm run size`
