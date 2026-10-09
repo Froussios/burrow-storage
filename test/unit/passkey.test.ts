@@ -822,17 +822,20 @@ describe("KP-5/KP-6 with the StorageArea", () => {
     const contentBefore = structuredClone(world.store);
 
     const recovery = new MemoryBackend();
+    const get = vi.spyOn(recovery, "get");
+    const put = vi.spyOn(recovery, "put");
+    const subscribe = vi.spyOn(recovery, "subscribe");
     await passkeyBackup({ backend: recovery }).save(token);
     const restored = await passkeyBackup({ backend: recovery }).restore();
     expect(restored).toBe(token);
+    expect(get).toHaveBeenCalledTimes(2);
+    expect(put).toHaveBeenCalledOnce();
+    expect(subscribe).not.toHaveBeenCalled();
     expect(world.store).toEqual(contentBefore);
     expect(recovery.store.size).toBe(1);
     const [slotId] = recovery.store.keys();
     expect(world.store.has(slotId!)).toBe(false);
 
-    const get = vi.spyOn(recovery, "get");
-    const put = vi.spyOn(recovery, "put");
-    const subscribe = vi.spyOn(recovery, "subscribe");
     recovery.failWith = "network";
     const B = world.device();
     const b = await B.open();
@@ -842,8 +845,8 @@ describe("KP-5/KP-6 with the StorageArea", () => {
     await b.syncNow();
     await a.syncNow();
     expect(await a.get("theme")).toEqual({ theme: "light" });
-    expect(get).not.toHaveBeenCalled();
-    expect(put).not.toHaveBeenCalled();
+    expect(get).toHaveBeenCalledTimes(2);
+    expect(put).toHaveBeenCalledOnce();
     expect(subscribe).not.toHaveBeenCalled();
     expect(recovery.store.size).toBe(1);
     expect(world.store.has(slotId!)).toBe(false);
