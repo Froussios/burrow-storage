@@ -299,12 +299,20 @@ is retried on the next call. It keeps no state on the device.
   `isUserVerifyingPlatformAuthenticatorAvailable()`.
 - `save(token)`: `decodeToken()` first (`bad-token` before any prompt), then
   `credentials.create` with a discoverable credential, user verification, ES256/RS256, no
-  attestation, the PRF extension with salt `burrow/prf/v1`, `rp.name`, `user.name` and
-  `user.displayName` from the options or the page's host, `rp.id` only when `rpId` is given. A
+  attestation, the PRF extension with salt `burrow/prf/v1`, `rp.name` and `user.name` from the
+  options or the page's host, `user.displayName` from its option or effective `userName`, and
+  `rp.id` only when `rpId` is given. `user.id` is the first 16 bytes of
+  SHA-256(`"burrow/user/v1"` ‖ effective `userName`) (D-47); `displayName` does not enter it. A
   dismissed prompt is `cancelled`; other errors are `prf-unsupported`. If the authenticator did
   not return the PRF output at creation, one `credentials.get` for that credential follows. The
   keyslot is written at `slotId` with `writeSlot()` (read, then put at `rev + 1`, three tries on
   conflict). The decoded secret and the PRF output are zeroised.
+  A conforming discoverable authenticator replaces a credential for the same RP and handle
+  during creation, before the PRF evaluation and keyslot write. Failure afterward cannot undo
+  replacement, even for a repeated save of the same token. Sites warn and ask users to keep
+  the current and earlier tokens first, or use distinct labels to retain separate backups.
+  Old random-handle credentials/keyslots remain. Only Chromium's virtual authenticator has
+  been validated; there is no universal password-manager guarantee.
 - `restore()`: a discoverable `credentials.get` (the browser's account picker), derive the slot
   keys, `get(slotId)`, `open()`, `encodeToken()`; a missing slot or a dismissed prompt is `null`.
 

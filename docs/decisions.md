@@ -551,6 +551,46 @@ provisioning, a small agent's end-to-end execution and the second run remain blo
 sign-in/project inputs and live verification. Keep the end-to-end caveat until evidence exists;
 this implementation alone does not close #36 or establish its complete acceptance.
 
+### D-47 Deterministic passkey user handle; replacement is the app's to warn about (#21)
+
+Owner scope: [app/user responsibility and overwrite by default](https://github.com/Froussios/burrow-storage/issues/21#issuecomment-6073994356),
+then [label-varying derivation and WebAuthn-style names](https://github.com/Froussios/burrow-storage/issues/21#issuecomment-6074104571).
+These decisions accept a scoped behavior rather than a universal manager guarantee.
+
+`save()` derives `user.id` as the first 16 bytes of SHA-256(`"burrow/user/v1"` ‖ `userName`),
+where `userName` is the effective label (host by default). The rp ID scopes it to the site;
+a different label gives a different handle. CTAP2 authenticators replace a discoverable
+credential with the same rp ID and user handle, so a repeat save leaves one entry. Only that
+the handle varies with the label was required by the owner when choosing the initial algorithm.
+The chosen derivation is now stable v1 public contract: the `burrow/user/v1` prefix, UTF-8 input,
+SHA-256 and first-16-byte truncation may not change without a major release and migration path,
+since a new handle would stop replacement of earlier credentials and allow duplicate labels.
+`displayName` is a separate option (default `userName`) and does not enter the handle, so an
+app can change the new credential's presentation without changing its identity. Renaming an
+existing passkey remains out of scope. The RP ID scopes credential use but is not hashed into
+the handle; matching explicit public labels have matching handles across sites. This adds no
+independent user identifier beyond that label. The default host label differs per site, and
+apps can choose site-specific, non-sensitive labels. Keyslot format and crypto are unchanged.
+
+Replacement happens inside `credentials.create()`, before the PRF output and the keyslot write.
+If the follow-up fails, neither passkey may hold a usable backup, and a different token saved
+under the same label loses its passkey route. Responsibility is passed to the app and user:
+sites must warn before every `save()` and ask users to keep the current and earlier tokens,
+or use a distinct `userName` (device name, date, user-chosen) per token. Not adopted: a random
+suffix by default (defeats the goal),
+`excludeCredentials` and a `passkey-exists` error (the library has no credential ids to send;
+D-42), a name-to-credential registry. Limits: earlier random-handle duplicates remain, since
+WebAuthn offers no enumeration or deletion; replacement was exercised only with Chromium's
+virtual authenticator, not iCloud Keychain, Google Password Manager, Windows Hello, 1Password
+or Bitwarden.
+
+The demo passes `userName: "burrow-demo"` and asks the user to confirm the replacement/loss
+warning before calling `save()`. Declining it never prompts the authenticator. A failed save
+does not claim that no credential was created or that an earlier credential survived.
+The historical backup marker remains, but its badge says "Previously saved with a passkey.
+Keep the storage token." It does not promise current recoverability or discard the record
+of another backup that might still work.
+
 ## Part B: planning decisions and their status
 
 These were proposed in the pre-implementation design review

@@ -62,10 +62,16 @@ try {
 
 ```js
 import { passkeyBackup } from "burrow-storage/passkey";
-const backup = passkeyBackup();
+const backup = passkeyBackup({ userName: "notes" });
 
-// first device, from a click
-if (await backup.available()) {
+// first device, from a click, after keeping the current and earlier tokens
+if (
+  (await backup.available()) &&
+  confirm(
+    "An earlier notes passkey may be replaced, even if this save fails. " +
+      "Have you kept the storage tokens and want to continue?",
+  )
+) {
   try {
     await backup.save(await store.exportToken());
   } catch (e) {
@@ -83,6 +89,20 @@ evaluates the WebAuthn PRF extension with a fixed salt. From the PRF output it d
 key, a write-token key and a document id, and writes the token, encrypted, at that id in the
 shared store. The passkey itself never becomes the secret, so several passkeys (one per platform)
 can each hold a keyslot for the same token.
+
+Saving again with the same RP ID and `userName` may replace the earlier passkey; the effective
+name defaults to the page's host. The app chooses the label and may append a distinguishing
+suffix to keep separate backups. `displayName` defaults to that label, sets only the new
+credential's visible name, and does not change its handle. Labels are visible to the password
+manager; they are not private account identifiers.
+
+Warn before each save and ask the user to keep the current and any earlier storage tokens.
+Replacement happens before PRF evaluation and the keyslot write. Saving a different token
+under the same label loses the old token's passkey route; even for the same token, a failed
+save after creation can leave no usable passkey backup. The kept token or another backup is
+the recovery route. Older random-handle duplicates remain. The replacement tests use only
+Chromium's virtual authenticator; iCloud Keychain, Google Password Manager, Windows Hello,
+1Password and Bitwarden have not been validated on real devices.
 
 `restore()` evaluates the PRF again, derives the same id, reads and unwraps the keyslot, and
 returns the token. If the chosen passkey has no keyslot, or the user cancels, it returns `null`

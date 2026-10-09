@@ -240,7 +240,7 @@ anything that looks like an id or token.
 | `item-too-large` | `set()`, `setItem()`; `onStatus` | An item exceeds `maxItemBytes`, or the encrypted document or manifest would exceed the store's limit. |
 | `would-orphan` | `link()`, `unlink()` | This app has writes that never synced; pass `discardLocal: true` to drop them. |
 | `unlinked` | any call after `unlink()` | This instance was unlinked; call `burrow()` again. |
-| `cancelled` | `passkeyBackup().save()` | The user dismissed the passkey prompt. Nothing was written. |
+| `cancelled` | `passkeyBackup().save()` | A passkey prompt was dismissed. No new keyslot was written, but an earlier credential may already have been replaced if creation succeeded before the follow-up prompt. |
 | `prf-unsupported` | `passkeyBackup().save()`, `.restore()` | WebAuthn PRF is not available here. Offer the storage token instead. |
 | `decrypt-failed` | `onStatus`, `passkeyBackup().restore()` | A document does not decrypt under this token (corruption or a version mismatch). Sync pauses, the cache is untouched; `link()` resumes it. |
 | `conflict` | `onStatus`, `syncNow()`, `passkeyBackup().save()` | Writes kept colliding with another writer after retries. Retried on the next trigger. |
@@ -312,8 +312,17 @@ is separate from the store: it takes a storage token and gives one back, so `sav
 `exportToken()` and `restore()` with `link()`.
 
 ```js
-const backup = passkeyBackup();
-if (await backup.available()) await backup.save(await store.exportToken());
+const backup = passkeyBackup({ userName: "notes" });
+// From a click, after the user kept the current and any earlier storage tokens:
+if (
+  (await backup.available()) &&
+  confirm(
+    "An earlier notes passkey may be replaced, even if this save fails. " +
+      "Have you kept the storage tokens and want to continue?",
+  )
+) {
+  await backup.save(await store.exportToken());
+}
 // On another device, from a click:
 const token = await backup.restore();
 if (token) await store.link({ token, source: "passkey" });
@@ -324,7 +333,8 @@ interface PasskeyBackupOptions {
   backend?: Backend;  // default: from the page, as for burrow()
   rpId?: string;      // default: the page's host; the registrable domain shares one passkey across subdomains
   rpName?: string;    // default: the page's host
-  userName?: string;  // default: the page's host
+  userName?: string;  // default: the page's host; stable identity for replacement on this RP
+  displayName?: string; // default: effective userName; presentation only
   timeoutMs?: number; // default: 120 000
 }
 interface PasskeyBackup {
@@ -343,12 +353,33 @@ config is retried on the next call.
 | Member | Behaviour |
 | --- | --- |
 | `available()` | Never prompts. True in a secure context with `PublicKeyCredential`, a user-verifying platform authenticator, and no `getClientCapabilities()` report denying `extension:prf`. |
-| `save(token)` | Creates a discoverable passkey with user verification and no attestation, evaluates its PRF, and writes the token to a keyslot document only that passkey can open. One prompt, sometimes two when the authenticator returns no PRF output at creation. Rejects `bad-token` before prompting, `cancelled` when the prompt is dismissed, `prf-unsupported`, `backend` (missing or invalid backend config, before prompting) or `conflict`; a failing store may surface a raw `BackendError`. Saving again with the same passkey replaces its keyslot. |
+| `save(token)` | Creates a discoverable passkey with user verification and no attestation, evaluates its PRF, and writes the token to a keyslot document only that passkey can open. Its deterministic user handle derives from the effective `userName`, so the same RP and label may replace the previous credential. One prompt, sometimes two when the authenticator returns no PRF output at creation. Rejects `bad-token` before prompting, `cancelled` when a prompt is dismissed, `prf-unsupported`, `backend` (missing or invalid backend config, before prompting) or `conflict`; a failing store may surface a raw `BackendError`. |
 | `restore()` | One prompt; the user picks the passkey. Resolves the token from its keyslot, or `null` when the prompt is dismissed or that passkey has no keyslot. Rejects `prf-unsupported`, `decrypt-failed` (the keyslot was tampered with) or `backend`. |
 
 Call `save()` and `restore()` from a user gesture: browsers allow passkey prompts only then. The
 utility stores nothing on the device; the passkey itself is what the user keeps. The keyslot
 format and its derivation are in [SECURITY.md](../SECURITY.md#derivation-v1).
+
+**Warn before every save, and keep the current and any earlier storage tokens.** Replacement
+happens during credential creation, before the PRF output and keyslot write. The new passkey
+normally derives a different PRF output and opens a new keyslot. Saving a different token under
+the same label loses the earlier token's passkey route. Even for the same token, a failed PRF
+evaluation, dismissed follow-up prompt or failed write can leave no usable passkey backup.
+The utility cannot undo credential replacement; the kept storage token or another backup is
+the recovery route.
+
+Apps choose `userName` semantics: a stable app label opts into replacement, while distinct
+device, session or user-chosen labels let backups coexist. Apps can append their own
+distinguishing suffix; the library adds none. `displayName` sets the new credential's visible
+name without changing its handle; it does not rename a previously stored passkey. Both labels
+are visible to the password manager, so choose personal information only deliberately. The
+host fallback applies to every app that omits `userName`; pass explicit distinct labels when
+those backups should remain separate.
+
+Repeated saves with the same label leave one credential on a conforming discoverable
+authenticator. Existing credentials created with random handles remain; this utility does not
+enumerate or delete them. Replacement is tested only with Chromium's virtual authenticator,
+not real iCloud Keychain, Google Password Manager, Windows Hello, 1Password or Bitwarden.
 
 ## Types
 

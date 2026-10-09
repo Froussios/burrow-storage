@@ -308,6 +308,39 @@ describe("KP-5/KP-6 save and restore", () => {
     });
   });
 
+  it("KP-5 user handle is stable per userName, differs between labels, and displayName does not change it (D-47)", async () => {
+    const handle = async (o: { userName?: string; displayName?: string }) => {
+      auth.createCalls.length = 0;
+      await passkeyBackup({ backend, ...o }).save(await newToken());
+      const pk = auth.createCalls[0]!.publicKey;
+      return { id: b64url(new Uint8Array(pk.user.id as ArrayBuffer)), pk };
+    };
+    const a1 = await handle({ userName: "a" });
+    const a2 = await handle({ userName: "a", displayName: "Alice's laptop" });
+    const b = await handle({ userName: "b" });
+    expect(a1.id).toBe(a2.id);
+    expect(a1.id).not.toBe(b.id);
+    expect(a1.id).toHaveLength(22); // 16 bytes
+    expect(a2.pk.user).toMatchObject({
+      name: "a",
+      displayName: "Alice's laptop",
+    });
+  });
+
+  it("KP-5 the host fallback shares the handle of an explicit identical label across new backup utilities (D-47)", async () => {
+    vi.stubGlobal("location", { hostname: "notes.example" });
+    await p.save(await newToken());
+    const first = auth.createCalls[0]!.publicKey;
+    await passkeyBackup({ backend, userName: "notes.example" }).save(
+      await newToken(),
+    );
+    const second = auth.createCalls[1]!.publicKey;
+    expect(second.user.id).toEqual(first.user.id);
+    expect(second.user.displayName).toBe("notes.example");
+    // The stable identity does not make the WebAuthn challenge predictable.
+    expect(second.challenge).not.toEqual(first.challenge);
+  });
+
   it("KP-5 create() with prf.enabled but no results takes exactly one follow-up get() for the PRF output", async () => {
     auth.createMode = "enabled-only";
     const token = await newToken();

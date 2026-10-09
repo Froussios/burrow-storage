@@ -1,7 +1,7 @@
 // burrow-storage/passkey. KP-5..8, ENC-11, SEC-7: a passkey backs up the
 // storage token in a keyslot, a backend document encrypted under a key derived
 // from the passkey's PRF output. The passkey never becomes the token.
-import { randomBytes, utf8, zeroise } from "./bytes.js";
+import { randomBytes, sha256, utf8, zeroise } from "./bytes.js";
 import { PRF_SALT_V1, deriveSlotKeys, type SlotKeys } from "./codec/derive.js";
 import { type DocCipher, open, seal } from "./codec/envelope.js";
 import { decodeToken, encodeToken } from "./codec/token.js";
@@ -26,9 +26,17 @@ export interface PasskeyBackupOptions {
   rpName?: string;
   /**
    * user.name shown by the authenticator. Default: the page's host. Never an
-   * email unless you choose one.
+   * email unless you choose one. The user handle derives from this label:
+   * saving again on the same rp may replace its earlier passkey. Use distinct
+   * labels for backups you want to keep separately, and warn before saving.
    */
   userName?: string;
+  /**
+   * user.displayName shown by the authenticator. Default: `userName`. It does
+   * not affect the user handle or the replacement scope. Applies to the new
+   * credential; this utility does not rename an existing passkey.
+   */
+  displayName?: string;
   /** How long a prompt may stay open, in ms. Default 120 000. */
   timeoutMs?: number;
 }
@@ -42,6 +50,10 @@ export interface PasskeyBackup {
   available(): Promise<boolean>;
   /**
    * Create a passkey and store `token` in a keyslot only it can open (KP-5).
+   * A passkey for the same rp and `userName` may be replaced (D-47), before
+   * this backup is written. Keep the current and any earlier storage tokens
+   * elsewhere, and warn the user before calling, even when saving the same
+   * token again. A failure after creation does not restore the old passkey.
    * Call from a user gesture. Rejects `bad-token`, `cancelled` (the prompt was
    * dismissed), `prf-unsupported`, `backend` or `conflict`.
    */
@@ -68,6 +80,10 @@ const bytes = (b: BufferSource) =>
       ? b
       : b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength),
   );
+// D-47: a stable user handle per label, so a repeat save replaces the passkey
+// instead of adding an identical entry.
+const userHandle = async (name: string) =>
+  (await sha256(utf8("burrow/user/v1" + name))).slice(0, 16);
 const slotCipher = (s: SlotKeys): DocCipher => ({
   key: s.kek,
   mac: s.slotMac,
@@ -194,6 +210,8 @@ export function passkeyBackup(
       const secret = await decodeToken(token); // bad-token before any prompt
       try {
         const b = await store();
+        const userName = options.userName ?? host();
+        const userId = await userHandle(userName);
         let cred: PublicKeyCredential | null;
         try {
           cred = (await navigator.credentials.create({
@@ -203,9 +221,9 @@ export function passkeyBackup(
                 ...(options.rpId ? { id: options.rpId } : {}),
               },
               user: {
-                id: randomBytes(16),
-                name: options.userName ?? host(),
-                displayName: options.userName ?? host(),
+                id: userId,
+                name: userName,
+                displayName: options.displayName ?? userName,
               },
               challenge: randomBytes(32),
               pubKeyCredParams: [

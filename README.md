@@ -330,6 +330,10 @@ the same token to `link()`; the store does not care how. Burrow supports two way
   *keyslot* document, encrypted under a key that only the passkey can derive (WebAuthn PRF), and
   gives it back on another device with one prompt. Needs HTTPS or `localhost` and PRF support,
   which still varies: `available()` says whether it can work, without prompting.
+  Saving again with the same `userName` on the same site may replace its earlier passkey;
+  pass distinct labels to keep separate backups. Warn first and keep the current and any
+  earlier storage tokens: a failed save after creation can lose the earlier passkey route.
+  [Naming and replacement limits](docs/api.md#passkey-backup).
 
 Burrow does not track whether the token is kept anywhere. `token.source === "generated"` means it
 was made on this device and exists nowhere else as far as Burrow knows: the moment to nudge the
