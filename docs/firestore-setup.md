@@ -20,20 +20,15 @@ See
 
 ## Create the project
 
-```sh
-npx burrow-setup firestore
-```
-
-prints the human console steps and points at the shipped [agent instructions](../firebase/SETUP-AGENT.md).
-For step-by-step automation, tell your coding agent:
+Follow the steps below by hand, or have a coding agent perform them with the shipped
+[agent instructions](../firebase/SETUP-AGENT.md):
 
 > Follow `node_modules/burrow-storage/firebase/SETUP-AGENT.md` to set up a Burrow store.
 
 The agent confirms your project id, permanent location, referrers and app name, checks resources
 before creating them and records safe resumable state. Sign-in belongs to you; optional gcloud
 commands have console fallbacks. It deploys the shipped rules unmodified and never enables
-billing, Auth, Storage, Functions or Hosting. Before the first npm release, run the printer
-from a clone as `node scripts/burrow-setup.mjs firestore`. By hand:
+billing, Auth, Storage, Functions or Hosting. By hand:
 
 1. **Create a Firebase project without a billing account**, Google Analytics off. Do not upgrade
    to Blaze.

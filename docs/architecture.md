@@ -361,8 +361,8 @@ and tested in `firebase/tests/rules.test.mjs` under the emulator.
 
 `package.json` exports `.`, `./passkey` and `./firestore`; `firebase >= 10` is an optional peer dependency;
 `files` ships `dist/`, the setup bin, `firebase/SETUP-AGENT.md`, `firebase/firestore.rules` and
-`firebase.json`. `npx burrow-setup firestore` prints the human deployment steps; shipped
-`firebase/SETUP-AGENT.md` guides an agent through provisioning and verification.
+`firebase.json`. `docs/firestore-setup.md` lists the human deployment steps; shipped
+`firebase/SETUP-AGENT.md` guides an agent through provisioning and verification (D-51).
 `burrow-setup check` runs the packaged `src/setup/check.ts` Gate 2 rules check using the same
 backend and codec, with fresh throwaway keys and fixed, redacted output. It never provisions
 resources or runs in CI. `scripts/size.mjs` builds with esbuild and checks

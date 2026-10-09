@@ -1,8 +1,8 @@
 # Firestore rules and emulator config
 
-The files Burrow's reference backend needs on the store side. `npx burrow-setup firestore` walks
-through creating a project and deploying them; the full guide, including costs, quotas and the
-API-key restriction, is [docs/firestore-setup.md](../docs/firestore-setup.md).
+The files Burrow's reference backend needs on the store side. The full guide to creating a
+project and deploying them, including costs, quotas and the API-key restriction, is
+[docs/firestore-setup.md](../docs/firestore-setup.md).
 
 - `firestore.rules` — the id-as-capability rules: `get` for anyone, no `list`, no `delete`,
   `create` at revision 0, `update` only at the next revision with a token whose SHA-256 matches

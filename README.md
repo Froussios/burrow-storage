@@ -158,13 +158,8 @@ apart. Listing the collection is denied, so an id is the only way in, and ids ca
 
 Burrow works with no store at all: data then stays on the device, and `burrow()` warns once in the
 console. To sync across devices, create one Firebase project on the free Spark plan and reuse it
-for every site you build:
-
-```sh
-npx burrow-setup firestore
-```
-
-It prints the console steps: create the project, create Firestore, deploy the security rules that
+for every site you build. [docs/firestore-setup.md](docs/firestore-setup.md#create-the-project)
+lists the console steps: create the project, create Firestore, deploy the security rules that
 ship with Burrow, and restrict the API key. To have a coding agent perform the steps, tell it:
 
 > Follow `node_modules/burrow-storage/firebase/SETUP-AGENT.md` to set up a Burrow store.
@@ -275,7 +270,7 @@ today. Build from a clone instead:
 ```sh
 git clone https://github.com/Froussios/burrow-storage.git
 cd burrow-storage && npm ci && npm run build
-node scripts/burrow-setup.mjs firestore     # the setup guide, in place of npx burrow-setup
+node scripts/burrow-setup.mjs check '<config JSON>'   # in place of npx burrow-setup check
 ```
 
 Then copy `dist/burrow.min.js` and `dist/burrow-firestore.js` next to your page, or run

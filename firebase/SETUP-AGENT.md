@@ -94,8 +94,8 @@ CLI; check its `--help` before mutation if the flags differ.
 **Check first:** `node --version` and `npx firebase-tools@15.32.1 --version`.
 
 **Command:** the same version commands; accept an `npx` download prompt only with the human's
-permission. Node **20 or newer** is required by this Firebase CLI and the live checker; Node 18
-still suffices to print Burrow's human guide. For a clone, development uses Node 22 or newer.
+permission. Node **20 or newer** is required by this Firebase CLI and the live checker. For a
+clone, development uses Node 22 or newer.
 
 **Verify:** supported Node and CLI version `15.32.1`; locate the installed Burrow `firebase/`
 directory containing this file, `firebase.json` and `firestore.rules`.

@@ -531,7 +531,8 @@ with confirmed inputs, per-step checks and verification, safe local progress, kn
 and stop conditions. A rerun rechecks resources, skips completed mutations and repeats live
 verification. CLI sign-in stays with the human; optional gcloud actions have console fallbacks.
 No billing, unrelated Firebase products, rule edits or deletion are allowed. FS-10 remains met
-by `burrow-setup firestore`, which prints human console steps and the agent-guide path.
+by `burrow-setup firestore`, which prints human console steps and the agent-guide path. D-51
+amends this: the printer is removed.
 
 The recommended packaged `burrow-setup check '<config JSON>'` reuses the production backend,
 HKDF derivation and envelope codec, rather than asking an agent to invent crypto. It creates and
@@ -606,6 +607,17 @@ work (#22) must keep keyslot maintenance in the passkey utility: core sync has n
 backend nor its PRF-derived keys, and content operations must work when recovery is unavailable
 once the token is available. This decision does not choose an expiry policy or change crypto.
 See [independent configuration](extending.md#independent-token-and-content-storage).
+
+### D-51 Drop the console-steps printer; `burrow-setup` keeps only `check` (FS-10)
+
+`burrow-setup firestore` executed nothing: it printed a copy of the console steps in
+`docs/firestore-setup.md`, so the two could drift, and no user had run it before the first
+release. The owner withdrew FS-10's printed one-command setup. The steps live in
+`docs/firestore-setup.md` and the shipped `firebase/SETUP-AGENT.md`, which also covers agents
+(D-49). FS-10 still requires the shipped `firestore.rules` and `firebase.json`. The bin keeps
+only `burrow-setup check '<config JSON>'`. `firestore` fails with a pointer to both guides.
+`engines` rises to Node 20, the minimum for the checker and the agent guide's Firebase CLI. The
+requirements snapshot is not edited. This amends D-49's sentence on how FS-10 is met.
 
 ## Part B: planning decisions and their status
 
