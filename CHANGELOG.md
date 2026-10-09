@@ -8,6 +8,9 @@ labels, and the storage-token encoding are public contract: changing them is a m
 ## [Unreleased]
 
 ### Added
+- Passkey backup: `displayName` option, and a user handle derived from `userName`, so saving
+  again with the same label replaces the earlier passkey instead of adding an identical entry
+  (#21, D-50).
 - Generic backend configuration (`burrow-backend` meta / `window.BURROW.backend`), lazy
   `registerBackend(type, factory)`, caller `{ backend: { type, …options } }` and Firestore
   shorthand. Invalid backend config preserves local reads/writes and reports an error status

@@ -69,6 +69,9 @@ sprk     = HKDF-Extract(SHA-256, salt = "burrow/slot/v1", prfOutput)
 kek      = HKDF-Expand(sprk, "kek", 32)               AES-256-GCM, wraps the root secret
 slotMac  = HKDF-Expand(sprk, "auth", 32)              HMAC-SHA-256, write tokens for the keyslot
 slotId   = base64url(SHA-256(HKDF-Expand(sprk, "slot", 32)))[0:43]
+
+Passkey user handle (not secret; D-50):
+user.id  = SHA-256("burrow/user/v1" || userName)[0:16]   same label, same rp: replaces the passkey
 ```
 
 `||` is concatenation of UTF-8 bytes; `app` matches `/^[a-z0-9-]{1,64}$/`. WebCrypto's HKDF

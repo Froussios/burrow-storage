@@ -551,6 +551,28 @@ provisioning, a small agent's end-to-end execution and the second run remain blo
 sign-in/project inputs and live verification. Keep the end-to-end caveat until evidence exists;
 this implementation alone does not close #36 or establish its complete acceptance.
 
+### D-50 Deterministic passkey user handle; replacement is the app's to warn about (#21)
+
+`save()` derives `user.id` as the first 16 bytes of SHA-256(`"burrow/user/v1"` ‖ `userName`),
+where `userName` is the effective label (host by default). The rp ID scopes it to the site;
+a different label gives a different handle. CTAP2 authenticators replace a discoverable
+credential with the same rp ID and user handle, so a repeat save leaves one entry. Only that
+the handle varies with the label matters; the exact derivation is not a requirement.
+`displayName` is a separate option (default `userName`) and does not enter the handle, so an
+app can rename what the user sees without creating a duplicate. The string is a new public
+constant. Keyslot format and crypto are unchanged.
+
+Replacement happens inside `credentials.create()`, before the PRF output and the keyslot write.
+If the follow-up fails, neither passkey may hold a usable backup, and a different token saved
+under the same label loses its passkey route. Responsibility is passed to the app and user:
+sites must warn before `save()` and keep the token, or use a distinct `userName` (device name,
+date, user-chosen) per token. Not adopted: a random suffix by default (defeats the goal),
+`excludeCredentials` and a `passkey-exists` error (the library has no credential ids to send;
+D-42), a name-to-credential registry. Limits: earlier random-handle duplicates remain, since
+WebAuthn offers no enumeration or deletion; replacement was exercised only with Chromium's
+virtual authenticator, not iCloud Keychain, Google Password Manager, Windows Hello, 1Password
+or Bitwarden.
+
 ## Part B: planning decisions and their status
 
 These were proposed in the pre-implementation design review

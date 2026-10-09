@@ -324,7 +324,8 @@ interface PasskeyBackupOptions {
   backend?: Backend;  // default: from the page, as for burrow()
   rpId?: string;      // default: the page's host; the registrable domain shares one passkey across subdomains
   rpName?: string;    // default: the page's host
-  userName?: string;  // default: the page's host
+  userName?: string;  // default: the page's host; saving twice with the same value replaces the passkey
+  displayName?: string; // default: userName; does not affect replacement
   timeoutMs?: number; // default: 120 000
 }
 interface PasskeyBackup {
