@@ -166,15 +166,19 @@ describe("FS-10 bin guardrails before remote access", () => {
     expect(result.stderr).toContain("must not run in CI");
     expect(result.stderr).not.toContain("Supply your own config JSON");
   });
-  it("prints the human guide and shipped agent path", async () => {
-    const result = await run(["firestore"]);
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain("SETUP-AGENT.md");
-    expect(result.stdout).not.toContain("--run");
+  it("rejects the removed console-steps printer (D-51)", async () => {
+    for (const args of [["firestore"], ["firestore", "--run"]]) {
+      const result = await run(args);
+      expect(result.status).toBe(1);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toContain("was removed");
+      expect(result.stderr).toContain("SETUP-AGENT.md");
+    }
   });
-  it("rejects the removed provisioning flag", async () => {
-    const result = await run(["firestore", "--run"]);
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain("was removed");
+  it("prints usage naming only the check command", async () => {
+    const result = await run([]);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("burrow-setup check");
+    expect(result.stdout).not.toContain("firestore");
   });
 });

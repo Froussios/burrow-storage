@@ -66,8 +66,8 @@ them as history unless the owner says otherwise.
 ## Toolchain
 
 TypeScript 5.9 `strict`, ES2022, browser `lib`. **Node 22 or newer** for development (`npm test`
-uses Node's `--localstorage-file`); `engines` says `>=18` because that is enough to print the
-`burrow-setup` human guide; its live `check` and the agent setup CLI need Node 20 or newer. npm.
+uses Node's `--localstorage-file`); `engines` says `>=20`, which the `burrow-setup check` live rules
+check and the agent setup's Firebase CLI need. npm.
 Builds with tsup (`tsup.config.ts`). Tests with vitest (unit, property
 via fast-check, backend conformance), Playwright (`test/e2e`, three engines, a CDP virtual
 authenticator for passkeys), `node --test` for the rules under the Firestore emulator

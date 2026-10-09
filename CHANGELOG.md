@@ -71,8 +71,11 @@ path.
   recovery route even if saving fails. Existing random-handle duplicates remain; replacement
   is validated only with Chromium's virtual authenticator.
 - Replace the unverified one-shot Firestore setup shell script and `--run` flag with checked,
-  resumable agent instructions; human console steps still satisfy FS-10 (#36, D-49).
+  resumable agent instructions (#36, D-49).
   Fresh-project setup and a second live verification run remain unverified.
+- Remove `burrow-setup firestore`, which only printed the console steps already in
+  `docs/firestore-setup.md`. `burrow-setup` keeps the `check` command; `engines` is now
+  Node 20 or newer (D-51).
 - Explicit `backend: null` from untyped callers now counts as invalid configuration
   instead of falling back to page discovery. `burrow()` opens local storage with error
   status; passkey operations reject `backend` before prompting. Omit `backend` to discover
