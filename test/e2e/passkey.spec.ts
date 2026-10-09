@@ -1,6 +1,6 @@
 // KP-5..8 with Chromium's virtual authenticator (PRF): burrow-storage/passkey's
 // save, a full site-data reset, restore, then link().
-import { type CDPSession, type Page, expect, test } from "@playwright/test";
+import { type Page, expect, test } from "@playwright/test";
 import {
   type PasskeyBackup,
   type Store,

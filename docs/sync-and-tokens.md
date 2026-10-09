@@ -65,7 +65,13 @@ import { passkeyBackup } from "burrow-storage/passkey";
 const backup = passkeyBackup({ userName: "notes" });
 
 // first device, from a click, after keeping the current and earlier tokens
-if (await backup.available() && confirm("An earlier notes passkey may be replaced, even if this save fails. Have you kept the storage tokens and want to continue?")) {
+if (
+  (await backup.available()) &&
+  confirm(
+    "An earlier notes passkey may be replaced, even if this save fails. " +
+      "Have you kept the storage tokens and want to continue?",
+  )
+) {
   try {
     await backup.save(await store.exportToken());
   } catch (e) {

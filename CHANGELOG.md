@@ -3,7 +3,9 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/). The envelope format, the v1 derivation salts and
-labels, and the storage-token encoding are public contract: changing them is a major release.
+labels, the storage-token encoding, and the passkey user-handle derivation with its
+`burrow/user/v1` prefix are public contract: changing them is a major release with a migration
+path.
 
 ## [Unreleased]
 
@@ -60,6 +62,8 @@ labels, and the storage-token encoding are public contract: changing them is a m
 
 - Passkey handles derive from the effective `userName`: repeated saves with the same RP and
   label replace the earlier credential on conforming discoverable authenticators (#21, D-47).
+  The first 16 bytes of SHA-256 over UTF-8 `"burrow/user/v1" + userName` are stable v1 public
+  contract; changing the derivation would stop replacement of existing credentials.
   Apps choose distinguishing labels for separate backups. The demo uses `burrow-demo` and
   warns before creation: replacement precedes the PRF/keyslot write and can lose the earlier
   recovery route even if saving fails. Existing random-handle duplicates remain; replacement

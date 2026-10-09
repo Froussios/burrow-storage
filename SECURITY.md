@@ -3,8 +3,10 @@
 Burrow keeps per-user data in a store that anyone may read by id, yet neither the store's operator
 nor the site's developer can read it, and nothing in it names a user. This document is the
 normative description of how, and the plain list of what it does not protect. Everything under
-*Derivation* and *Formats* is frozen public contract for v1: changing any of it is a major release
-with a migration path.
+*Derivation* and *Formats* is frozen public contract for v1, including the passkey user-handle
+derivation and its `burrow/user/v1` prefix: changing any of it is a major release with a migration
+path. Changing a passkey handle without migration stops replacement of earlier credentials and
+allows duplicate labels again.
 
 **In brief.** Burrow aims to guarantee that:
 
@@ -78,6 +80,14 @@ user.id  = SHA-256("burrow/user/v1" || userName)[0:16]
 performs extract and expand in one `deriveBits` call. Test vectors produced by an independent
 implementation (`node:crypto`, `scripts/gen-vectors.mjs`) are committed in `test/vectors.json`,
 and the unit tests check the WebCrypto code against them.
+
+For the passkey handle, `userName` is the effective public label (the page's host by default).
+The RP ID scopes credential use, but is not hashed into the handle: the same explicit label on
+two sites gives the same handle. This is a hash of the label, not a secret or an independent user
+identifier; anyone who knows the label can compute it. Apps should choose non-sensitive public
+labels and can use site-specific labels to avoid matching handles across sites. `displayName`
+does not enter the derivation. The prefix, UTF-8 input, SHA-256 and first-16-byte truncation are
+stable v1 public contract (D-47).
 
 A token derived from something the user types (a passphrase) would have to pass through
 PBKDF2-SHA-256 with at least 600 000 iterations first. v1 has no such path and accepts only random

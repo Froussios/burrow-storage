@@ -314,7 +314,13 @@ is separate from the store: it takes a storage token and gives one back, so `sav
 ```js
 const backup = passkeyBackup({ userName: "notes" });
 // From a click, after the user kept the current and any earlier storage tokens:
-if (await backup.available() && confirm("An earlier notes passkey may be replaced, even if this save fails. Have you kept the storage tokens and want to continue?")) {
+if (
+  (await backup.available()) &&
+  confirm(
+    "An earlier notes passkey may be replaced, even if this save fails. " +
+      "Have you kept the storage tokens and want to continue?",
+  )
+) {
   await backup.save(await store.exportToken());
 }
 // On another device, from a click:

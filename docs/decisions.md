@@ -561,11 +561,16 @@ These decisions accept a scoped behavior rather than a universal manager guarant
 where `userName` is the effective label (host by default). The rp ID scopes it to the site;
 a different label gives a different handle. CTAP2 authenticators replace a discoverable
 credential with the same rp ID and user handle, so a repeat save leaves one entry. Only that
-the handle varies with the label matters; the exact derivation is not a requirement.
+the handle varies with the label was required by the owner when choosing the initial algorithm.
+The chosen derivation is now stable v1 public contract: the `burrow/user/v1` prefix, UTF-8 input,
+SHA-256 and first-16-byte truncation may not change without a major release and migration path,
+since a new handle would stop replacement of earlier credentials and allow duplicate labels.
 `displayName` is a separate option (default `userName`) and does not enter the handle, so an
 app can change the new credential's presentation without changing its identity. Renaming an
-existing passkey remains out of scope. The string is a new public constant. Keyslot format
-and crypto are unchanged.
+existing passkey remains out of scope. The RP ID scopes credential use but is not hashed into
+the handle; matching explicit public labels have matching handles across sites. This adds no
+independent user identifier beyond that label. The default host label differs per site, and
+apps can choose site-specific, non-sensitive labels. Keyslot format and crypto are unchanged.
 
 Replacement happens inside `credentials.create()`, before the PRF output and the keyslot write.
 If the follow-up fails, neither passkey may hold a usable backup, and a different token saved
