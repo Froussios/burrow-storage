@@ -5,6 +5,13 @@ one caller-owned **Spark** project with the **default, Standard, Native-mode** d
 the shipped `burrow` collection rules. Before the first npm release, use a repository clone
 and replace `npx burrow-setup` with `node scripts/burrow-setup.mjs` after `npm run build`.
 
+The project may hold content, passkey keyslots, or both. Content and recovery are independently
+configurable: for separate Firebase projects, run this guide in separate working directories for
+each caller-selected project to keep their configs/state separate. At hand-off, use the recovery backend
+with `passkeyBackup({ backend })` and the content backend with `burrow({ app, backend })`.
+A token kept directly in a password manager needs no keyslot project. Do not assume a site
+using a different content database also wants Firebase for recovery.
+
 **Validation status:** these instructions have not been run end to end against a fresh project
 or rerun by an agent. Emulator coverage does not establish that provisioning works. Record any
 successful real run, human steps and departures before removing this caveat.

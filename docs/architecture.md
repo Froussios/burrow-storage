@@ -294,6 +294,14 @@ shared structural contract, else `defaultBackend()` from
 error without a cause, so arbitrary configuration values cannot escape. A failed resolution
 is retried on the next call. It keeps no state on the device.
 
+This separation is intentional and must survive extensions and new backends. `PasskeyBackup`
+and the core reuse the `Backend` interface, not necessarily a backend instance or service.
+Keyslots may live in another Firebase project or database; direct password-manager token
+storage needs no keyslot backend. Page config is only the shared default, and the site passes
+the recovered token to `link()`. Normal core sync has neither the utility's backend nor its
+PRF-derived keys, so it cannot assume it can maintain keyslots. Recovery and content may have
+independent retention policies. See [extending.md](extending.md#independent-token-and-content-storage).
+
 - `available()`: a secure context, `PublicKeyCredential` and `navigator.credentials` exist,
   `getClientCapabilities()` does not report `extension:prf: false`, and
   `isUserVerifyingPlatformAuthenticatorAvailable()`.

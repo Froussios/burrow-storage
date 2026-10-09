@@ -8,12 +8,18 @@ what a site should show. Signatures are in [api.md](api.md).
 | Term | Meaning |
 | --- | --- |
 | **Storage token** (or just **token**) | The 32-byte secret that owns a user's data. Whoever holds it can read and write that data from any device. Shown to people as 56 characters in groups of four, `07DV-1XKY-…`, which is also the form the API takes and returns: `exportToken()`, `link({ token })`. |
-| **Passkey backup** | The token stored in a *keyslot* document in the shared store, wrapped under a key that only the passkey's PRF output can derive. One passkey, one keyslot. Optional, from `burrow-storage/passkey`. |
+| **Passkey backup** | The token stored in a *keyslot* document in the utility's configured backend, wrapped under a key that only the passkey's PRF output can derive. One passkey, one keyslot. Optional, from `burrow-storage/passkey`; its backend can differ from the content backend. |
 | **Linking** | Making this device use an existing token instead of the one it generated. |
 
 The store only ever deals in the token. Getting it from one device to the next is the site's
 choice: the user types or pastes it, a password manager fills it, a passkey backup returns it, or
 the site's own mechanism does. Each one ends in `link({ token })`.
+
+Token recovery and content storage are deliberately decoupled. A passkey keyslot can live in
+another Firebase project or another database, selected with `passkeyBackup({ backend })`.
+Saving the token directly in a password manager needs no keyslot or token backend. This lets
+sites choose recovery and content availability and retention independently; extensions should
+preserve that choice. See [configuration examples](extending.md#independent-token-and-content-storage).
 
 ## First device: nothing to do
 
@@ -87,8 +93,8 @@ if (token) await store.link({ token, source: "passkey" });
 `save(token)` creates a discoverable passkey (user verification required, no attestation) and
 evaluates the WebAuthn PRF extension with a fixed salt. From the PRF output it derives a wrapping
 key, a write-token key and a document id, and writes the token, encrypted, at that id in the
-shared store. The passkey itself never becomes the secret, so several passkeys (one per platform)
-can each hold a keyslot for the same token.
+utility's configured backend. The passkey itself never becomes the secret, so several passkeys
+(one per platform) can each hold a keyslot for the same token.
 
 Saving again with the same RP ID and `userName` may replace the earlier passkey; the effective
 name defaults to the page's host. The app chooses the label and may append a distinguishing

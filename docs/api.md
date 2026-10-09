@@ -360,6 +360,13 @@ Call `save()` and `restore()` from a user gesture: browsers allow passkey prompt
 utility stores nothing on the device; the passkey itself is what the user keeps. The keyslot
 format and its derivation are in [SECURITY.md](../SECURITY.md#derivation-v1).
 
+Token recovery is deliberately independent of content storage. `PasskeyBackupOptions.backend`
+uses the same `Backend` interface as `BurrowConfig.backend`, but may be a different instance,
+Firebase project or database. The default resolves page config, not a backend passed only to
+`burrow()`. A password manager or other token carrier can use `exportToken()` and `link()`
+without `passkeyBackup()` or a keyslot backend. See
+[independent configuration](extending.md#independent-token-and-content-storage).
+
 **Warn before every save, and keep the current and any earlier storage tokens.** Replacement
 happens during credential creation, before the PRF output and keyslot write. The new passkey
 normally derives a different PRF output and opens a new keyslot. Saving a different token under

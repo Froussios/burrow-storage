@@ -12,6 +12,15 @@ caps, and an approximately 1 MiB envelope. Push is optional. The unchanged
 `test/conformance/suite.ts` verifies adapter semantics; raw HTTP policy probes must additionally
 verify no-list/no-delete and bypass resistance. Local mocks cannot establish hosted policy.
 
+Backend work must preserve [independent token and content storage](extending.md#independent-token-and-content-storage).
+An envelope adapter implements the shared `Backend` contract and can be selected independently
+for content or passkey keyslots; it must not require both to use the same provider, project or
+instance. Reports and verification should cover separately configured instances and mixed
+adapters, including save/restore of a token followed by linking to a different content backend.
+Token carriers such as a password manager are a separate extension path and need no envelope
+adapter or keyslot service. The candidate requirements below apply to envelope backends, not
+to those token carriers. Content sync must not depend on the recovery service being available.
+
 Ids are capabilities. Every store needs a primary lookup structure, but no extra secondary
 indexes or application logs should retain ids. Whether BE-2 permits that necessary lookup
 structure needs owner confirmation. Hosted request logs, backups and operator retention are
