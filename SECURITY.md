@@ -70,8 +70,8 @@ kek      = HKDF-Expand(sprk, "kek", 32)               AES-256-GCM, wraps the roo
 slotMac  = HKDF-Expand(sprk, "auth", 32)              HMAC-SHA-256, write tokens for the keyslot
 slotId   = base64url(SHA-256(HKDF-Expand(sprk, "slot", 32)))[0:43]
 
-Passkey user handle (not secret; D-50):
-user.id  = SHA-256("burrow/user/v1" || userName)[0:16]   same label, same rp: replaces the passkey
+Passkey user handle (public identity, not a key; D-47):
+user.id  = SHA-256("burrow/user/v1" || userName)[0:16]
 ```
 
 `||` is concatenation of UTF-8 bytes; `app` matches `/^[a-z0-9-]{1,64}$/`. WebCrypto's HKDF
@@ -194,5 +194,17 @@ other except by timing. Key names and values are never visible.
 - `debug: true` logs sync events with revisions, counts, byte sizes and timings only. It never
   logs ids, tokens, keys or values.
 - Passkeys use `residentKey: "required"`, `userVerification: "required"` and no attestation. The
-  passkey's `user.name` is the app id unless the site supplies a label; it is never an email
-  unless the site chooses one.
+  passkey's `user.name` is the site's chosen `userName`, or the page's host. `displayName`
+  defaults to that name; neither default contains an email. These labels are visible to the
+  authenticator or password manager and are not confidential. The effective `userName` fixes
+  the user handle; the RP ID scopes credential replacement, and `displayName` does not affect
+  it. Distinct backups that must coexist on one authenticator need distinct `userName` values.
+- A conforming discoverable authenticator replaces an existing credential for the same RP ID
+  and user handle during `credentials.create()`, before the new PRF-backed keyslot is written.
+  A different token saved under that label loses its earlier passkey recovery route. Even for
+  the same token, an unsupported PRF, dismissed follow-up prompt or failed keyslot write can
+  leave no usable passkey backup. Sites must warn before creating and ask users to keep the
+  current and any earlier storage tokens elsewhere. This utility cannot undo replacement.
+  Existing random-handle credentials and their encrypted keyslots are retained. Replacement
+  has been checked only on Chromium's virtual authenticator; no real-manager guarantee is
+  claimed for iCloud Keychain, Google Password Manager, Windows Hello, 1Password or Bitwarden.

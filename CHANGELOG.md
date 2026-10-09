@@ -8,9 +8,9 @@ labels, and the storage-token encoding are public contract: changing them is a m
 ## [Unreleased]
 
 ### Added
-- Passkey backup: `displayName` option, and a user handle derived from `userName`, so saving
-  again with the same label replaces the earlier passkey instead of adding an identical entry
-  (#21, D-50).
+
+- Passkey backup: optional `displayName` for the new credential's visible name, separate from
+  its `userName` identity (#21, D-47).
 - Generic backend configuration (`burrow-backend` meta / `window.BURROW.backend`), lazy
   `registerBackend(type, factory)`, caller `{ backend: { type, …options } }` and Firestore
   shorthand. Invalid backend config preserves local reads/writes and reports an error status
@@ -57,6 +57,13 @@ labels, and the storage-token encoding are public contract: changing them is a m
   decision log.
 
 ### Changed
+
+- Passkey handles derive from the effective `userName`: repeated saves with the same RP and
+  label replace the earlier credential on conforming discoverable authenticators (#21, D-47).
+  Apps choose distinguishing labels for separate backups. The demo uses `burrow-demo` and
+  warns before creation: replacement precedes the PRF/keyslot write and can lose the earlier
+  recovery route even if saving fails. Existing random-handle duplicates remain; replacement
+  is validated only with Chromium's virtual authenticator.
 - Replace the unverified one-shot Firestore setup shell script and `--run` flag with checked,
   resumable agent instructions; human console steps still satisfy FS-10 (#36, D-49).
   Fresh-project setup and a second live verification run remain unverified.

@@ -26,15 +26,15 @@ export interface PasskeyBackupOptions {
   rpName?: string;
   /**
    * user.name shown by the authenticator. Default: the page's host. Never an
-   * email unless you choose one. It also fixes the user handle: saving again
-   * with the same `userName` on the same rp replaces the earlier passkey in
-   * authenticators that follow CTAP2 (its keyslot stays, but nothing can open
-   * it), so pass a different value, such as a device name, to keep both.
+   * email unless you choose one. The user handle derives from this label:
+   * saving again on the same rp may replace its earlier passkey. Use distinct
+   * labels for backups you want to keep separately, and warn before saving.
    */
   userName?: string;
   /**
    * user.displayName shown by the authenticator. Default: `userName`. It does
-   * not affect the user handle, so changing it never creates a second passkey.
+   * not affect the user handle or the replacement scope. Applies to the new
+   * credential; this utility does not rename an existing passkey.
    */
   displayName?: string;
   /** How long a prompt may stay open, in ms. Default 120 000. */
@@ -50,8 +50,10 @@ export interface PasskeyBackup {
   available(): Promise<boolean>;
   /**
    * Create a passkey and store `token` in a keyslot only it can open (KP-5).
-   * A passkey for the same rp and `userName` may be replaced (D-50): keep the
-   * token elsewhere, and warn the user before calling.
+   * A passkey for the same rp and `userName` may be replaced (D-47), before
+   * this backup is written. Keep the current and any earlier storage tokens
+   * elsewhere, and warn the user before calling, even when saving the same
+   * token again. A failure after creation does not restore the old passkey.
    * Call from a user gesture. Rejects `bad-token`, `cancelled` (the prompt was
    * dismissed), `prf-unsupported`, `backend` or `conflict`.
    */
@@ -78,7 +80,7 @@ const bytes = (b: BufferSource) =>
       ? b
       : b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength),
   );
-// D-50: a stable user handle per label, so a repeat save replaces the passkey
+// D-47: a stable user handle per label, so a repeat save replaces the passkey
 // instead of adding an identical entry.
 const userHandle = async (name: string) =>
   (await sha256(utf8("burrow/user/v1" + name))).slice(0, 16);

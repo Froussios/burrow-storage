@@ -35,7 +35,7 @@ The **Storage token** panel is always visible. It shows:
 
   Each source also shows when this device obtained the token. The page reads the source from
   `BurrowArea.token` (`{ source, remembered, since }`) and updates it on `BurrowArea.onToken`.
-- whether a passkey backup exists.
+- whether a successful passkey save was recorded; the page cannot verify current recovery.
 
 ## Summary
 
@@ -52,17 +52,24 @@ The **Storage token** panel is always visible. It shows:
 **Starting state:** no token. The page has just generated one, and the panel says *Generated on
 this device (new)* and *Passkey backup: None yet*.
 
-**Steps:** the user clicks **Create new backup with key** and confirms the passkey prompt.
+**Steps:** the user keeps the current and any earlier storage tokens, clicks **Create new backup
+with key**, accepts the replacement warning, and confirms the passkey prompt. Declining the
+warning creates nothing and leaves any existing passkey backup usable.
 
-**Outcome:** the token is stored in a new passkey. The panel says *Passkey backup: Yes, in a
-passkey*. The data the user writes syncs to the store under that token.
+**Outcome:** the token is stored behind a new passkey. The panel says *Passkey backup: Previously
+saved with a passkey. Keep the storage token.* This reports a successful save in the past,
+not a guarantee that the passkey can still recover it. The data the user writes syncs to the
+store under that token.
 
-**How:** `passkeyBackup().save(await store.exportToken())` creates a discoverable passkey,
+**How:** `passkeyBackup({ userName: "burrow-demo" }).save(await store.exportToken())` creates a discoverable passkey,
 evaluates its PRF, and writes a keyslot holding the token wrapped under the PRF output. The demo
 then records the backup in the store under its own `backup` key, so every device linked to the
 token shows it.
 
 **Notes:**
+- A passkey with the same label may be replaced before PRF evaluation or writing the new
+  keyslot. A failure afterward can leave no usable passkey backup, even for the same token;
+  the kept storage tokens or another backup recover the data. The demo warns on every save.
 - Data syncs within seconds of being written, before any passkey exists. The passkey is what
   makes the token recoverable after the browser forgets it.
 - Where the browser or authenticator lacks the PRF extension (support varies), the page says the

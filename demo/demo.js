@@ -11,7 +11,7 @@
   const s = store.storage; // drop-in for localStorage
   // The token's passkey backup lives outside the store
   // (burrow-storage/passkey).
-  const backup = Burrow.passkeyBackup();
+  const backup = Burrow.passkeyBackup({ userName: "burrow-demo" });
 
   // Theme
   const applyTheme = (theme) => {
@@ -68,7 +68,7 @@
   const showBackup = () => {
     $("token-backup").textContent =
       s.getItem("backup") === "passkey"
-        ? "Yes, in a passkey"
+        ? "Previously saved with a passkey. Keep the storage token."
         : "None yet. Create one below, or keep the token yourself.";
   };
 
@@ -129,6 +129,12 @@
     "This browser cannot use passkeys for this. Keep your storage token instead.";
   $("passkey").addEventListener("click", async () => {
     if (!(await backup.available())) return say(NO_PASSKEY);
+    if (
+      !confirm(
+        "Creating a “burrow-demo” passkey may replace an existing passkey with that name. Keep the storage tokens for your current and any earlier backup first: replacement can make the earlier backup unreachable, even if saving this backup fails. Have you kept those tokens and want to continue?",
+      )
+    )
+      return say("No passkey backup was created.");
     try {
       await backup.save(await store.exportToken());
       s.setItem("backup", "passkey");
@@ -138,10 +144,10 @@
     } catch (e) {
       say(
         e.code === "prf-unsupported"
-          ? NO_PASSKEY
+          ? `${NO_PASSKEY} An earlier passkey may already have been replaced.`
           : e.code === "cancelled"
-            ? "No passkey was created."
-            : `Passkey not added (${e.code ?? e.name}).`,
+            ? "Passkey backup was not saved. Keep the storage token; an earlier passkey may have been replaced."
+            : `Passkey backup was not saved (${e.code ?? e.name}). Keep the storage token; an earlier passkey may have been replaced.`,
       );
     }
     debug();
