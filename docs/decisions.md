@@ -531,7 +531,8 @@ with confirmed inputs, per-step checks and verification, safe local progress, kn
 and stop conditions. A rerun rechecks resources, skips completed mutations and repeats live
 verification. CLI sign-in stays with the human; optional gcloud actions have console fallbacks.
 No billing, unrelated Firebase products, rule edits or deletion are allowed. FS-10 remains met
-by `burrow-setup firestore`, which prints human console steps and the agent-guide path.
+by `burrow-setup firestore`, which prints human console steps and the agent-guide path. D-51
+amends this: the printer is removed.
 
 The recommended packaged `burrow-setup check '<config JSON>'` reuses the production backend,
 HKDF derivation and envelope codec, rather than asking an agent to invent crypto. It creates and
