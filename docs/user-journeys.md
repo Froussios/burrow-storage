@@ -61,11 +61,10 @@ saved with a passkey. Keep the storage token.* This reports a successful save in
 not a guarantee that the passkey can still recover it. The data the user writes syncs to the
 store under that token.
 
-**How:** `passkeyBackup({ userName: "burrow-demo" }).save(await store.exportToken())`
-creates a discoverable passkey,
-evaluates its PRF, and writes a keyslot holding the token wrapped under the PRF output. The demo
-then records the backup in the store under its own `backup` key, so every device linked to the
-token shows it.
+**How:** `passkeyBackup({ userName: "burrow-demo" }).save(await store.exportToken())` creates a
+discoverable passkey, evaluates its PRF, and writes a keyslot holding the token wrapped under the
+PRF output. The demo then records the backup in the store under its own `backup` key, so every
+device linked to the token shows it.
 
 **Notes:**
 - A passkey with the same label may be replaced before PRF evaluation or writing the new
