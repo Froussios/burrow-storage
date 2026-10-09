@@ -11,7 +11,7 @@ Keep token recovery independent of content storage. This is a design requirement
 and new backends: the storage implementation takes a token string, while the site chooses how
 to keep or recover it. Neither side should require access to the other's state or service.
 This lets a site choose availability, ownership, cost and retention separately for recovery
-and content.
+and content. The decision is recorded in D-50 in [decisions.md](decisions.md).
 
 The passkey utility implements `PasskeyBackup`, created by `passkeyBackup()` from
 `burrow-storage/passkey`. It reuses the same `Backend` interface as the storage implementation,
@@ -22,7 +22,9 @@ but its backend instance is independently selectable. All three arrangements are
 - The token kept directly in a password manager or another token carrier, with no keyslot
   backend and no passkey utility involved.
 
-For example, two separately configured Firestore instances:
+For example, two separately configured Firestore instances. Deploy the shipped
+`firebase/firestore.rules` unmodified in both projects: content and keyslots use the same
+`burrow` collection and write-token rules. See [Firestore setup](firestore-setup.md).
 
 ```js
 import { burrow } from "burrow-storage";

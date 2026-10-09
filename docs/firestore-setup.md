@@ -13,10 +13,9 @@ has hard daily quotas instead of a meter (so abuse can pause sync but never prod
 accepts unauthenticated requests gated by security rules, and its rules language can evaluate
 SHA-256, which is all the write chain needs.
 
-Content and passkey recovery need not share that project. To keep keyslots separately, set up
-each project with its own rules and browser config, then pass the recovery project's
-`FirestoreBackend` to `passkeyBackup({ backend })` and the content backend to `burrow()`.
-Keeping the token directly in a password manager needs no recovery project. See
+For separate content and keyslot projects, deploy the shipped `firebase/firestore.rules`
+unmodified in both projects; keyslots use the same `burrow` collection and write-token rules.
+See
 [independent configuration](extending.md#independent-token-and-content-storage).
 
 ## Create the project

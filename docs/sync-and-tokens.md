@@ -15,11 +15,8 @@ The store only ever deals in the token. Getting it from one device to the next i
 choice: the user types or pastes it, a password manager fills it, a passkey backup returns it, or
 the site's own mechanism does. Each one ends in `link({ token })`.
 
-Token recovery and content storage are deliberately decoupled. A passkey keyslot can live in
-another Firebase project or another database, selected with `passkeyBackup({ backend })`.
-Saving the token directly in a password manager needs no keyslot or token backend. This lets
-sites choose recovery and content availability and retention independently; extensions should
-preserve that choice. See [configuration examples](extending.md#independent-token-and-content-storage).
+For independent token recovery and content storage, see
+[configuration examples](extending.md#independent-token-and-content-storage).
 
 ## First device: nothing to do
 
