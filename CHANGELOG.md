@@ -60,6 +60,8 @@ path.
 
 ### Changed
 
+- Documented independent token recovery and content storage (D-50, #22/#23/#36), with separate
+  backend configuration and regression coverage for a recovery-service outage.
 - Passkey handles derive from the effective `userName`: repeated saves with the same RP and
   label replace the earlier credential on conforming discoverable authenticators (#21, D-47).
   The first 16 bytes of SHA-256 over UTF-8 `"burrow/user/v1" + userName` are stable v1 public
