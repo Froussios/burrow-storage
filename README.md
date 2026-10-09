@@ -28,12 +28,14 @@ unlocks a **passkey backup** of it.
 - **Demo:** <https://froussios.github.io/burrow-storage/> is a page whose theme and text draft
   follow you across devices. It is redeployed from every push to `main`, and its footer shows the
   commit it was built from. It syncs through the maintainer's demo project, which does not delete
-  documents, so what you type there stays in it, encrypted. The source is in [`demo/`](https://github.com/Froussios/burrow-storage/tree/main/demo/); run
+  documents, so what you type there stays in it, encrypted. The source is in
+  [`demo/`](https://github.com/Froussios/burrow-storage/tree/main/demo/); run
   it locally against the emulator with `npm run build` then
   `node scripts/emulator.mjs "npm run serve"` (needs Java 21) and open
   <http://localhost:4173/demo/>. To run locally against your own live or pre-production project,
   set `BURROW_FIRESTORE` to its config JSON; see
-  [Local development](https://github.com/Froussios/burrow-storage/blob/main/docs/firestore-setup.md#local-development). To deploy it with your own
+  [Local development](https://github.com/Froussios/burrow-storage/blob/main/docs/firestore-setup.md#local-development).
+  To deploy it with your own
   project, replace its `<meta name="burrow-firestore">` before deploying.
 
 ## Contents
@@ -150,7 +152,8 @@ for this app, called the *manifest*, which tells another device which keys exist
 either document names the user. Only timing links them: a user's documents are written moments
 apart. Listing the collection is denied, so an id is the only way in, and ids cannot be guessed.
 
-[SECURITY.md](https://github.com/Froussios/burrow-storage/blob/main/SECURITY.md) has the full threat model.
+[SECURITY.md](https://github.com/Froussios/burrow-storage/blob/main/SECURITY.md)
+has the full threat model.
 
 ## Quick start
 
@@ -158,7 +161,8 @@ apart. Listing the collection is denied, so an id is the only way in, and ids ca
 
 Burrow works with no store at all: data then stays on the device, and `burrow()` warns once in the
 console. To sync across devices, create one Firebase project on the free Spark plan and reuse it
-for every site you build. [docs/firestore-setup.md](https://github.com/Froussios/burrow-storage/blob/main/docs/firestore-setup.md#create-the-project)
+for every site you build.
+[docs/firestore-setup.md](https://github.com/Froussios/burrow-storage/blob/main/docs/firestore-setup.md#create-the-project)
 lists the console steps: create the project, create Firestore, deploy the security rules that
 ship with Burrow, and restrict the API key. To have a coding agent perform the steps, tell it:
 
@@ -238,8 +242,11 @@ Generic page configuration selects an adapter by type:
 
 With this tag (or `window.BURROW = { backend: { type: "firestore", … } }`) you can omit
 `backend` and `firestore`. The legacy `burrow-firestore` tag and `window.BURROW.firestore`
-also work. The adapter loads on demand. See [backend configuration](https://github.com/Froussios/burrow-storage/blob/main/docs/extending.md#page-configuration)
-and the [candidate assessment](https://github.com/Froussios/burrow-storage/blob/main/docs/backend-candidates.md) for other stores.
+also work. The adapter loads on demand. See
+[backend configuration](https://github.com/Froussios/burrow-storage/blob/main/docs/extending.md#page-configuration)
+and the
+[candidate assessment](https://github.com/Froussios/burrow-storage/blob/main/docs/backend-candidates.md)
+for other stores.
 
 ### 3. Use it
 
@@ -278,7 +285,8 @@ Then copy `dist/burrow.min.js` and `dist/burrow-firestore.js` next to your page,
 
 ## The API in one page
 
-Full reference with every signature and error: [docs/api.md](https://github.com/Froussios/burrow-storage/blob/main/docs/api.md).
+Full reference with every signature and error:
+[docs/api.md](https://github.com/Froussios/burrow-storage/blob/main/docs/api.md).
 
 | Member | What it does |
 | --- | --- |
@@ -336,7 +344,8 @@ database, or a token kept directly in a password manager. See
 
 Burrow does not track whether the token is kept anywhere. `token.source === "generated"` means it
 was made on this device and exists nowhere else as far as Burrow knows: the moment to nudge the
-user to keep it ([how](https://github.com/Froussios/burrow-storage/blob/main/docs/sync-and-tokens.md#what-to-show)).
+user to keep it
+([how](https://github.com/Froussios/burrow-storage/blob/main/docs/sync-and-tokens.md#what-to-show)).
 
 `link()` with a different token replaces the token for every Burrow app on the origin, refills the
 cache from the store, and fires `onToken` and `onChanged`. Writes this app has not synced are pushed
@@ -382,7 +391,9 @@ Writes are debounced (1.5 s) and coalesced. Raise `syncIntervalMs` for sites wit
 When a daily quota runs out, sync pauses until it resets and then resumes on its own. Stored bytes
 do not reset: anyone who reads your page's config can fill the 1 GiB with junk documents, which
 look like users' documents. Writes for every site on the project then fail until you clean up by
-hand. [docs/firestore-setup.md](https://github.com/Froussios/burrow-storage/blob/main/docs/firestore-setup.md) has the full cost table and the abuse
+hand.
+[docs/firestore-setup.md](https://github.com/Froussios/burrow-storage/blob/main/docs/firestore-setup.md)
+has the full cost table and the abuse
 story.
 
 ## Security in brief
@@ -404,7 +415,8 @@ is ciphertext under a key derived from it:
 
 Out of scope, as for `localStorage`: a malicious script on your own origin, and the code your site
 serves. Ship a strict CSP and use SRI for the script tag. Burrow needs no `eval`, no inline script
-and no third-party host, and the demo runs under `default-src 'none'`. [SECURITY.md](https://github.com/Froussios/burrow-storage/blob/main/SECURITY.md)
+and no third-party host, and the demo runs under `default-src 'none'`.
+[SECURITY.md](https://github.com/Froussios/burrow-storage/blob/main/SECURITY.md)
 has the derivation, the formats, the threat table, and the plain list of what Burrow does *not*
 protect against: copied browser profiles, junk filling the store, and timing metadata.
 
@@ -447,8 +459,10 @@ already-running emulator at `127.0.0.1:8080`, or at `FIRESTORE_EMULATOR_HOST` if
 uses the source page's project config. To connect to your own real project, explicitly set
 `BURROW_FIRESTORE` to its config JSON before running `npm run serve` directly. Invalid config
 stops the server; do not also set `FIRESTORE_EMULATOR_HOST`. See
-[Local development](https://github.com/Froussios/burrow-storage/blob/main/docs/firestore-setup.md#local-development) for commands.
-Contributor notes are in [CLAUDE.md](https://github.com/Froussios/burrow-storage/blob/main/CLAUDE.md).
+[Local development](https://github.com/Froussios/burrow-storage/blob/main/docs/firestore-setup.md#local-development)
+for commands.
+Contributor notes are in
+[CLAUDE.md](https://github.com/Froussios/burrow-storage/blob/main/CLAUDE.md).
 
 ## License
 
