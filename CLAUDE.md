@@ -60,6 +60,8 @@ them as history unless the owner says otherwise.
   brief's *sync code* and *root secret* are the same token.
 - The store deals only in the token string. Ways to carry it (passkey backup, a site's own) live
   outside the core and call `exportToken()` / `link()`; there is no provider interface (D-42).
+- Preserve independent token recovery and content storage (D-50 in `docs/decisions.md`).
+  Configuration and extension guidance lives in `docs/extending.md`.
 
 ## Toolchain
 

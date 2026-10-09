@@ -294,6 +294,10 @@ shared structural contract, else `defaultBackend()` from
 error without a cause, so arbitrary configuration values cannot escape. A failed resolution
 is retried on the next call. It keeps no state on the device.
 
+The boundary is preserved by [D-50](decisions.md#d-50-token-recovery-and-content-storage-remain-independent).
+For separate backend configuration and token carriers, see
+[extending.md](extending.md#independent-token-and-content-storage).
+
 - `available()`: a secure context, `PublicKeyCredential` and `navigator.credentials` exist,
   `getClientCapabilities()` does not report `extension:prf: false`, and
   `isUserVerifyingPlatformAuthenticatorAvailable()`.

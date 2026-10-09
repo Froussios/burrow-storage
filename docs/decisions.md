@@ -591,6 +591,22 @@ The historical backup marker remains, but its badge says "Previously saved with 
 Keep the storage token." It does not promise current recoverability or discard the record
 of another backup that might still work.
 
+### D-50 Token recovery and content storage remain independent
+
+Preserve D-42's token-string boundary when extending Burrow. The core and `PasskeyBackup`
+reuse the `Backend` interface, but their instances, Firebase projects or database providers
+are independently selectable. Shared page config is a convenience; the passkey utility does
+not inherit a backend passed only to `burrow()`. Token carriers such as a password manager
+need no keyslot backend or provider interface. The site configures the appropriate services
+on each device and passes the recovered token to `link()`.
+
+This lets sites choose ownership, availability, cost and retention separately for content
+and recovery. New adapters (#23) and setup guidance (#36) must preserve that choice. Retention
+work (#22) must keep keyslot maintenance in the passkey utility: core sync has neither its
+backend nor its PRF-derived keys, and content operations must work when recovery is unavailable
+once the token is available. This decision does not choose an expiry policy or change crypto.
+See [independent configuration](extending.md#independent-token-and-content-storage).
+
 ## Part B: planning decisions and their status
 
 These were proposed in the pre-implementation design review

@@ -5,6 +5,57 @@ interface from `burrow-storage` that nothing in the core special-cases; and **ho
 another device**, which needs no interface at all, because the store only takes and gives a
 string.
 
+## Independent token and content storage
+
+Keep token recovery independent of content storage. This is a design requirement for extensions
+and new backends: the storage implementation takes a token string, while the site chooses how
+to keep or recover it. Neither side should require access to the other's state or service.
+This lets a site choose availability, ownership, cost and retention separately for recovery
+and content. The decision is recorded in D-50 in [decisions.md](decisions.md).
+
+The passkey utility implements `PasskeyBackup`, created by `passkeyBackup()` from
+`burrow-storage/passkey`. It reuses the same `Backend` interface as the storage implementation,
+but its backend instance is independently selectable. All three arrangements are supported:
+
+- Encrypted token keyslots in a different Firebase project from the content.
+- Encrypted token keyslots in another database through an adapter implementing `Backend`.
+- The token kept directly in a password manager or another token carrier, with no keyslot
+  backend and no passkey utility involved.
+
+For example, two separately configured Firestore instances. Deploy the shipped
+`firebase/firestore.rules` unmodified in both projects: content and keyslots use the same
+`burrow` collection and write-token rules. See [Firestore setup](firestore-setup.md).
+
+```js
+import { burrow } from "burrow-storage";
+import { FirestoreBackend } from "burrow-storage/firestore";
+import { passkeyBackup } from "burrow-storage/passkey";
+
+const contentBackend = new FirestoreBackend({
+  apiKey: "content-project-browser-key",
+  projectId: "content-project",
+});
+const tokenBackend = new FirestoreBackend({
+  apiKey: "recovery-project-browser-key",
+  projectId: "recovery-project",
+});
+const store = await burrow({ app: "my-app", backend: contentBackend });
+const backup = passkeyBackup({ backend: tokenBackend });
+
+// First device, after the site's passkey-replacement warning, from a click:
+await backup.save(await store.exportToken());
+// Later, on another device configured for these same stores, from a click:
+const token = await backup.restore();
+if (token) await store.link({ token, source: "passkey" });
+```
+
+Either backend can instead be another `Backend` implementation. Omitting the passkey utility's
+backend resolves the page's configuration; it does not inherit a backend supplied only to
+`burrow()`. Sharing one backend is a convenience, not a requirement. The site must configure the
+appropriate stores on each device: neither the token nor the passkey contains backend config.
+Each remote store must enforce its own envelope/write rules. Core sync must not assume it can
+renew or enumerate keyslots, and a token carrier need not implement `Backend` at all.
+
 ## A backend for another store
 
 A backend stores opaque envelopes at opaque ids and enforces one rule: a write must present the

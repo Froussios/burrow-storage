@@ -360,6 +360,9 @@ Call `save()` and `restore()` from a user gesture: browsers allow passkey prompt
 utility stores nothing on the device; the passkey itself is what the user keeps. The keyslot
 format and its derivation are in [SECURITY.md](../SECURITY.md#derivation-v1).
 
+For separate recovery and content backends, see
+[independent configuration](extending.md#independent-token-and-content-storage).
+
 **Warn before every save, and keep the current and any earlier storage tokens.** Replacement
 happens during credential creation, before the PRF output and keyslot write. The new passkey
 normally derives a different PRF output and opens a new keyslot. Saving a different token under

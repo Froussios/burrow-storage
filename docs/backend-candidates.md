@@ -12,6 +12,12 @@ caps, and an approximately 1 MiB envelope. Push is optional. The unchanged
 `test/conformance/suite.ts` verifies adapter semantics; raw HTTP policy probes must additionally
 verify no-list/no-delete and bypass resistance. Local mocks cannot establish hosted policy.
 
+Preserve [independent token and content storage](extending.md#independent-token-and-content-storage)
+(D-50). Adapter reports should verify independently configured instances and mixed adapters:
+save/restore through one backend, then link and read/write content through another, including
+while recovery is unavailable. The requirements below apply to envelope backends, not token
+carriers.
+
 Ids are capabilities. Every store needs a primary lookup structure, but no extra secondary
 indexes or application logs should retain ids. Whether BE-2 permits that necessary lookup
 structure needs owner confirmation. Hosted request logs, backups and operator retention are

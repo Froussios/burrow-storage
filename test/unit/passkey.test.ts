@@ -811,6 +811,47 @@ describe("KP-5/KP-6 with the StorageArea", () => {
     expect(auth.get).toHaveBeenCalledOnce();
   });
 
+  it("KP-5/KP-6 independent keyslot and content backends allow content sync while recovery is unavailable (D-50)", async () => {
+    install(auth);
+    world = new World();
+    const A = world.device();
+    const a = await A.open();
+    await a.set({ theme: "dark" });
+    await a.syncNow();
+    const token = await a.exportToken();
+    const contentBefore = structuredClone(world.store);
+
+    const recovery = new MemoryBackend();
+    const get = vi.spyOn(recovery, "get");
+    const put = vi.spyOn(recovery, "put");
+    const subscribe = vi.spyOn(recovery, "subscribe");
+    await passkeyBackup({ backend: recovery }).save(token);
+    const restored = await passkeyBackup({ backend: recovery }).restore();
+    expect(restored).toBe(token);
+    expect(get).toHaveBeenCalledTimes(2);
+    expect(put).toHaveBeenCalledOnce();
+    expect(subscribe).not.toHaveBeenCalled();
+    expect(world.store).toEqual(contentBefore);
+    expect(recovery.store.size).toBe(1);
+    const [slotId] = recovery.store.keys();
+    expect(world.store.has(slotId!)).toBe(false);
+
+    recovery.failWith = "network";
+    const B = world.device();
+    const b = await B.open();
+    await b.link({ token: restored!, source: "passkey" });
+    expect(await b.get("theme")).toEqual({ theme: "dark" });
+    await b.set({ theme: "light" });
+    await b.syncNow();
+    await a.syncNow();
+    expect(await a.get("theme")).toEqual({ theme: "light" });
+    expect(get).toHaveBeenCalledTimes(2);
+    expect(put).toHaveBeenCalledOnce();
+    expect(subscribe).not.toHaveBeenCalled();
+    expect(recovery.store.size).toBe(1);
+    expect(world.store.has(slotId!)).toBe(false);
+  });
+
   it("API-7 with unsynced data, a would-orphan retry reuses the restored token: still one prompt", async () => {
     install(auth);
     world = new World();

@@ -335,6 +335,10 @@ the same token to `link()`; the store does not care how. Burrow supports two way
   earlier storage tokens: a failed save after creation can lose the earlier passkey route.
   [Naming and replacement limits](docs/api.md#passkey-backup).
 
+Choose token recovery independently of content storage: another Firebase project, another
+database, or a token kept directly in a password manager. See
+[independent token and content storage](docs/extending.md#independent-token-and-content-storage).
+
 Burrow does not track whether the token is kept anywhere. `token.source === "generated"` means it
 was made on this device and exists nowhere else as far as Burrow knows: the moment to nudge the
 user to keep it ([how](docs/sync-and-tokens.md#what-to-show)).

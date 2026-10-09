@@ -13,6 +13,11 @@ has hard daily quotas instead of a meter (so abuse can pause sync but never prod
 accepts unauthenticated requests gated by security rules, and its rules language can evaluate
 SHA-256, which is all the write chain needs.
 
+For separate content and keyslot projects, deploy the shipped `firebase/firestore.rules`
+unmodified in both projects; keyslots use the same `burrow` collection and write-token rules.
+See
+[independent configuration](extending.md#independent-token-and-content-storage).
+
 ## Create the project
 
 ```sh
