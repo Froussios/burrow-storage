@@ -35,8 +35,8 @@ unlocks a **passkey backup** of it.
   <http://localhost:4173/demo/>. To run locally against your own live or pre-production project,
   set `BURROW_FIRESTORE` to its config JSON; see
   [Local development](https://github.com/Froussios/burrow-storage/blob/main/docs/firestore-setup.md#local-development).
-  To deploy it with your own
-  project, replace its `<meta name="burrow-firestore">` before deploying.
+  To deploy it with your own project, replace its `<meta name="burrow-firestore">`
+  before deploying.
 
 ## Contents
 
@@ -393,8 +393,7 @@ do not reset: anyone who reads your page's config can fill the 1 GiB with junk d
 look like users' documents. Writes for every site on the project then fail until you clean up by
 hand.
 [docs/firestore-setup.md](https://github.com/Froussios/burrow-storage/blob/main/docs/firestore-setup.md)
-has the full cost table and the abuse
-story.
+has the full cost table and the abuse story.
 
 ## Security in brief
 
