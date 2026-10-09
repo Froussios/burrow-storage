@@ -88,7 +88,7 @@ test("passkey: save, wipe all site data, restore the same data with one passkey 
   expect(await withStore(page, (s) => s.token.source)).toBe("passkey");
 });
 
-test("D-47 repeat saves replace the same-label virtual credential; another label keeps both backups", async ({
+test("KP-5 D-47 repeat saves replace the same-label virtual credential; another label keeps both backups", async ({
   context,
 }) => {
   const page = await context.newPage();
@@ -151,7 +151,7 @@ test("D-47 repeat saves replace the same-label virtual credential; another label
   );
 });
 
-test("D-47 a failed keyslot write after same-token replacement cannot restore the earlier passkey backup", async ({
+test("KP-5 D-47 a failed keyslot write after same-token replacement cannot restore the earlier passkey backup", async ({
   context,
 }) => {
   const page = await context.newPage();
@@ -247,7 +247,7 @@ test("journeys 1 and 2 in the demo: create a backup with a passkey, wipe the sit
   );
 });
 
-test("D-47 declining the demo replacement warning keeps the existing credential and backup", async ({
+test("KP-5 D-47 declining the demo replacement warning keeps the existing credential and backup", async ({
   context,
 }) => {
   const page = await context.newPage();
