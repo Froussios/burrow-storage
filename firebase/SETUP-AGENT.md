@@ -6,7 +6,7 @@ the shipped `burrow` collection rules. Before the first npm release, use a repos
 and replace `npx burrow-setup` with `node scripts/burrow-setup.mjs` after `npm run build`.
 
 The project may hold content, passkey keyslots, or both; see
-[independent configuration](../docs/extending.md#independent-token-and-content-storage).
+[independent configuration](https://github.com/Froussios/burrow-storage/blob/main/docs/extending.md#independent-token-and-content-storage).
 For separate projects, run this guide in separate working directories to keep configs/state
 separate, and deploy the shipped rules unmodified in both projects.
 
