@@ -9,6 +9,10 @@ path.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-10
+
+First release.
+
 ### Added
 
 - Passkey backup: optional `displayName` for the new credential's visible name, separate from
@@ -53,7 +57,8 @@ path.
   against the live store.
 - Script-tag build `burrow.min.js` (global `Burrow`) that loads the Firestore SDK as a
   same-directory classic script (`burrow-firestore.js`), so it also loads from `file://`.
-- SRI hashes and npm provenance in the release workflow.
+- SRI hashes and npm provenance in the release workflow, which publishes through npm trusted
+  publishing (D-53).
 - Documentation set for external users: README, API reference, guides for tokens and sync,
   localStorage migration, the shared store, and extending; SECURITY.md; architecture and
   decision log.

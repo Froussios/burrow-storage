@@ -639,6 +639,16 @@ recovery after losing authenticating credentials is outside the project, as the
 Emulator instance-isolation coverage is local routing evidence, not live two-project validation
 or certification of a candidate. Closing the completed #23 scope does not waive those gates.
 
+### D-53 Publish to npm through trusted publishing, not a stored token (SEC-6)
+
+The name `burrow-storage` was claimed on 2026-10-10 with a code-free `0.0.0` placeholder
+published by hand. The package is configured on npm to trust `release.yml` in
+`Froussios/burrow-storage`, so the workflow publishes with a short-lived GitHub Actions OIDC
+credential and the repository holds no `NPM_TOKEN`. npm now restricts long-lived tokens that
+bypass two-factor authentication, and a token that is never stored cannot leak from the
+repository's secrets. Provenance is unchanged. The workflow installs npm 11.5.1 or newer, the
+first version that supports trusted publishing.
+
 ## Part B: planning decisions and their status
 
 These were proposed in the pre-implementation design review
