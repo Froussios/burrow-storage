@@ -1,6 +1,6 @@
 {
   "name": "burrow-storage",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Persistent, cross-device, per-user storage for static sites. No login, no backend.",
   "license": "MIT",
   "author": "Christos Froussios",
