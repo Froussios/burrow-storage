@@ -234,6 +234,71 @@ describe("D-48 owner reaper", () => {
     expect(Object.values(data.scans)).toEqual([]);
   });
 
+  it("explicit cursor recovery preserves project quota and other target/mode cursors", async () => {
+    const opts = await options({ maxReads: 3, pageSize: 1 });
+    const request: Request = async (path) => {
+      const token = new URL("https://test.invalid" + path).searchParams.get(
+        "pageToken",
+      );
+      return token
+        ? response({ error: { message: "private-stale-cursor" } }, 400)
+        : response({
+            documents: [document(id)],
+            nextPageToken: "private-stale-cursor",
+          });
+    };
+    await expect(reap(opts, { request, now: () => now })).rejects.toThrow(
+      "request-failed",
+    );
+    const before = JSON.parse(await readFile(opts.state, "utf8"));
+    expect(Object.values(before.projects)).toEqual([
+      { day: quotaDay(now), reads: 2, writes: 0 },
+    ]);
+    // A distinct mode shares project reservations but has its own scan.
+    const apply = { ...opts, apply: true };
+    await reap(apply, {
+      request: async (_path, init) =>
+        init
+          ? response({})
+          : response({
+              documents: [document(id)],
+              nextPageToken: "other-mode",
+            }),
+      now: () => now,
+    });
+    const recovered: string[] = [];
+    const restart: Request = async (path) => {
+      recovered.push(path);
+      return response({ documents: [] });
+    };
+    expect(
+      await reap(
+        { ...opts, resetCursor: true },
+        { request: restart, now: () => now },
+      ),
+    ).toMatchObject({ scanned: 0, budgetStopped: true });
+    expect(recovered).toHaveLength(0);
+    const data = JSON.parse(await readFile(opts.state, "utf8"));
+    expect(Object.values(data.projects)).toEqual([
+      { day: quotaDay(now), reads: 3, writes: 1 },
+    ]);
+    expect(Object.values(data.scans).sort()).toEqual(["", "other-mode"]);
+    await reap(
+      { ...opts, resetCursor: true },
+      {
+        request: restart,
+        now: () => now + 86_400_000,
+      },
+    );
+    expect(recovered).toHaveLength(1);
+    expect(
+      new URL("https://test.invalid" + recovered[0]).searchParams.has(
+        "pageToken",
+      ),
+    ).toBe(false);
+    expect((await stat(opts.state)).mode & 0o777).toBe(0o600);
+  });
+
   it("the npm-style executable symlink runs help and rejects mixed targets", async () => {
     const dir = await mkdtemp(join(tmpdir(), "burrow-reaper-bin-"));
     directories.push(dir);
@@ -246,6 +311,8 @@ describe("D-48 owner reaper", () => {
     const help = spawnSync(bin, ["--help"], { encoding: "utf8", env });
     expect(help.status).toBe(0);
     expect(help.stdout).toContain("burrow-reaper --project");
+    expect(help.stdout).toContain("default deployment shares a collection");
+    expect(help.stdout).toContain("--reset-cursor");
     const mixed = spawnSync(bin, ["--mixed"], { encoding: "utf8", env });
     expect(mixed.status).toBe(1);
     expect(mixed.stderr).toBe("FAIL mixed-collection-refused\n");

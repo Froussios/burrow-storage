@@ -5,6 +5,7 @@ export class ReaperError extends Error {
 export interface ReaperOptions {
   apply: boolean;
   contentOnly: boolean;
+  resetCursor?: boolean;
   pageSize: number;
   maxReads: number;
   maxWrites: number;

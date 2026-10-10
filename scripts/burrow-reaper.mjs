@@ -22,6 +22,7 @@ export function parseArgs(args) {
   const options = {
     apply: false,
     contentOnly: false,
+    resetCursor: false,
     pageSize: 100,
     maxReads: 10_000,
     maxWrites: 1_000,
@@ -40,6 +41,7 @@ export function parseArgs(args) {
     const arg = args[i];
     if (arg === "--apply") options.apply = true;
     else if (arg === "--content-only") options.contentOnly = true;
+    else if (arg === "--reset-cursor") options.resetCursor = true;
     else if (arg === "--mixed") fail("mixed-collection-refused");
     else if (names[arg] && args[i + 1] && !args[i + 1].startsWith("--")) {
       const key = names[arg];
@@ -254,6 +256,11 @@ export async function reap(options, { request, now = Date.now } = {}) {
     };
     let cursor = cache.data.scans[scanKey] ?? "";
     if (typeof cursor !== "string") fail("invalid-budget-cache");
+    if (options.resetCursor) {
+      // Recover only this target/mode's scan; never reset quota reservations.
+      cursor = cache.data.scans[scanKey] = "";
+      await cache.save();
+    }
     for (;;) {
       const day = quotaDay(now());
       const budget = cache.data.projects[projectKey];
@@ -319,7 +326,7 @@ export async function reap(options, { request, now = Date.now } = {}) {
 async function main() {
   if (process.argv.includes("--help")) {
     console.log(
-      "burrow-reaper --project ID --database ID --collection NAME --content-only [--apply] [--state PATH] [--max-reads N] [--max-writes N] [--page-size N]\nDry-run by default. Content-only targets; never point at token-access or mixed stores. See docs/retention.md.",
+      "burrow-reaper --project ID --database ID --collection NAME --content-only [--apply] [--state PATH] [--max-reads N] [--max-writes N] [--page-size N] [--reset-cursor]\nDry-run by default. Content-only targets; never point at token-access or mixed stores. The default deployment shares a collection with passkey keyslots: verify/separate content before --apply. --content-only is your acknowledgment, not automatic classification. --reset-cursor restarts only the selected target/mode scan, preserving daily quota. See docs/retention.md.",
     );
     return;
   }

@@ -21,10 +21,16 @@ tie-break hashes and deletion state. Normal 30-day pruning of logical deletion m
 manifest still applies; it does not delete their remote documents. Documents no longer listed
 are not enumerated or renewed. Ordinary writes also update their document's server write time.
 A failed pass records no renewal success. Retries may repeat earlier successful item writes.
+If a listed live document is missing and this device has no cached copy, renewal cannot
+reconstruct its ciphertext: the pass reports a backend availability failure and keeps the
+directory and receipt unchanged. Repeated retries cannot repair that condition without another
+copy or operator restoration. It does not drop the key or claim a complete renewal.
 
 This uses the existing authenticated write-token chain. It increases read/write costs about
-once a month for an app in use: one read and write per listed item plus the manifest, with extra
-reads on conflicts. The client's clock controls scheduling only; it is not trusted for cleanup
+once a month **per app and device in use**: one read and write per listed item plus the manifest,
+with extra reads on conflicts. Multiple devices renew independently, so monthly cost scales
+with devices times listed items; tabs sharing one device cache coalesce. The client's clock
+controls scheduling only; it is not trusted for cleanup
 eligibility. Offline or clock-skewed devices may miss a renewal, and the operator's cleanup
 schedule and the 395-day horizon provide no availability guarantee.
 
@@ -47,7 +53,11 @@ it encounters a stub, even after a client previously read/cached its revision. O
 `put(..., { replaceExpired: true })` opts into replacing it; normal revision and token-chain
 checks still apply. This low-level opt-in is not an automatic restore or a high-level republish
 API. Older clients may ignore the flag and decrypt-fail, or authenticated writes may revive the
-stub; deploy updated clients before enabling cleanup.
+stub. Before using `--apply`, deploy expiry-aware builds implementing D-48's distinct stub reads
+and atomic ordinary-put refusal to clients that write this store. Published 0.1.1 predates that
+behavior; this PR's source package version is not proof of a deployed expiry-aware build. Verify
+the deployed bundle/commit. The rules still permit legitimate writes from older token holders,
+so client rollout cannot enforce this gate against an uncontrolled old client.
 
 The core reports `onStatus` with `status: "error"` and `BurrowError("expired")` and pauses remote
 work. Local reads and writes keep working. It detects expiry before decryption or applying that
@@ -111,6 +121,13 @@ resets/bypasses this operator's budget. The tool cannot account for unrelated cl
 operators' traffic. Leave budget for the app and monitor your project. An interrupted page
 retains its cursor; the next run resumes after quota becomes available. Dry-run/apply have
 separate cursors but share quota reservations. Completed scans restart from the beginning.
+
+A server pagination token can become unusable. If a stored cursor keeps producing
+`request-failed`, rerun the same target/cache with `--reset-cursor` (and `--apply` if that was
+the affected mode). It restarts only that target/mode's scan under the cache lock and preserves
+all project/day reservations and other scan cursors. It may revisit earlier pages and consumes
+the remaining read/write budget normally; exhausted quota still stops the run. Do not delete or
+edit the private cache to recover a cursor, and do not paste its contents into logs/issues.
 
 For each non-stub document the tool uses the server's output-only `updateTime`, refusing missing
 or invalid timestamps. Only documents at least **395 days** old are eligible. Envelope `ts`,

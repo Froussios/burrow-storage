@@ -509,6 +509,26 @@ describe("D-48 content expiry and use-driven renewal", () => {
     },
   );
 
+  it("missing uncached listed content blocks renewal without inventing success or dropping dirty data", async () => {
+    const { area, id, keys } = await fixture();
+    world.store.delete(id);
+    const device = world.device({ cache: "memory" });
+    vi.spyOn(device.backend, "subscribe").mockImplementation(() => () => {});
+    const fresh = await device.open({ debounceMs: 1e9 });
+    await fresh.link({ token: await area.exportToken() });
+    await fresh.set({ pending: "local" });
+    const cache = new MemoryCache("test", device.mem);
+    const before = await cache.loadItems();
+    const receipt = (await cache.getMeta()).renewAt;
+    const manifest = structuredClone(world.store.get(keys.base));
+    await expect(fresh.syncNow()).rejects.toMatchObject({ code: "backend" });
+    expect(fresh.status).toBe("offline");
+    expect(await cache.loadItems()).toEqual(before);
+    expect((await cache.getMeta()).renewAt).toBe(receipt);
+    expect(world.store.get(keys.base)).toEqual(manifest);
+    expect(await fresh.get()).toEqual({ pending: "local" });
+  });
+
   it("due reads coalesce without indefinitely extending the renewal debounce", async () => {
     const { area, backend, cache } = await fixture();
     area.close();
