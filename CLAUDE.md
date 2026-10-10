@@ -14,7 +14,7 @@ claimed the name). The repository is public. The documentation set is current wi
 | --- | --- |
 | `README.md` | What Burrow is, why, quick start, the API in one page |
 | `docs/api.md` | The public contract, member by member; `src/types.ts` is the source of truth |
-| `docs/sync-and-tokens.md`, `docs/storage-standards.md`, `docs/firestore-setup.md`, `docs/extending.md` | User guides |
+| `docs/retention.md`, `docs/sync-and-tokens.md`, `docs/storage-standards.md`, `docs/firestore-setup.md`, `docs/extending.md` | User guides |
 | `SECURITY.md` | The cryptographic design (normative) and threat model |
 | `docs/architecture.md` | How the code is put together, module by module, with the sync algorithm |
 | `docs/decisions.md` | Decision log: D-1… (implementation) and D1… (planning, with status) |
@@ -61,6 +61,9 @@ them as history unless the owner says otherwise.
   brief's *sync code* and *root secret* are the same token.
 - The store deals only in the token string. Ways to carry it (passkey backup, a site's own) live
   outside the core and call `exportToken()` / `link()`; there is no provider interface (D-42).
+- Preserve expiry pause/cache/dirty data and use-driven renewal (D-48). Optional owner reaping
+  is content-only, server-updateTime conditioned, quota bounded and outside CI; token-access
+  ciphertext must remain complete. See `docs/retention.md`.
 - Preserve independent token recovery and content storage (D-50 in `docs/decisions.md`).
   Configuration and extension guidance lives in `docs/extending.md`.
 

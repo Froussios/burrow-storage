@@ -18,3 +18,5 @@ firestore-debug.log
 .DS_Store
 .env
 .env.*
+
+.burrow-reaper-cache.json*

@@ -29,14 +29,17 @@
     "./package.json": "./package.json"
   },
   "bin": {
-    "burrow-setup": "./scripts/burrow-setup.mjs"
+    "burrow-setup": "./scripts/burrow-setup.mjs",
+    "burrow-reaper": "./scripts/burrow-reaper.mjs"
   },
   "files": [
     "dist",
     "scripts/burrow-setup.mjs",
     "firebase/SETUP-AGENT.md",
     "firebase/firestore.rules",
-    "firebase/firebase.json"
+    "firebase/firebase.json",
+    "scripts/burrow-reaper.mjs",
+    "docs/retention.md"
   ],
   "engines": {
     "node": ">=20"

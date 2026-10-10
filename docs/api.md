@@ -224,7 +224,7 @@ declare class BurrowError extends Error {
   readonly code: BurrowErrorCode;
 }
 type BurrowErrorCode = "unlinked" | "cancelled" | "prf-unsupported" | "bad-token" | "item-too-large"
-  | "backend" | "conflict" | "quota" | "decrypt-failed" | "would-orphan";
+  | "backend" | "conflict" | "quota" | "decrypt-failed" | "expired" | "would-orphan";
 ```
 
 Failures that Burrow detects reject with a `BurrowError` that carries a stable `code`. Argument
@@ -243,6 +243,7 @@ anything that looks like an id or token.
 | `cancelled` | `passkeyBackup().save()` | A passkey prompt was dismissed. No new keyslot was written, but an earlier credential may already have been replaced if creation succeeded before the follow-up prompt. |
 | `prf-unsupported` | `passkeyBackup().save()`, `.restore()` | WebAuthn PRF is not available here. Offer the storage token instead. |
 | `decrypt-failed` | `onStatus`, `passkeyBackup().restore()` | A document does not decrypt under this token (corruption or a version mismatch). Sync pauses, the cache is untouched; `link()` resumes it. |
+| `expired` | `onStatus`, `syncNow()` | An operator expired a content document. Sync pauses; local values and unsynced writes stay intact. Export local data before explicitly choosing a fresh identity; linking the same stubbed identity pauses again. See [retention](retention.md). |
 | `conflict` | `onStatus`, `syncNow()`, `passkeyBackup().save()` | Writes kept colliding with another writer after retries. Retried on the next trigger. |
 | `quota` | `onStatus`, `syncNow()` | The store's daily quota is exhausted. Sync pauses and retries with backoff. |
 | `backend` | `onStatus`, `syncNow()`, `passkeyBackup()` | A network or store failure (retried), invalid backend configuration (correct and reload), or a passkey backup was used with no backend. |
@@ -252,12 +253,12 @@ declare class BackendError extends Error {
   readonly name: "BackendError";
   readonly code: BackendErrorCode;
 }
-type BackendErrorCode = "conflict" | "unauthorized" | "too-large" | "quota" | "network";
+type BackendErrorCode = "conflict" | "unauthorized" | "too-large" | "quota" | "network" | "expired";
 ```
 
 `BackendError` is what a backend adapter throws. Burrow maps `conflict`, `unauthorized`,
 `too-large`, `quota` and `network` to `conflict`, `backend`, `item-too-large`, `quota` and
-`backend` respectively.
+`backend` respectively. `expired` remains `expired`.
 
 ## Backends
 
@@ -265,13 +266,22 @@ type BackendErrorCode = "conflict" | "unauthorized" | "too-large" | "quota" | "n
 interface Backend {
   readonly id: string;
   readonly capabilities: BackendCapabilities;
-  get(id: string): Promise<Envelope | null>;
-  getMany?(ids: string[]): Promise<(Envelope | null)[]>;
-  put(id: string, env: Envelope, expectedRev: number | null): Promise<void>;
-  subscribe?(id: string, onChange: (env: Envelope) => void): () => void;
+  get(id: string): Promise<StoredDocument | null>;
+  getMany?(ids: string[]): Promise<(StoredDocument | null)[]>;
+  put(id: string, env: Envelope, expectedRev: number | null, options?: PutOptions): Promise<void>;
+  subscribe?(id: string, onChange: (env: StoredDocument) => void): () => void;
 }
 interface BackendCapabilities { writeAuth: boolean; subscribe: boolean }
+interface ExpiredStub { x: true; rev: number; next: string }
+type StoredDocument = Envelope | ExpiredStub;
+interface PutOptions { replaceExpired?: true }
 ```
+
+Normal puts atomically refuse an expired stub. `replaceExpired: true` explicitly opts into
+replacement while keeping the revision/token-chain checks; the core never opts in. Subscriptions
+must preserve the stub flag even when its revision is unchanged. Use-driven content renewal
+coalesces per app/device for 29–30 days; the operator may enable 395-day inactivity cleanup.
+Full behavior and operator limits: [retention.md](retention.md).
 
 Writing your own: [extending.md](extending.md).
 
@@ -296,7 +306,7 @@ user's manifest. Capabilities: `writeAuth: true, subscribe: true`.
 
 ```ts
 interface MemoryBackendOptions {
-  store?: Map<string, Envelope>; // share one map between instances to simulate several devices
+  store?: Map<string, StoredDocument>; // share one map between instances to simulate several devices
   latencyMs?: number;
 }
 ```
@@ -387,7 +397,7 @@ not real iCloud Keychain, Google Password Manager, Windows Hello, 1Password or B
 ## Types
 
 ```ts
-interface Envelope {          // every stored document
+interface Envelope {          // live encrypted document
   v: 1; iv: string; ct: string; rev: number; ts: number; tok: string; next: string; z?: true;
 }
 interface Manifest { v: 1; items: Record<string, { ts: number; deleted?: true; h?: string }> }

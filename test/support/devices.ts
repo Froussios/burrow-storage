@@ -7,12 +7,12 @@ import { IdbCache } from "../../src/cache/indexeddb.js";
 import { MemoryCache, MemoryDevice } from "../../src/cache/memory.js";
 import type { Core, Env } from "../../src/core.js";
 import { createBurrow } from "../../src/index.js";
-import type { BurrowConfig, Envelope } from "../../src/types.js";
+import type { BurrowConfig, StoredDocument } from "../../src/types.js";
 
 let seq = 0;
 
 export class World {
-  readonly store = new Map<string, Envelope>();
+  readonly store = new Map<string, StoredDocument>();
   readonly areas: Core[] = [];
   devices: Device[] = [];
   device(

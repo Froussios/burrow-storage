@@ -62,7 +62,7 @@ closed by `unlink()`, are removed so the next call starts fresh.
 - the **cache**: the `Cache` implementation (IndexedDB or memory) the mirror is persisted to;
 - the **secret** (`SecretHolder`) and the derived **app keys** (`AppKeys`: `base`, `pathKey`,
   `encKey`, `macKey`);
-- per-app **meta** (`AppMeta`: owner fingerprint, `manifestRev`, `maxRemoteTs`, `lastSyncAt`);
+- per-app **meta** (`AppMeta`: owner fingerprint, `manifestRev`, `maxRemoteTs`, `lastSyncAt`, `renewAt`);
 - the sync engine's timers, the backend subscription, the tab channel and the three events.
 
 ## 3. Start-up (`Core.create` → `#init`)
@@ -94,7 +94,7 @@ closed by `unlink()`, are removed so the next call starts fresh.
 
 ### 4.1 Remote: envelopes
 
-Every document in the store is an `Envelope` (`{ v, iv, ct, rev, ts, tok, next, z? }`). Three
+Every live encrypted document in the store is an `Envelope` (`{ v, iv, ct, rev, ts, tok, next, z? }`). Three
 kinds share the format and are indistinguishable to the store:
 
 | Kind | Id | Plaintext | Chain key | AAD |
@@ -108,6 +108,11 @@ with a fresh 12-byte IV, computes `tok(id, rev)` and `next = hex(SHA-256(tok(id,
 refuses a `ct` over 1 000 000 characters. `open()` reverses it and turns every failure into
 `decrypt-failed`. Derivation details and constants: [SECURITY.md](../SECURITY.md).
 
+An optional owner cleanup replaces inactive content with a permanent `ExpiredStub`
+(`{ x: true, rev, next }`). `StoredDocument = Envelope | ExpiredStub` is the backend read/watch
+contract; normal client writes remain unchanged envelopes. Opaque keyslots are excluded by
+selecting a dedicated content target (D-48, D-50).
+
 ### 4.2 Local: the cache
 
 IndexedDB database `burrow`, one per origin:
@@ -115,7 +120,7 @@ IndexedDB database `burrow`, one per origin:
 | Object store | Key | Value |
 | --- | --- | --- |
 | `app:<app>` | item key | `CachedItem { value?, ts, h?, deleted?, dirty?, rev? }` |
-| `_meta` | `"app:<app>"` | `AppMeta { owner, manifestRev, maxRemoteTs, lastSyncAt }` |
+| `_meta` | `"app:<app>"` | `AppMeta { owner, manifestRev, maxRemoteTs, lastSyncAt, renewAt }` |
 | `_device` | field name | `DeviceMeta`: `wrapped`, `kw` (the non-extractable `CryptoKey` itself), `tokenSource`, `tokenSince` |
 
 The first use of a new app bumps the database version to add its store; another tab holding the
@@ -182,26 +187,20 @@ once. `#sync()` never rejects; failures go to `#failed()`.
 ### 6.2 One pass (`#pass`)
 
 ```
-flush pending facade writes; emit changes other tabs made (reload)
-status ← "syncing"
+flush pending facade writes; reload the shared cache and receipt under sync lock
+status ← "syncing"; renew ← client use requested and shared renewAt is due
 loop (manifest conflict retries):
-  1. read the manifest (one get); decrypt; maxRemoteTs ← max(ts seen)
-  2. pull: for each manifest entry that beats the cached entry (compare(ts, h)):
-       tombstone → adopt directly; value → fetch its item document (getMany, parallel)
-     re-read already-written items absent from this manifest; refresh saved results
-     maxRemoteTs ← max(maxRemoteTs, fetched item timestamps)
-     applyRemote(fetched)                     // LWW per key, settledSince guard
-     drop synced local keys absent from an existing manifest (pruned tombstones),
-       except live item results this pass will publish
-     finish without publishing only if no dirty items or unlisted live results remain
-  3. push: for each dirty item not already written this pass → pushItem (parallel)
-       a result may carry `adopted` when the remote copy won; applyRemote it
-  4. manifest ← mergeDirectories(remote directory, pushed versions, now)   // prunes tombstones
-     seal and put at rev + 1 with expectedRev = remote rev
-       conflict → sleep CONFLICT_BACKOFF[attempt] (jittered) and loop (items written stay in `ok`)
-     on success: clear `dirty` only where the cached ts still equals what was pushed;
-                 record rev and h; refresh the mirror (a newer facade write keeps its own entry)
-meta ← { manifestRev, maxRemoteTs, lastSyncAt }; broadcast and emit the remote changes once
+  1. read manifest; reject expired before decrypting; maxRemoteTs ← max(ts seen)
+  2. fetch newer items (all listed items when renewing); precheck batch for stubs
+     re-read every unlisted prior result (D-46); stage remote versions without cache changes
+  3. build a temporary LWW view; push dirty items and due listed renewal items
+     retain/adopt results across retries by full logical version (ts/hash/deleted)
+  4. merge directory (normal 30-day logical tombstone pruning); write manifest last
+     conflict → backoff and retry; expired/failure → leave cached/dirty state untouched
+on complete read-only pass or successful publication: apply staged remote merges/pruning
+on publication: clear dirty only for the exact published logical version; preserve newer writes
+on full renewal success: renewAt ← now + bounded 29–30 day jitter
+save metadata; broadcast and emit visible remote changes once
 ```
 
 Items are written **before** the manifest, each on its own chain, so a reader never fetches an
@@ -211,26 +210,45 @@ and remain `dirty` across passes). On a manifest retry, an already-written item 
 latest directory is read again: another device may have overwritten it with a tombstone that
 has already expired from the manifest. The current item version competes with the local write
 before it is re-listed, so an old result cannot resurrect a deletion (D-46). Every unlisted
-result is revalidated, including one whose local entry became clean after adopting a deletion
-on an earlier retry. A live revalidated result remains cached while the pass publishes its
+result is revalidated, including a deletion staged on an earlier retry. A live revalidated result remains cached while the pass publishes its
 manifest entry; absence from the old directory does not briefly remove that value locally.
 Publication still runs if revalidation cleared the last dirty key but a live result remains
 unlisted; otherwise the next pass, without the saved results, could prune it again.
 
 `#pushItem` writes at `cached rev + 1` with the cached rev as the precondition (D-10). With no
 cached rev, or on `conflict`, it reads the document; if the remote version wins the comparison it
-returns it as `adopted` instead of writing. It retries conflicts up to three times.
+returns it as `adopted` instead of writing. A due renewal writes that winning payload instead,
+without changing its logical version. It retries conflicts up to three times. Ordinary puts
+atomically refuse a stored stub; the core never opts into replacing one.
 
 ### 6.3 Failure handling (`#failed`)
 
 | Error | Effect |
 | --- | --- |
-| `decrypt-failed` | `status: "error"`, `#paused = true`: no pass runs until `link()` succeeds. The cache is untouched. |
+| `decrypt-failed`, `expired` | `status: "error"`, `#paused = true`: no pass runs until `link()` succeeds. The cache is untouched. |
 | `conflict`, `item-too-large` | `status: "error"`; items stay dirty; retried on the next trigger. |
 | anything else (`quota`, `backend`) | `status: "offline"` with that error; retry timer with exponential backoff; items stay dirty. |
 
 `onStatus` fires on every change of the `(status, error)` pair; a successful pass sets `"idle"`
 and resets the backoff.
+
+### 6.4 Use-driven renewal and optional owner cleanup
+
+Opening/using an app requests due renewal; background notifications/polls alone do not renew
+again after a successful receipt. All listed documents, including retained deletion markers,
+are fetched and rewritten, items first and manifest last. Pruned/unlisted documents are not
+rediscovered. Coalescing persists per app/device in `renewAt`; the sync lock and cache reload
+prevent stale already-open tabs from renewing again. Failed publication or observed expiry
+leaves cache, dirty data and renewal receipt intact, though earlier independent remote item
+writes may already exist. A token ownership change resets the receipt.
+
+`scripts/burrow-reaper.mjs` is optional owner maintenance outside CI, not a browser dependency or
+an app scheduler. It selects an explicit dedicated content target, scans with a three-field
+mask and private paginated checkpoint, and conditionally replaces eligible documents using
+exact server `updateTime`. A locked 0600 operator cache reserves daily reads/attempted writes
+before requests across targets/reruns in the same project. Skipped stubs still cost scan reads;
+other clients' quota and permanent stored bytes are not bounded by this ledger. Token-access
+payloads remain untouched and restore stays read-only. See [retention.md](retention.md).
 
 ## 7. Merge rules (`src/sync/merge.ts`)
 
@@ -326,7 +344,7 @@ For separate backend configuration and token carriers, see
 [extending.md](extending.md) for the contract. The core uses `capabilities.writeAuth` (warn) and
 `capabilities.subscribe` (whether to subscribe).
 
-**`MemoryBackend`** keeps a `Map<id, Envelope>` and enforces the rules exactly: well-formedness
+**`MemoryBackend`** keeps a `Map<id, StoredDocument>` and enforces the rules exactly: well-formedness
 (`wellFormed()` mirrors `shape()` in the rules file), create at rev 0, update at `rev + 1`, and
 `SHA-256(tok) == next`. Subscribers are notified on a microtask. Several instances sharing one
 map simulate several devices.
@@ -340,7 +358,8 @@ map simulate several devices.
 - `get` runs `runTransaction(tx => tx.get(ref))` rather than `getDoc`, because a plain read can be
   served from the page's own `onSnapshot` stream and report a revision older than a transaction
   that just committed (D-21).
-- `put` runs a transaction that reads, compares `rev` with `expectedRev`, and sets the document;
+- `put` runs a transaction that reads, compares `rev` with `expectedRev`, atomically checks the
+  stored expiry flag unless explicit replacement was requested, and sets the normal envelope;
   `permission-denied` is re-classified as `conflict` when a fresh read shows a different revision.
 - `subscribe` is `onSnapshot` on one document, ignoring snapshots with pending local writes.
 - Errors map `resource-exhausted` → `quota`, `permission-denied` → `unauthorized`,

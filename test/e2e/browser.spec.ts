@@ -154,3 +154,66 @@ test("KP-13 (not implemented, D-41) a #burrow=<code> fragment is ignored and sta
   await deviceA.close();
   await deviceB.close();
 });
+
+test("D-48 a fresh item stub pauses sync while browser IndexedDB preserves editable local data", async ({
+  context,
+}) => {
+  const page = await openArea(context);
+  const result = await page.evaluate(async () => {
+    const api = (
+      window as unknown as {
+        Burrow: typeof import("../../src/index.js");
+      }
+    ).Burrow;
+    const backend = new api.MemoryBackend();
+    const area = (await api.burrow({
+      app: "expiry-browser",
+      backend,
+      debounceMs: 1e9,
+      syncIntervalMs: 0,
+    })) as import("../../src/core.js").Core;
+    await area.syncNow();
+    await area.set({ k: "cached" });
+    await area.syncNow();
+    // Item was written before the manifest; use the synthetic owner map only.
+    const id = backend.store.keys().next().value!;
+    const item = backend.store.get(id)!;
+    backend.store.set(id, { x: true, rev: item.rev, next: item.next });
+    await area.set({ pending: "local" });
+    let code: string | undefined;
+    area.onStatus.addListener(({ error }) => {
+      if (error) code = error.code;
+    });
+    const value = await area.get("k", { fresh: true });
+    let rejected: string | undefined;
+    try {
+      await area.syncNow();
+    } catch (error) {
+      rejected = (error as { code: string }).code;
+    }
+    area.storage.setItem("editable", "yes");
+    await area.syncNow().catch(() => {});
+    const all = await area.get();
+    const inspection = area.inspect();
+    area.close();
+    const reopened = (await api.burrow({
+      app: "expiry-browser",
+      backend,
+      debounceMs: 1e9,
+      syncIntervalMs: 0,
+    })) as import("../../src/core.js").Core;
+    const restored = await reopened.get();
+    reopened.close();
+    return { value, code, rejected, all, inspection, restored };
+  });
+  expect(result.value).toEqual({ k: "cached" });
+  expect(result.code).toBe("expired");
+  expect(result.rejected).toBe("expired");
+  expect(result.all).toEqual({
+    k: "cached",
+    pending: "local",
+    editable: "yes",
+  });
+  expect(result.inspection).toMatchObject({ status: "error", dirtyKeys: 2 });
+  expect(result.restored).toEqual(result.all);
+});

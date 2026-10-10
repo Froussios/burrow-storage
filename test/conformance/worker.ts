@@ -9,7 +9,12 @@
 import { wellFormed } from "../../src/backends/memory.js";
 import { sha256hex } from "../../src/bytes.js";
 import { BackendError } from "../../src/errors.js";
-import type { Backend, Envelope } from "../../src/types.js";
+import type {
+  Backend,
+  Envelope,
+  StoredDocument,
+  PutOptions,
+} from "../../src/types.js";
 
 /**
  * Same limits as MemoryBackend: the whole request, and the ciphertext field (FS
@@ -35,7 +40,7 @@ const status = (code: number): Response => new Response(null, { status: code });
  * never sends.
  */
 export function createWorker(
-  store: Map<string, Envelope> = new Map(),
+  store: Map<string, StoredDocument> = new Map(),
 ): Handler {
   return async (req) => {
     const path = new URL(req.url).pathname;
@@ -92,6 +97,8 @@ export function createWorker(
       if (doc.rev !== 0) return status(403);
     } else {
       if (!cur || cur.rev !== expected) return status(409);
+      if ("x" in cur && req.headers.get("x-burrow-replace-expired") !== "true")
+        return status(410);
       if (doc.rev !== cur.rev + 1) return status(403);
       if (hash !== cur.next) return status(403);
     }
@@ -115,6 +122,8 @@ export interface WorkerBackendOptions {
 
 function codeFor(statusCode: number): BackendError {
   switch (statusCode) {
+    case 410:
+      return new BackendError("expired");
     case 409:
       return new BackendError("conflict");
     case 401:
@@ -163,18 +172,18 @@ export class WorkerBackend implements Backend {
     }
   }
 
-  async get(id: string): Promise<Envelope | null> {
+  async get(id: string): Promise<StoredDocument | null> {
     const res = await this.#send(id, { method: "GET" });
     if (res.status === 404) return null;
     if (res.status !== 200) throw codeFor(res.status);
     try {
-      return (await res.json()) as Envelope;
+      return (await res.json()) as StoredDocument;
     } catch (e) {
       throw new BackendError("network", "unreadable response", { cause: e });
     }
   }
 
-  async getMany(ids: string[]): Promise<(Envelope | null)[]> {
+  async getMany(ids: string[]): Promise<(StoredDocument | null)[]> {
     return Promise.all(ids.map((id) => this.get(id)));
   }
 
@@ -182,10 +191,12 @@ export class WorkerBackend implements Backend {
     id: string,
     env: Envelope,
     expectedRev: number | null,
+    options: PutOptions = {},
   ): Promise<void> {
     const headers: Record<string, string> = {
       "content-type": "application/json",
     };
+    if (options.replaceExpired) headers["x-burrow-replace-expired"] = "true";
     if (expectedRev === null) headers["if-none-match"] = "*";
     else headers["if-match"] = String(expectedRev);
     const res = await this.#send(id, {

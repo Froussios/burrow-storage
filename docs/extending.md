@@ -73,12 +73,14 @@ The interface is `Backend`, defined with a comment on every member in
 [`src/types.ts`](../src/types.ts) and exported as a type from `burrow-storage`:
 
 ```ts
-import type { Backend, BackendCapabilities, Envelope } from "burrow-storage";
+import type { Backend, BackendCapabilities, Envelope, StoredDocument, PutOptions } from "burrow-storage";
 import { BackendError } from "burrow-storage";   // what every failure must reject with
 ```
 
 Its members are `id`, `capabilities`, `get(id)`, `put(id, env, expectedRev, opts?)`, and the
-optional `getMany(ids)` and `subscribe(id, onChange)`.
+optional `getMany(ids)` and `subscribe(id, onChange)`. Client use drives content renewal; backend
+adapters do not schedule it. See [retention.md](retention.md) for owner-only cleanup, dedicated
+content-target selection, and why full independent token-access payloads remain excluded.
 
 ### Contract
 
@@ -86,6 +88,10 @@ optional `getMany(ids)` and `subscribe(id, onChange)`.
   exists. `put(id, env, n)` must reject with `conflict` unless the stored revision is exactly `n`.
   Two concurrent writers at the same `expectedRev` must see exactly one success. This is the
   optimistic-concurrency check the sync engine relies on.
+- `get`/`getMany`/`subscribe` return `StoredDocument` (an `Envelope` or `{ x: true, rev, next }`
+  owner stub). Preserve the flag and notify even at an unchanged revision. Ordinary `put` must
+  atomically reject `BackendError("expired")` on a stub; explicit `PutOptions.replaceExpired`
+  opts into replacement while retaining revision/write-chain checks. Never auto-delete a stub.
 - A store that can verify the write chain (`writeAuth: true`) also rejects, with `unauthorized`,
   any update whose `env.rev` is not `stored.rev + 1` or whose `SHA-256(env.tok)` (hex, lowercase,
   over the UTF-8 text of the base64url token) is not the stored `next`, and any create with
@@ -113,7 +119,8 @@ repository. It runs under vitest:
 import { backendConformance } from "./suite.js";
 import { MyBackend } from "../../src/backends/my-store.js";
 
-backendConformance("MyBackend", () => new MyBackend({ /* … */ }));
+backendConformance("MyBackend", () => new MyBackend({ /* … */ }),
+  async (backend, id) => { /* test-only owner hook: replace with { x: true, rev, next } */ });
 ```
 
 It covers creates, chained updates, wrong tokens, skipped revisions, stale `expectedRev`,

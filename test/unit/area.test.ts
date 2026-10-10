@@ -565,11 +565,13 @@ describe("§8 sync between devices", () => {
     await a.set({ k: 1 });
     await a.syncNow();
     await b.syncNow();
-    for (const [id, env] of w.store)
+    for (const [id, env] of w.store) {
+      if ("x" in env) throw new Error("unexpected expired document");
       w.store.set(id, {
         ...env,
         ct: env.ct.replace(/^./, (c) => (c === "A" ? "B" : "A")),
       });
+    }
     await expect(b.syncNow()).rejects.toMatchObject({ code: "decrypt-failed" });
     expect(b.status).toBe("error");
     expect(await b.get()).toEqual({ k: 1 });
@@ -583,11 +585,13 @@ describe("§8 sync between devices", () => {
     await a.syncNow();
     await b.syncNow();
     const good = new Map(w.store);
-    for (const [id, env] of w.store)
+    for (const [id, env] of w.store) {
+      if ("x" in env) throw new Error("unexpected expired document");
       w.store.set(id, {
         ...env,
         ct: env.ct.replace(/^./, (c) => (c === "A" ? "B" : "A")),
       });
+    }
     await expect(b.syncNow()).rejects.toMatchObject({ code: "decrypt-failed" });
     for (const [id, env] of good) w.store.set(id, env);
     // A third device writes once the store is sound again (A itself may have

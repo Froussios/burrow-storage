@@ -96,8 +96,11 @@ token, and v1 rejects it as `bad-token`.
 
 ## Formats
 
-Every stored document, whether manifest, item or keyslot, is an envelope. The store cannot tell
-the three apart.
+Every live encrypted document, whether manifest, item or keyslot, is an envelope. The store
+cannot tell the three apart. An owner-operated content cleanup may replace an inactive content
+document with `{ x: true, rev, next }`, retaining its occupied id and token-chain commitment
+(D-48). Keyslots retain their full payload and must be excluded from cleanup. The encrypted
+envelope format below is unchanged.
 
 ```ts
 interface Envelope {
@@ -170,6 +173,39 @@ a different token, the next `burrow()` finds the stamp wrong and clears the app'
 so one identity's data never shows under another. Use `rememberDevice: false` on shared computers;
 the cache then defaults to memory.
 
+## Optional content expiry (D-48)
+
+Client use drives a coalesced renewal about every 30 days per app/device: listed item documents
+first, manifest last, without advancing logical item timestamps. The receipt is recorded only
+on full success. This also preserves the normal deletion/tombstone semantics. The optional
+owner reaper uses **server** `Document.updateTime`, never client envelope `ts`, for its 395-day
+inactivity cutoff and exact conditional whole-document replacement. A concurrent write changes
+that server timestamp and makes the old precondition fail. It skips permanent stubs and emits
+only counts/fixed error codes. Private operator-cache cursors must never be published.
+
+Stubs retain `rev` and `next`: creates/replays at the occupied id fail and an update still needs
+the token chain at R+1. The backend atomically refuses ordinary writes to stubs; an explicit
+`replaceExpired` opt-in is available to authenticated custom callers. This is an inactivity
+policy, not a hard maximum age or a ban on legitimate renewal. A token holder can extend it.
+The flag is owner-created availability metadata; clients cannot create stub-shaped requests
+under the reference rules. The rules continue to validate normal requests against the stored
+chain, so updated clients are required to enforce the ordinary-write opt-in gate. No v2
+ciphertext format or timestamp trust gate is introduced.
+
+The core pauses with `expired` before decryption/cache merging/pruning after observing a stub,
+preserving cached and dirty data. Independent item writes already committed before a later
+expiry cannot be rolled back. It never automatically republishes an expired identity. Older
+clients may decrypt-fail or authentically rewrite a stub. Token-access payloads are fully
+excluded; empty keyslot ciphertext would destroy token access with a working authenticator.
+`restore()` remains read-only and repeated passkey `save()` is not safe renewal (D-47).
+
+Only a dedicated content target is eligible for this reaper: encrypted mixed collections cannot
+be classified. The operator explicitly acknowledges this boundary. The locked, private daily
+budget/cache bounds this operator's requests across invocations sharing it; it cannot reserve
+quota against other clients, and permanent stub/index storage and junk creation remain costs.
+No TTL, paid billing, backend-owned app scheduling or identity migration is enabled.
+See [retention.md](docs/retention.md) for the public promise, limits and operation.
+
 ## Threat model
 
 The store is public, the network is hostile, and the developer is trusted to serve honest code
@@ -186,7 +222,7 @@ read it.
 | Brute force of a weak typed secret | Tokens are random 256-bit; a passphrase would have to go through PBKDF2 ≥ 600 000 (not in v1). |
 | Malicious script on the site (XSS, bad CDN) | **Out of scope**, as for `localStorage`: a script on your origin can read the cache and call `exportToken()`. Use a strict CSP and SRI; Burrow runs without `eval`, inline scripts or third-party script hosts when self-hosted. |
 | Copied browser profile | The wrapped token is **an obstacle, not a guarantee**. The AES-KW key that wraps it is stored beside it in IndexedDB. "Non-extractable" stops a script from exporting that key; it does not stop someone who copies the browser's profile directory, where the key material lives with the rest of IndexedDB. Treat a copied profile as a copied token. `rememberDevice: false` plus a passkey keeps nothing on disk. |
-| Junk writes to the shared project | Anyone who knows the project id can create documents. Daily read and write quotas reset, so traffic abuse only pauses sync and can never produce a bill on Spark. **Stored bytes (1 GiB) do not reset**: the rules forbid delete, so only the project owner can remove junk, from the console or with the Admin SDK. Accepted for prototypes. Burrow has no built-in defence: the Firestore adapter creates its own Firebase app instance, so a site cannot attach Firebase App Check to it today. |
+| Junk writes to the shared project | Anyone who knows the project id can create documents. Daily read and write quotas reset, so traffic abuse only pauses sync and can never produce a bill on Spark. **Stored bytes (1 GiB) do not reset**: the rules forbid delete, so only the project owner can remove junk, from the console or with the Admin SDK. Accepted for prototypes. Optional inactivity cleanup shrinks old content ciphertext but leaves permanent stubs; it does not bound ongoing junk creation or solve squatting. Burrow has no built-in defence: the Firestore adapter creates its own Firebase app instance, so a site cannot attach Firebase App Check to it today. |
 | Lost token | Not recoverable by design. A browser can also lose it: Safari deletes a site's IndexedDB after seven days of Safari use without the user interacting with the site, and other browsers may evict storage under disk pressure (Burrow does not request persistent storage). Burrow offers the storage token, passkey keyslots, JSON export, and `token.source === "generated"` so sites can prompt users to keep a copy. |
 | Compression side channel | Ciphertext length reveals how compressible the plaintext was. Irrelevant for a user's own settings; there is no switch to disable compression in v1. |
 | Operator rollback or deletion | Rules bind clients, not the project's owner: through the console or the Admin SDK the owner (or Google) can delete a document, restore an older one, or write garbage. A restored document still decrypts, and clients write on top of it at the next revision. Garbage fails to decrypt (`decrypt-failed`, sync pauses). Availability and freshness depend on the operator; confidentiality does not. |

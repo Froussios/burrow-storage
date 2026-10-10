@@ -73,7 +73,11 @@ export async function checkFirestore(
     const env = await seal(cipher, keys.base, 0, plaintext, Date.now());
     await backend.put(keys.base, env, null);
     const stored = await backend.get(keys.base);
-    if (!stored || JSON.stringify(stored) !== JSON.stringify(env))
+    if (
+      !stored ||
+      "x" in stored ||
+      JSON.stringify(stored) !== JSON.stringify(env)
+    )
       throw new SetupCheckError(check, "unexpected-result");
     const decoded = await open(cipher, stored);
     if (

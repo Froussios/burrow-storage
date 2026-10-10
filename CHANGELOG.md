@@ -9,6 +9,22 @@ path.
 
 ## [Unreleased]
 
+### Added
+
+- Use-driven, per-app/device content renewal with a persistent 29–30 day coalescing receipt,
+  item-first/manifest-last writes and unchanged logical versions (#22, D-48).
+- Optional owner-only `burrow-reaper` outside CI: dry-run default, explicit content-only target,
+  395-day server-write inactivity, exact updateTime precondition, permanent minimal stubs,
+  pagination and a persistent daily read/write budget. Full token-access payloads stay untouched.
+
+### Changed
+
+- Backend reads/watches return `StoredDocument` (live envelope or distinct expiry stub).
+  Ordinary puts atomically reject `expired`; explicit low-level replacement still requires the
+  revision/token chain. Core expiry pauses before remote cache merge/pruning, preserving local
+  values and unsynced writes. Remote writes committed before a later expiry cannot be rolled back.
+
+
 ## [0.1.1] - 2026-10-10
 
 First release. The `v0.1.0` tag exists, but its release run failed before anything reached npm,

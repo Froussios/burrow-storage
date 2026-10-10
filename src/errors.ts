@@ -11,6 +11,7 @@ export type BurrowErrorCode =
   | "conflict"
   | "quota"
   | "decrypt-failed"
+  | "expired"
   | "would-orphan";
 
 export class BurrowError extends Error {
@@ -32,7 +33,7 @@ export class BurrowError extends Error {
 }
 
 export type BackendErrorCode =
-  "conflict" | "unauthorized" | "too-large" | "quota" | "network";
+  "conflict" | "unauthorized" | "too-large" | "quota" | "network" | "expired";
 
 export class BackendError extends Error {
   override readonly name = "BackendError";
@@ -90,6 +91,8 @@ export function scrub(cause: unknown, depth = 0): unknown {
 export function fromBackend(e: unknown): BurrowError {
   if (e instanceof BurrowError) return e;
   if (e instanceof BackendError) {
+    if (e.code === "expired")
+      return new BurrowError("expired", undefined, { cause: e });
     if (e.code === "conflict")
       return new BurrowError("conflict", undefined, { cause: e });
     if (e.code === "quota")

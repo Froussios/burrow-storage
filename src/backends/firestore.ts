@@ -1,7 +1,12 @@
 // §10 reference backend: one Firestore collection on the Spark plan, guarded by
 // firebase/firestore.rules.
 import { BackendError } from "../errors.js";
-import type { Backend, Envelope } from "../types.js";
+import type {
+  Backend,
+  Envelope,
+  StoredDocument,
+  PutOptions,
+} from "../types.js";
 import { wellFormed } from "./memory.js";
 
 type Sdk = typeof import("./firestore-sdk.js");
@@ -32,7 +37,9 @@ export function setFirestoreSdkLoader(fn: () => Promise<Sdk>): void {
 
 const FIELDS = ["v", "iv", "ct", "rev", "ts", "tok", "next", "z"] as const;
 
-function toEnvelope(d: Record<string, unknown>): Envelope {
+function toEnvelope(d: Record<string, unknown>): StoredDocument {
+  if (d.x === true)
+    return { x: true, rev: d.rev as number, next: d.next as string };
   const e: Record<string, unknown> = {};
   for (const k of FIELDS) if (d[k] !== undefined) e[k] = d[k];
   return e as unknown as Envelope;
@@ -115,7 +122,7 @@ export class FirestoreBackend implements Backend {
     }));
   }
 
-  async get(id: string): Promise<Envelope | null> {
+  async get(id: string): Promise<StoredDocument | null> {
     const { sdk, db } = await this.#connect();
     try {
       // A transactional read goes straight to the backend.
@@ -135,7 +142,7 @@ export class FirestoreBackend implements Backend {
    * FS-4: parallel single-document reads; an `in` query would need list, which
    * rules deny.
    */
-  getMany(ids: string[]): Promise<(Envelope | null)[]> {
+  getMany(ids: string[]): Promise<(StoredDocument | null)[]> {
     return Promise.all(ids.map((id) => this.get(id)));
   }
 
@@ -147,6 +154,7 @@ export class FirestoreBackend implements Backend {
     id: string,
     env: Envelope,
     expectedRev: number | null,
+    options: PutOptions = {},
   ): Promise<void> {
     if (env.ct.length > 1_000_000) throw new BackendError("too-large");
     if (!wellFormed(id, env))
@@ -158,6 +166,8 @@ export class FirestoreBackend implements Backend {
         const snap = await tx.get(ref);
         const rev = snap.exists() ? (snap.data().rev as number) : null;
         if (rev !== expectedRev) throw new BackendError("conflict");
+        if (snap.exists() && snap.data().x === true && !options.replaceExpired)
+          throw new BackendError("expired");
         tx.set(ref, toDoc(env));
       });
     } catch (e) {
@@ -176,7 +186,7 @@ export class FirestoreBackend implements Backend {
    * FS-9 / BE-7: onSnapshot on one document (the core subscribes to the
    * manifest only).
    */
-  subscribe(id: string, onChange: (env: Envelope) => void): () => void {
+  subscribe(id: string, onChange: (env: StoredDocument) => void): () => void {
     let stop: (() => void) | null = null;
     let cancelled = false;
     void this.#connect().then(

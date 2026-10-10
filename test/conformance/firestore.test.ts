@@ -8,7 +8,7 @@ import { b64url, randomBytes, utf8 } from "../../src/bytes.js";
 import { deriveAppKeys } from "../../src/codec/derive.js";
 import { seal } from "../../src/codec/envelope.js";
 import { checkFirestore } from "../../src/setup/check.js";
-import type { Envelope } from "../../src/types.js";
+import type { StoredDocument } from "../../src/types.js";
 import { World } from "../support/devices.js";
 import { backendConformance } from "./suite.js";
 
@@ -33,7 +33,30 @@ afterAll(async () => {
   await Promise.all(opened.map((b) => b.close()));
 });
 
-backendConformance("FirestoreBackend (emulator)", make);
+async function expire(b: FirestoreBackend, id: string) {
+  const cur = (await b.get(id))!;
+  const response = await fetch(
+    `http://${hostEnv}/v1/projects/${config.projectId}/databases/(default)/documents/burrow/${id}`,
+    {
+      method: "PATCH",
+      headers: {
+        authorization: "Bearer owner",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        fields: {
+          x: { booleanValue: true },
+          rev: { integerValue: String(cur.rev) },
+          next: { stringValue: cur.next },
+        },
+      }),
+    },
+  );
+  expect(response.ok).toBe(true);
+}
+backendConformance("FirestoreBackend (emulator)", make, (b, id) =>
+  expire(b as FirestoreBackend, id),
+);
 
 describe("Burrow over FirestoreBackend (emulator)", () => {
   it("D-50 separate configured projects keep identical document ids and watches isolated", async () => {
@@ -72,8 +95,8 @@ describe("Burrow over FirestoreBackend (emulator)", () => {
     expect(await content.get(id)).toEqual(content0);
     expect(await token.getMany([id])).toEqual([token0]);
 
-    const contentChanges: Envelope[] = [];
-    const tokenChanges: Envelope[] = [];
+    const contentChanges: StoredDocument[] = [];
+    const tokenChanges: StoredDocument[] = [];
     const stopContent = content.subscribe(id, (env) =>
       contentChanges.push(env),
     );
@@ -105,12 +128,14 @@ describe("Burrow over FirestoreBackend (emulator)", () => {
         .toContainEqual(token1);
       expect(
         tokenChanges.every(
-          (env) => env.ct === token0.ct || env.ct === token1.ct,
+          (env) =>
+            !("x" in env) && (env.ct === token0.ct || env.ct === token1.ct),
         ),
       ).toBe(true);
       expect(
         contentChanges.every(
-          (env) => env.ct === content0.ct || env.ct === content1.ct,
+          (env) =>
+            !("x" in env) && (env.ct === content0.ct || env.ct === content1.ct),
         ),
       ).toBe(true);
       expect(await content.get(id)).toEqual(content1);

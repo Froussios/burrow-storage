@@ -267,7 +267,7 @@ describe("multi-device convergence (MemoryBackend)", () => {
             new TextDecoder().decode(
               await open(
                 { key: keys.encKey, mac: keys.macKey, aad: base + "test" },
-                world.store.get(base)!,
+                world.store.get(base)! as import("../../src/types.js").Envelope,
               ),
             ),
           );

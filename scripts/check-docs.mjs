@@ -31,6 +31,7 @@ process.on("exit", () => rmSync(out, { recursive: true, force: true }));
 const DOCS = [
   "README.md",
   "docs/api.md",
+  "docs/retention.md",
   "docs/sync-and-tokens.md",
   "docs/storage-standards.md",
   "docs/firestore-setup.md",
@@ -41,6 +42,9 @@ const DOCS = [
 // declaring.
 const EXPORTED = [
   "Envelope",
+  "ExpiredStub",
+  "StoredDocument",
+  "PutOptions",
   "Manifest",
   "ManifestEntry",
   "Item",

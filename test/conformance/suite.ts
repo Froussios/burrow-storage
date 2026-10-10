@@ -7,7 +7,14 @@ import { type DocCipher, seal } from "../../src/codec/envelope.js";
 import { BackendError } from "../../src/errors.js";
 import type { Backend, Envelope } from "../../src/types.js";
 
-const CODES = ["conflict", "unauthorized", "too-large", "quota", "network"];
+const CODES = [
+  "expired",
+  "conflict",
+  "unauthorized",
+  "too-large",
+  "quota",
+  "network",
+];
 const newId = () => b64url(randomBytes(32));
 
 async function chain(): Promise<{
@@ -41,6 +48,7 @@ async function rejectCode(p: Promise<unknown>): Promise<string> {
 export function backendConformance(
   name: string,
   make: () => Backend | Promise<Backend>,
+  expire?: (b: Backend, id: string) => Promise<void>,
 ): void {
   describe(`backend conformance: ${name}`, () => {
     it("declares capabilities, including writeAuth (ENC-9)", async () => {
@@ -228,11 +236,7 @@ export function backendConformance(
       await b.put(c.id, await c.env(0), null);
       await b.put(d.id, await d.env(0), null);
       const got = await b.getMany([d.id, newId(), c.id]);
-      expect(got.map((e) => e?.ct ?? null)).toEqual([
-        (await b.get(d.id))!.ct,
-        null,
-        (await b.get(c.id))!.ct,
-      ]);
+      expect(got).toEqual([await b.get(d.id), null, await b.get(c.id)]);
     });
 
     it("get reflects a committed put at once, even while subscribed to that document", async () => {
@@ -253,6 +257,50 @@ export function backendConformance(
         stop();
       }
     });
+
+    it.skipIf(!expire)(
+      "D-48 stored stubs stay occupied and ordinary cached-rev puts reject expired",
+      async () => {
+        const b = await make();
+        const c = await chain();
+        const e0 = await c.env(0);
+        await b.put(c.id, e0, null);
+        // Owner operation between a client's last read and its write.
+        await expire!(b, c.id);
+        const stub = { x: true, rev: e0.rev, next: e0.next };
+        expect(await b.get(c.id)).toEqual(stub);
+        if (b.getMany)
+          expect(await b.getMany([c.id, newId()])).toEqual([stub, null]);
+        expect(await rejectCode(b.put(c.id, await c.env(1), 0))).toBe(
+          "expired",
+        );
+        expect(await rejectCode(b.put(c.id, e0, null))).toBe("conflict");
+        expect(await b.get(c.id)).toEqual(stub);
+      },
+    );
+
+    it.skipIf(!expire)(
+      "D-48 explicit stub replacement preserves token/revision authorization and removes x",
+      async () => {
+        const b = await make();
+        const c = await chain();
+        const other = await chain();
+        await b.put(c.id, await c.env(0), null);
+        await expire!(b, c.id);
+        const options = { replaceExpired: true } as const;
+        expect(await rejectCode(b.put(c.id, await c.env(2), 0, options))).toBe(
+          "unauthorized",
+        );
+        const forged = { ...(await c.env(1)), tok: (await other.env(1)).tok };
+        expect(await rejectCode(b.put(c.id, forged, 0, options))).toBe(
+          "unauthorized",
+        );
+        const e1 = await c.env(1);
+        await b.put(c.id, e1, 0, options);
+        expect(await b.get(c.id)).toEqual(e1);
+        expect("x" in (await b.get(c.id))!).toBe(false);
+      },
+    );
 
     it("BE-7 subscribe, when offered, delivers later writes", async () => {
       const b = await make();
