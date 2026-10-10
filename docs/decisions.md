@@ -658,6 +658,52 @@ stage leaves no public release. This paragraph replaces D-53's first wording, wh
 run `npm publish`; no version was ever published that way. Before re-running a release, check
 `npm stage list`: a version that is already staged cannot be staged again.
 
+### D-48 Use renews content; optional owner reaper leaves permanent stubs (#22)
+
+The owner's #22 discussion selected renewable inactivity, an outside-CI cleanup tool, a
+395-day horizon, use-driven renewal, preserved local data and no backend identity migration.
+The complete content-only package and conditions in
+[review6093936021](https://github.com/Froussios/burrow-storage/issues/22#issuecomment-6093936021)
+were explicitly authorized by the actual user in the coordinator chat (“Yes—implement under
+those conditions”). The agent-authored implementation-start comment records that provenance;
+its connected-account author is not a fabricated GitHub owner approval.
+
+Clients coalesce full renewal per app/device with a persisted 29–30 day deadline, reloading it
+under the sync lock across tabs. Due client use renews every listed item (including retained
+deletions), then the manifest, without altering logical versions. Failure records no success;
+normal 30-day logical tombstone pruning remains. Remote merges/pruning are staged until
+publication succeeds or a read-only pass finishes. Concurrent local/tab writes retain their
+own versions/dirty state. Independent earlier remote writes cannot be rolled back.
+
+`StoredDocument` distinguishes normal envelopes from owner-created `{ x: true, rev, next }`
+stubs. The occupied id/write chain prevent create replay/squatting at that id. Ordinary puts
+atomically refuse a stub; explicit `replaceExpired` still needs the expected revision and next
+token. Same-revision notifications preserve `x`. The core pauses with `expired`, keeping
+cache/unsynced writes; no automatic republish or new high-level migration API. The encrypted
+Envelope, salts/AAD/token formats and reference client request shape stay unchanged.
+
+Ordinary-write refusal also covers unlisted retired keys. After a deletion's 30-day manifest
+pruning and later item reaping, ordinary `set()` keeps the new local value but sync encounters
+the stub and pauses all remote work with `expired`. A fresh single-key read also detects that
+stub, pauses and returns locally. All cache entries and dirty writes remain. Manifest absence
+does not authorize replacing a stub or republishing an older queued write: the stub lacks the
+deletion timestamp/hash needed for D-46. Unexpired retained documents still participate in the
+normal logical-version comparison. These are the approved ordinary-call restrictions, not an
+authorization for a new caller-confirmed replacement API.
+
+The owner tool uses only trusted server `updateTime`, with an exact observed-time precondition
+on whole-document replacement. It never deletes stubs or uses client `ts`/Firestore paid TTL.
+Explicit project/database/collection/content-only acknowledgment, dry-run default, pagination,
+fixed/count-only reporting and a locked 0600 private cache provide conservative daily request
+reservations across this operator's invocations. Other clients' quota, permanent stub/index
+storage and ongoing junk/squatting remain limitations.
+
+D-50's independently chosen token-access/content boundary remains: full encrypted token
+payloads are excluded, restore remains read-only, and passkey saves can replace credentials
+(D-47). Opaque mixed collections cannot be classified, so reaping them is refused. No core
+keyslot service coupling, backend-owned renewal scheduler or lost-credential recovery is added.
+See [retention.md](retention.md) for the public contract, operator steps and evidence limits.
+
 ## Part B: planning decisions and their status
 
 These were proposed in the pre-implementation design review

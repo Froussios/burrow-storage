@@ -30,7 +30,7 @@ import type {
   BurrowArea,
   BurrowConfig,
   ChangedEvent,
-  Envelope,
+  StoredDocument,
   GetKeys,
   Inspection,
   Item,
@@ -65,10 +65,18 @@ const HIDDEN_DETACH_MS = 5 * 60_000;
  * every window switch).
  */
 const FOCUS_MIN_MS = 5_000;
+const RENEW_MS = 30 * 24 * 60 * 60_000;
 const jitter = (ms: number) => ms * (0.75 + Math.random() * 0.5);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 type Entry = CachedItem;
+type Written = {
+  key: string;
+  ver: Versioned;
+  rev: number;
+  json?: string;
+  adopted?: Entry;
+};
 const live = (e: Entry | undefined): e is Entry => !!e && !e.deleted;
 const sameVisible = (a: Entry | undefined, b: Entry | undefined) =>
   live(a)
@@ -119,6 +127,7 @@ export class Core implements BurrowArea {
   #status: Status = "idle";
   #error: BurrowError | undefined;
   #paused = false;
+  #renewRequested = true;
   #closed = false;
 
   // Facade writes are visible at once and persisted in the background (API-11).
@@ -270,10 +279,12 @@ export class Core implements BurrowArea {
         manifestRev: null,
         maxRemoteTs: 0,
         lastSyncAt: null,
+        renewAt: undefined,
       };
       await this.#cache.setMeta(meta);
     }
     this.#meta = meta;
+    this.#renewRequested = true;
     this.#mirror = await this.#cache.loadItems();
   }
 
@@ -346,7 +357,8 @@ export class Core implements BurrowArea {
     // SYNC-6: subscribe to the manifest only; fetch changed items on each
     // notification.
     this.#unsubscribe = b.subscribe(this.#keys.base, (env) => {
-      if (env.rev !== this.#meta.manifestRev) void this.#sync();
+      if ("x" in env) this.#failed(new BurrowError("expired"));
+      else if (env.rev !== this.#meta.manifestRev) void this.#sync();
     });
   }
 
@@ -414,6 +426,21 @@ export class Core implements BurrowArea {
 
   // ---------------------------------------------------- local reads and writes
 
+  #noteUse(): void {
+    if (Date.now() >= (this.#meta.renewAt ?? 0)) {
+      this.#renewRequested = true;
+      if (!this.#paused) this.#schedulePush();
+    }
+  }
+
+  #checkExpiry(env?: StoredDocument | null): void {
+    if (
+      (env && "x" in env) ||
+      (this.#paused && this.#error?.code === "expired")
+    )
+      throw new BurrowError("expired");
+  }
+
   #pick(keys: GetKeys): Record<string, unknown> {
     const out: Record<string, unknown> = {};
     const one = (k: string, dflt?: { v: unknown }) => {
@@ -434,6 +461,7 @@ export class Core implements BurrowArea {
     opts?: { fresh?: boolean },
   ): Promise<Record<string, unknown>> {
     this.#alive();
+    this.#noteUse();
     if (opts?.fresh && this.#backend && !this.#paused) {
       try {
         if (keys === null || keys === undefined) await this.#sync();
@@ -445,8 +473,9 @@ export class Core implements BurrowArea {
                 ? keys
                 : Object.keys(keys),
           );
-      } catch {
-        /* SYNC-7 is best-effort; the cache answers */
+      } catch (e) {
+        // SYNC-7/API-3: keep answering locally, but expire pauses remote work.
+        if (e instanceof BurrowError && e.code === "expired") this.#failed(e);
       }
     }
     return this.#pick(keys);
@@ -573,6 +602,7 @@ export class Core implements BurrowArea {
 
   async set(items: Record<string, unknown>): Promise<void> {
     this.#alive();
+    this.#noteUse();
     if (!items || typeof items !== "object")
       throw new TypeError("set() takes an object of key/value pairs");
     const { changes, persisted } = this.#applyLocal(
@@ -585,6 +615,7 @@ export class Core implements BurrowArea {
 
   async remove(keys: string | string[]): Promise<void> {
     this.#alive();
+    this.#noteUse();
     const { changes, persisted } = this.#applyLocal(
       this.#tombstones(typeof keys === "string" ? [keys] : keys),
       false,
@@ -599,6 +630,7 @@ export class Core implements BurrowArea {
   }
 
   async getBytesInUse(keys?: null | string | string[]): Promise<number> {
+    this.#noteUse();
     let n = 0;
     for (const [k, v] of Object.entries(this.#pick(keys)))
       n += utf8(k).length + utf8(JSON.stringify(v)).length;
@@ -607,10 +639,12 @@ export class Core implements BurrowArea {
 
   // Synchronous access for the Storage facade (API-9..12).
   /** @internal */ readSync(key: string): unknown {
+    this.#noteUse();
     const e = this.#mirror.get(key);
     return live(e) ? e.value : undefined;
   }
   /** @internal */ keysSync(): string[] {
+    this.#noteUse();
     return [...this.#mirror].filter(([, e]) => live(e)).map(([k]) => k);
   }
   /** @internal */ writeSync(
@@ -618,6 +652,7 @@ export class Core implements BurrowArea {
     removals: string[],
   ): void {
     this.#alive();
+    this.#noteUse();
     const updates = this.#prepare(entries);
     for (const [k, e] of this.#tombstones(removals)) updates.set(k, e);
     const { changes } = this.#applyLocal(updates, true);
@@ -769,13 +804,26 @@ export class Core implements BurrowArea {
 
   #schedulePush(): void {
     if (!this.#backend || this.#closed) return;
+    // A due renewal is coalesced without delaying it on every read/write.
+    if (
+      this.#pushTimer &&
+      this.#renewRequested &&
+      Date.now() >= (this.#meta.renewAt ?? 0)
+    )
+      return;
     clearTimeout(this.#pushTimer);
     // SYNC-5 debounce + coalesce
-    this.#pushTimer = setTimeout(() => void this.#sync(), this.#debounce);
+    this.#pushTimer = setTimeout(() => {
+      this.#pushTimer = undefined;
+      void this.#sync();
+    }, this.#debounce);
   }
 
   async syncNow(): Promise<void> {
     this.#alive();
+    this.#noteUse();
+    clearTimeout(this.#pushTimer);
+    this.#pushTimer = undefined;
     await this.#flush();
     await this.#sync();
     if (this.#status === "error" || this.#status === "offline") {
@@ -799,6 +847,7 @@ export class Core implements BurrowArea {
         this.#passStartedAt = Date.now();
         try {
           await this.#lock("sync", () => this.#pass());
+          this.#checkExpiry();
           this.#retryDelay = 0;
           this.#setStatus("idle");
         } catch (e) {
@@ -813,9 +862,11 @@ export class Core implements BurrowArea {
   }
 
   #failed(e: unknown): void {
+    // A pending request can fail after a subscription already observed expiry.
+    if (this.#paused && this.#error?.code === "expired") return;
     const err = fromBackend(e);
     this.#log("error", { code: err.code });
-    if (err.code === "decrypt-failed") {
+    if (err.code === "decrypt-failed" || err.code === "expired") {
       // ENC-6: pause until re-linked; the cache is untouched
       this.#paused = true;
       this.#setStatus("error", err);
@@ -853,7 +904,9 @@ export class Core implements BurrowArea {
     };
   }
 
-  async #openJson<T>(id: string, env: Envelope): Promise<T> {
+  async #openJson<T>(id: string, env: StoredDocument): Promise<T> {
+    this.#checkExpiry(env);
+    if ("x" in env) throw new BurrowError("expired");
     const pt = await open(this.#cipher(id), env);
     try {
       return JSON.parse(new TextDecoder().decode(pt)) as T;
@@ -862,7 +915,11 @@ export class Core implements BurrowArea {
     }
   }
 
-  async #openItem(key: string, id: string, env: Envelope): Promise<Entry> {
+  async #openItem(
+    key: string,
+    id: string,
+    env: StoredDocument,
+  ): Promise<Entry> {
     const item = await this.#openJson<Item>(id, env);
     if (item.v !== 1 || item.key !== key)
       throw new BurrowError(
@@ -894,20 +951,36 @@ export class Core implements BurrowArea {
   ): Promise<void> {
     if (!remote.size) return;
     const mark = this.#mark();
-    const local = new Map<string, Versioned>();
+    const local = new Map<
+      string,
+      { ver: Versioned; json: string | undefined }
+    >();
     for (const k of remote.keys()) {
       const e = this.#mirror.get(k);
-      if (e) local.set(k, await this.#h(e));
+      if (e)
+        local.set(k, { ver: await this.#h(e), json: JSON.stringify(e.value) });
     }
     const written = await this.#cache.updateItems(
       [...remote.keys()],
       (k, cur) => {
+        this.#checkExpiry();
         const r = remote.get(k)!;
         if (!cur) return r;
-        const cv =
-          cur.h === undefined && !cur.deleted
-            ? (local.get(k) ?? versionOf(cur))
-            : versionOf(cur);
+        let cv = versionOf(cur);
+        if (cur.h === undefined && !cur.deleted) {
+          const known = local.get(k);
+          if (
+            known?.ver.ts === cur.ts &&
+            known.json === JSON.stringify(cur.value)
+          )
+            cv = known.ver;
+          // Another tab wrote an unhashed same-ts value during this pull. Keep
+          // it until the next pass can hash that actual cached value.
+          else if (cur.ts === r.ts)
+            return r.rev !== undefined && (cur.rev ?? -1) < r.rev
+              ? { ...cur, rev: r.rev }
+              : undefined;
+        }
         if (compare(versionOf(r), cv) > 0) return r;
         if (r.rev !== undefined && (cur.rev ?? -1) < r.rev)
           return { ...cur, rev: r.rev };
@@ -932,6 +1005,7 @@ export class Core implements BurrowArea {
     await this.#lock("sync", async () => {
       const ids = await Promise.all(keys.map((k) => docId(this.#keys!, k)));
       const envs = await this.#getMany(ids);
+      envs.forEach((env) => this.#checkExpiry(env));
       const remote = new Map<string, Entry>();
       for (let i = 0; i < keys.length; i++)
         if (envs[i])
@@ -940,12 +1014,13 @@ export class Core implements BurrowArea {
             await this.#openItem(keys[i]!, ids[i]!, envs[i]!),
           );
       const changes: StorageChanges = {};
+      this.#checkExpiry();
       await this.#applyRemote(remote, changes);
       this.#finishRemote(changes);
     });
   }
 
-  #getMany(ids: string[]): Promise<(Envelope | null)[]> {
+  #getMany(ids: string[]): Promise<(StoredDocument | null)[]> {
     const b = this.#backend!;
     if (!ids.length) return Promise.resolve([]);
     return b.getMany ? b.getMany(ids) : Promise.all(ids.map((id) => b.get(id)));
@@ -975,13 +1050,21 @@ export class Core implements BurrowArea {
     this.#emitChanges(await this.#reload(null), "local");
     this.#setStatus("syncing");
     const changes: StorageChanges = {};
-    // Item documents written this pass, kept across manifest retries so they
-    // are not rewritten.
-    const ok = new Map<string, { key: string; ver: Versioned; rev: number }>();
-
+    const renew =
+      this.#renewRequested && Date.now() >= (this.#meta.renewAt ?? 0);
+    if (!renew) this.#renewRequested = false;
+    // Stage pulls and pruning until all required remote writes succeed. An
+    // expired independent item/manifest must leave cache and dirty data intact.
+    const pending = new Map<string, Entry>();
+    const ok = new Map<string, Written>();
+    let published = false;
+    let finalAttempt = 0;
+    let finalDir: Record<string, Versioned> = {};
+    let hadManifest = false;
     for (let attempt = 0; ; attempt++) {
-      // 1. manifest
+      finalAttempt = attempt;
       const menv = await b.get(keys.base);
+      this.#checkExpiry(menv);
       let dir: Record<string, Versioned> = {};
       if (menv) {
         const m = await this.#openJson<Manifest>(keys.base, menv);
@@ -989,98 +1072,102 @@ export class Core implements BurrowArea {
           throw new BurrowError("decrypt-failed", "bad manifest");
         dir = m.items;
       }
-      let maxTs = this.#meta.maxRemoteTs ?? 0;
-      for (const e of Object.values(dir)) maxTs = Math.max(maxTs, e.ts);
-      this.#meta.maxRemoteTs = maxTs;
-
-      // 2. pull: only items whose manifest entry beats the cached one (SYNC-6)
-      const fetch: string[] = [];
-      const remote = new Map<string, Entry>();
+      hadManifest = !!menv;
+      finalDir = dir;
+      for (const e of Object.values(dir))
+        this.#meta.maxRemoteTs = Math.max(this.#meta.maxRemoteTs ?? 0, e.ts);
+      const fetch = new Set<string>();
       for (const [k, e] of Object.entries(dir)) {
         const cur = this.#mirror.get(k);
-        if (cur && compare(e, await this.#h(cur)) <= 0) continue;
-        if (e.deleted)
-          remote.set(k, {
-            ts: e.ts,
-            deleted: true,
-            ...(cur?.rev !== undefined ? { rev: cur.rev } : {}),
-          });
-        else fetch.push(k);
+        if (!renew && cur && compare(e, await this.#h(cur)) <= 0) continue;
+        if (e.deleted && !renew)
+          pending.set(k, { ts: e.ts, deleted: true, rev: cur?.rev });
+        else fetch.add(k);
       }
-      // A concurrent delete may have overwritten an earlier item result and
-      // expired from the manifest. Revalidate every unlisted result, even if
-      // a prior retry already adopted a newer version locally (SYNC-10, D-46).
-      for (const k of ok.keys()) if (!(k in dir)) fetch.push(k);
-      const ids = await Promise.all(fetch.map((k) => docId(keys, k)));
+      // D-46: revalidate unlisted prior results on EVERY manifest retry.
+      for (const k of ok.keys()) if (!(k in dir)) fetch.add(k);
+      const fetched = [...fetch];
+      const ids = await Promise.all(fetched.map((k) => docId(keys, k)));
       const envs = await this.#getMany(ids);
-      for (let i = 0; i < fetch.length; i++) {
-        const k = fetch[i]!;
+      envs.forEach((env) => this.#checkExpiry(env));
+      for (let i = 0; i < fetched.length; i++) {
+        const k = fetched[i]!;
         const env = envs[i];
-        const item = env ? await this.#openItem(k, ids[i]!, env) : undefined;
+        if (
+          renew &&
+          k in dir &&
+          !env &&
+          !dir[k]!.deleted &&
+          !this.#mirror.has(k)
+        )
+          throw new BackendError("network", "missing item");
+        const item = env
+          ? await this.#openItem(k, ids[i]!, env)
+          : renew && dir[k]?.deleted
+            ? { ts: dir[k]!.ts, deleted: true as const }
+            : undefined;
         if (item) {
-          remote.set(k, item);
-          this.#meta.maxRemoteTs = Math.max(this.#meta.maxRemoteTs!, item.ts);
+          pending.set(k, item);
+          this.#meta.maxRemoteTs = Math.max(
+            this.#meta.maxRemoteTs ?? 0,
+            item.ts,
+          );
         }
         const written = ok.get(k);
         if (written && !(k in dir)) {
           if (item && compare(versionOf(item), written.ver) >= 0)
-            ok.set(k, { key: k, ver: versionOf(item), rev: env!.rev });
-          else ok.delete(k); // The dirty local entry must be pushed again.
+            ok.set(k, {
+              key: k,
+              ver: versionOf(item),
+              rev: env!.rev,
+              json: JSON.stringify(item.value),
+            });
+          else ok.delete(k);
         }
       }
-      await this.#applyRemote(remote, changes);
-      const unlistedLive = new Set<string>();
-      for (const [k, r] of ok)
-        if (!r.ver.deleted && !(k in dir)) unlistedLive.add(k);
-      let pruned = 0;
-      // Synced keys missing from an existing manifest were pruned tombstones:
-      // drop them, except live item results this pass will publish.
-      if (menv) {
-        const gone = [...this.#mirror]
-          .filter(([k, e]) => !e.dirty && !(k in dir) && !unlistedLive.has(k))
-          .map(([k]) => k);
-        const mark = this.#mark();
-        const dropped = await this.#cache.updateItems(gone, (_k, cur) =>
-          cur && !cur.dirty ? null : undefined,
-        );
-        for (const k of dropped.keys()) {
-          if (!this.#settledSince(k, mark)) continue;
-          addChange(changes, k, this.#mirror.get(k), undefined);
-          this.#mirror.delete(k);
-          pruned++;
-        }
-      }
-      // ERR-3: a merge line for each manifest read that brought remote entries
-      // or pruned keys.
-      if (remote.size || pruned)
-        this.#log("merge", { attempt, remote: remote.size, pruned });
       this.#log("pull", {
         rev: menv?.rev ?? null,
-        fetched: fetch.length,
+        fetched: fetched.length,
         ms: Date.now() - t0,
       });
-
-      // 3. push dirty items, each on its own chain, in parallel
-      const dirty = [...this.#mirror].filter(([, e]) => e.dirty);
-      // Revalidation can adopt a newer live result and clear the last dirty
-      // key. It still needs a manifest entry before this pass can finish.
-      if (!dirty.length && !unlistedLive.size) {
+      // Build a temporary merge view; do not mutate the local source of truth.
+      const view = new Map(this.#mirror);
+      for (const [k, r] of pending) {
+        const cur = view.get(k);
+        if (!cur || compare(versionOf(r), await this.#h(cur)) > 0)
+          view.set(k, r);
+        else if ((r.rev ?? -1) > (cur.rev ?? -1))
+          view.set(k, { ...cur, rev: r.rev });
+      }
+      const push = [...view].filter(([k, e]) => e.dirty || (renew && k in dir));
+      const unlistedLive = [...ok].some(
+        ([k, r]) => !r.ver.deleted && !(k in dir),
+      );
+      if (!push.length && !unlistedLive && !(renew && menv)) {
         this.#meta.manifestRev = menv?.rev ?? null;
         break;
       }
-      const results = await Promise.all(
-        dirty.map(([k, e]) =>
-          ok.get(k)?.ver.ts === e.ts ? null : this.#pushItem(k, e),
+      this.#checkExpiry();
+      const results = await Promise.allSettled(
+        push.map(([k, e]) =>
+          (async () => {
+            const previous = ok.get(k);
+            return previous && compare(previous.ver, await this.#h(e)) === 0
+              ? null
+              : this.#pushItem(k, e, renew);
+          })(),
         ),
       );
+      // An observed expiry dominates other concurrent transport failures.
+      for (const r of results)
+        if (r.status === "rejected" && r.reason?.code === "expired")
+          throw r.reason;
+      for (const r of results) if (r.status === "rejected") throw r.reason;
       for (const r of results) {
-        if (!r) continue;
-        if (r.adopted)
-          await this.#applyRemote(new Map([[r.key, r.adopted]]), changes);
-        ok.set(r.key, r);
+        if (r.status !== "fulfilled" || !r.value) continue;
+        if (r.value.adopted) pending.set(r.value.key, r.value.adopted);
+        ok.set(r.value.key, r.value);
       }
-
-      // 4. the manifest, once, last (read-merge-write)
       const items = mergeDirectories(
         dir,
         Object.fromEntries([...ok].map(([k, r]) => [k, r.ver])),
@@ -1091,11 +1178,16 @@ export class Core implements BurrowArea {
         throw new BurrowError("item-too-large", "manifest is full");
       const rev = menv ? menv.rev + 1 : 0;
       try {
-        await b.put(
+        const env = await seal(
+          this.#cipher(keys.base),
           keys.base,
-          await seal(this.#cipher(keys.base), keys.base, rev, pt, Date.now()),
-          menv ? menv.rev : null,
+          rev,
+          pt,
+          Date.now(),
         );
+        this.#checkExpiry();
+        await b.put(keys.base, env, menv ? menv.rev : null);
+        this.#checkExpiry();
         this.#log("push", {
           rev,
           items: ok.size,
@@ -1103,30 +1195,8 @@ export class Core implements BurrowArea {
           ms: Date.now() - t0,
         });
         this.#meta.manifestRev = rev;
-        // Clear dirty only where nothing newer was written meanwhile.
-        const written = await this.#cache.updateItems(
-          [...ok.keys()],
-          (k, cur) => {
-            const r = ok.get(k)!;
-            if (!cur) return undefined;
-            if (cur.ts === r.ver.ts) {
-              const { dirty: _d, ...rest } = cur;
-              return {
-                ...rest,
-                rev: r.rev,
-                ...(r.ver.h ? { h: r.ver.h } : {}),
-              };
-            }
-            return { ...cur, rev: Math.max(cur.rev ?? -1, r.rev) };
-          },
-        );
-        for (const [k, e] of written)
-          if (e) {
-            const m = this.#mirror.get(k);
-            // A facade write that has not reached the cache yet keeps its own
-            // value and dirty flag.
-            this.#mirror.set(k, m && m.ts !== e.ts ? { ...m, rev: e.rev } : e);
-          }
+        finalDir = items;
+        published = true;
         break;
       } catch (e) {
         if (
@@ -1138,11 +1208,70 @@ export class Core implements BurrowArea {
         await sleep(jitter(CONFLICT_BACKOFF[attempt]!));
       }
     }
+    this.#checkExpiry();
+    await this.#applyRemote(pending, changes);
+    let pruned = 0;
+    if (hadManifest) {
+      const gone = [...this.#mirror]
+        .filter(([k, e]) => !e.dirty && !(k in finalDir))
+        .map(([k]) => k);
+      const mark = this.#mark();
+      const dropped = await this.#cache.updateItems(gone, (_k, cur) => {
+        this.#checkExpiry();
+        return cur && !cur.dirty ? null : undefined;
+      });
+      for (const k of dropped.keys()) {
+        if (!this.#settledSince(k, mark)) continue;
+        addChange(changes, k, this.#mirror.get(k), undefined);
+        this.#mirror.delete(k);
+        pruned++;
+      }
+    }
+    if (pending.size || pruned)
+      this.#log("merge", {
+        attempt: finalAttempt,
+        remote: pending.size,
+        pruned,
+      });
+    if (published) {
+      const mark = this.#mark();
+      const written = await this.#cache.updateItems(
+        [...ok.keys()],
+        (k, cur) => {
+          this.#checkExpiry();
+          const r = ok.get(k)!;
+          if (!cur) return undefined;
+          if (
+            cur.ts === r.ver.ts &&
+            !!cur.deleted === !!r.ver.deleted &&
+            (cur.deleted || JSON.stringify(cur.value) === r.json)
+          ) {
+            const { dirty: _d, ...rest } = cur;
+            return { ...rest, rev: r.rev, ...(r.ver.h ? { h: r.ver.h } : {}) };
+          }
+          return { ...cur, rev: Math.max(cur.rev ?? -1, r.rev) };
+        },
+      );
+      for (const [k, e] of written)
+        if (e) {
+          const m = this.#mirror.get(k);
+          this.#mirror.set(
+            k,
+            m && !this.#settledSince(k, mark) ? { ...m, rev: e.rev } : e,
+          );
+        }
+    }
     this.#meta.lastSyncAt = Date.now();
+    if (renew) {
+      this.#meta.renewAt =
+        Date.now() + RENEW_MS - Math.random() * 24 * 60 * 60_000;
+      this.#renewRequested = false;
+    }
     await this.#cache.setMeta({
       manifestRev: this.#meta.manifestRev ?? null,
       maxRemoteTs: this.#meta.maxRemoteTs ?? 0,
       lastSyncAt: this.#meta.lastSyncAt,
+      renewAt: this.#meta.renewAt,
     });
     this.#finishRemote(changes);
   }
@@ -1151,13 +1280,11 @@ export class Core implements BurrowArea {
    * SYNC-8: read-merge-write one item document. Uses the cached rev, re-reads
    * on conflict.
    */
-  async #pushItem(
-    key: string,
-    e: Entry,
-  ): Promise<{ key: string; ver: Versioned; rev: number; adopted?: Entry }> {
+  async #pushItem(key: string, e: Entry, renew = false): Promise<Written> {
     const b = this.#backend!;
     const id = await docId(this.#keys!, key);
-    const ver = await this.#h(e);
+    let ver = await this.#h(e);
+    let adopted: Entry | undefined;
     let rev: number | null | undefined = e.rev;
     for (let attempt = 0; ; attempt++) {
       if (rev === undefined) {
@@ -1165,8 +1292,18 @@ export class Core implements BurrowArea {
         rev = cur ? cur.rev : null;
         if (cur) {
           const r = await this.#openItem(key, id, cur);
-          if (compare(versionOf(r), ver) >= 0)
-            return { key, ver: versionOf(r), rev: cur.rev, adopted: r };
+          if (compare(versionOf(r), ver) >= 0) {
+            if (!renew)
+              return {
+                key,
+                ver: versionOf(r),
+                rev: cur.rev,
+                adopted: r,
+                json: JSON.stringify(r.value),
+              };
+            e = adopted = r;
+            ver = versionOf(r);
+          }
         }
       }
       const item: Item = e.deleted
@@ -1174,19 +1311,19 @@ export class Core implements BurrowArea {
         : { v: 1, key, value: e.value, ts: e.ts };
       const next = rev === null ? 0 : rev + 1;
       try {
-        await b.put(
+        const env = await seal(
+          this.#cipher(id),
           id,
-          await seal(
-            this.#cipher(id),
-            id,
-            next,
-            utf8(JSON.stringify(item)),
-            Date.now(),
-          ),
-          rev,
+          next,
+          utf8(JSON.stringify(item)),
+          Date.now(),
         );
-        return { key, ver, rev: next };
+        this.#checkExpiry();
+        await b.put(id, env, rev);
+        return { key, ver, rev: next, adopted, json: JSON.stringify(e.value) };
       } catch (err) {
+        if (err instanceof BackendError && err.code === "expired")
+          this.#failed(err);
         if (
           !(err instanceof BackendError && err.code === "conflict") ||
           attempt >= CONFLICT_BACKOFF.length

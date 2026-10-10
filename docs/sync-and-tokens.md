@@ -28,7 +28,7 @@ everything; what the token provides is the *address and the key* to it.
 Remembering is only as durable as the browser's storage. Safari deletes a site's IndexedDB after
 seven days of Safari use without the user interacting with the site, and other browsers may evict
 storage when the disk runs low. The device then starts over with a new, empty token, while the
-data waits in the store for the old one. That is why a kept token or a passkey backup matters even
+data can still be addressed with the old one, subject to the operator's [content retention policy](retention.md). That is why a kept token or a passkey backup matters even
 to users with a single device.
 
 Because the token is per origin, every Burrow app on the same origin shares it. A user who links
@@ -178,8 +178,27 @@ altogether.
   from 2 s, capped at the larger of `syncIntervalMs` and 5 minutes. Unsynced writes are never
   dropped. A document that does not decrypt sets `"error"` and pauses sync until the device links
   again; the cache is left as it was.
+- **Pull availability during failed writes.** A sync pass stages remote changes and pruning
+  until all required item writes and manifest publication succeed, or until a pass needs no
+  writes. If a dirty item, full manifest or due renewal cannot be written, that pass does not
+  apply its staged remote changes even when reads succeed. Other devices' changes can therefore
+  be delayed while write quota is exhausted or a write remains oversized. Cached reads and local
+  writes keep working; retry after quota resets or resolve the size issue. Best-effort fresh
+  single-key reads are a separate path and still report expiry while preserving local data.
 - **Tabs.** Tabs of one app share the cache and tell each other about writes through a
   `BroadcastChannel`; each sync pass takes a `navigator.locks` lock so two tabs never push at once.
   Linking or unlinking in one tab switches or closes the other tabs of the same app.
 
 The data model and algorithms in detail: [architecture.md](architecture.md).
+
+
+## Inactive content and expiry
+
+Client use renews listed content about every 30 days, independently of token access. An operator
+may run optional content-only cleanup after 395 days since a document's server write time.
+A permanent expiry stub pauses sync with `expired`; local values and unsynced writes remain.
+Passkey token payloads are excluded and `restore()` remains read-only. Before explicitly
+choosing a fresh token with dirty local data, export/save `exportJSON()` first, then use the
+existing `discardLocal: true` choice if appropriate and manually import saved values. This is
+an app/user choice, not backend migration or automatic republication. Full policy and limits:
+[retention.md](retention.md).

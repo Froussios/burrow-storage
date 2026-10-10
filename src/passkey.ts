@@ -283,6 +283,7 @@ export function passkeyBackup(
         const slot = await deriveSlotKeys(prf);
         const env = await b.get(slot.slotId);
         if (!env) return null;
+        if ("x" in env) throw new BurrowError("expired");
         secret = await open(slotCipher(slot), env);
         if (secret.length !== 32) throw new BurrowError("decrypt-failed");
         return await encodeToken(secret);

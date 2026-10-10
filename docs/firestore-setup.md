@@ -162,13 +162,18 @@ id is allowed by design. Junk documents look exactly like users' documents. Dail
 that sync pauses for your users until midnight Pacific time. **Stored bytes do not reset.** A
 determined party could fill the 1 GiB with junk documents, and because the rules forbid deletes,
 only the project owner can remove them (from the console, or with the Admin SDK, which bypasses
-the rules; delete documents whose `ts` is older than you care about). For prototypes this is an
+the rules; client `ts` is untrusted and is not an age authority). For prototypes this is an
 accepted risk. Burrow has no built-in defence against it today. Firebase App Check would be the
 natural hardening, but the adapter creates its own Firebase app instance and does not initialise
 App Check, so a site cannot turn it on yet.
 
-Removed keys leave their item documents behind forever, overwritten with a deleted marker and
-bounded by the size cap; the manifest forgets them after 30 days.
+Removed keys leave occupied item documents with a deleted marker; the manifest forgets them
+after 30 days. Optional content-only [inactivity cleanup](retention.md) replaces old payloads
+with permanent `{ x, rev, next }` stubs after 395 days of server write inactivity. It uses ordinary
+owner REST reads/writes outside CI, dry-run by default, exact `updateTime` preconditions and a
+persistent daily budget. It does not enable paid TTL or free permanent stub storage, solve
+ongoing junk creation, or clean token-access payloads. Do not target a mixed content/keyslot
+collection: their encrypted roles cannot be classified. Configure independent stores first.
 
 ## Local development
 

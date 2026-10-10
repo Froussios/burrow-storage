@@ -22,6 +22,21 @@ export interface Envelope {
   z?: true;
 }
 
+/** Operator-created marker: content is gone, but the write chain survives. */
+export interface ExpiredStub {
+  x: true;
+  rev: number;
+  next: string;
+}
+
+/** Backend reads distinguish never-created documents from expired content. */
+export type StoredDocument = Envelope | ExpiredStub;
+
+export interface PutOptions {
+  /** Explicitly replace an expired stub using its existing write chain. */
+  replaceExpired?: true;
+}
+
 /** Plaintext of the manifest document (id = base): the user's key directory. */
 export interface Manifest {
   v: 1;
@@ -65,11 +80,11 @@ export interface BackendCapabilities {
 
 /**
  * Where encrypted documents live: the one swappable seam (§9). A backend stores
- * opaque envelopes at opaque 43-character ids and knows nothing about users,
- * apps, keys or encryption; manifests, items and keyslots look identical to it.
- * Every failure must reject with a `BackendError`. The conformance suite in
- * `test/conformance/suite.ts` checks an implementation. Guide:
- * docs/extending.md.
+ * opaque envelopes or owner-created expiry stubs at opaque 43-character ids and
+ * knows nothing about users, apps, keys or encryption; manifests, items and
+ * keyslots look identical to it. Every failure must reject with a
+ * `BackendError`. The conformance suite in `test/conformance/suite.ts` checks
+ * an implementation. Guide: docs/extending.md.
  */
 export interface Backend {
   /**
@@ -79,16 +94,16 @@ export interface Backend {
   /** What this backend can do; see `BackendCapabilities`. */
   readonly capabilities: BackendCapabilities;
   /**
-   * Read the document stored at `id`, exactly as it was written.
+   * Read a live envelope or distinct `{ x: true, rev, next }` expired stub.
    * Resolves `null` when no document exists. Rejects
    * `BackendError("network" | "quota")`.
    */
-  get(id: string): Promise<Envelope | null>;
+  get(id: string): Promise<StoredDocument | null>;
   /**
    * Optional batch read: one result per id, in the same order, `null` for a
    * missing document. Without it, Burrow calls `get()` for each id in parallel.
    */
-  getMany?(ids: string[]): Promise<(Envelope | null)[]>;
+  getMany?(ids: string[]): Promise<(StoredDocument | null)[]>;
   /**
    * Write `env` at `id` with an optimistic-concurrency check (BE-1).
    * `expectedRev` null means create: reject `conflict` if the document exists.
@@ -96,15 +111,23 @@ export interface Backend {
    * Two concurrent writers at the same `expectedRev` must see exactly one
    * success. A `writeAuth` store also rejects `unauthorized` for a broken token
    * chain or a malformed envelope. Other rejections: `too-large`, `quota`,
-   * `network`.
+   * `network`. Atomically reject `expired` if the current document is a stub,
+   * unless `options.replaceExpired` explicitly permits replacing it. Opt-in
+   * still requires the expected revision and valid next-token chain.
    */
-  put(id: string, env: Envelope, expectedRev: number | null): Promise<void>;
+  put(
+    id: string,
+    env: Envelope,
+    expectedRev: number | null,
+    options?: PutOptions,
+  ): Promise<void>;
   /**
    * Optional push notifications for one document. Call `onChange` with each new
-   * envelope stored at `id`, and return a function that stops them. Burrow
-   * subscribes to the user's manifest only.
+   * live envelope or expired stub stored at `id` (even at the same revision),
+   * and return a function that stops them. Burrow subscribes to the user's
+   * manifest only.
    */
-  subscribe?(id: string, onChange: (env: Envelope) => void): () => void;
+  subscribe?(id: string, onChange: (env: StoredDocument) => void): () => void;
 }
 
 /** Page or caller configuration consumed by a registered adapter factory. */

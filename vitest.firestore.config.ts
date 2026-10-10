@@ -4,7 +4,10 @@ import { defineConfig } from "vitest/config";
 // scripts/emulator.mjs).
 export default defineConfig({
   test: {
-    include: ["test/conformance/firestore.test.ts"],
+    include: [
+      "test/conformance/firestore.test.ts",
+      "test/conformance/reaper.test.ts",
+    ],
     setupFiles: ["test/setup.ts"],
     testTimeout: 30_000,
   },

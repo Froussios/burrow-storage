@@ -90,6 +90,10 @@ manager) or unlocks a passkey backup of it, and that device derives the same ids
   can run up a charge. What heavy use or abuse can cost you is availability: sync pauses until the
   daily reset, and junk that fills the free storage stops writes until you clean it up (see
   [limits](#limits-costs-and-browser-support)).
+- **Use renews content.** Client use coalesces a full renewal about every 30 days. An operator
+  may enable content-only cleanup after 395 days of server write inactivity. Expiry pauses sync
+  while preserving cached values and unsynced writes; token-access payloads are excluded. See
+  [retention](docs/retention.md) for the optional cleanup, costs and limits.
 - **A swappable store.** Firestore is one adapter behind a small `Backend` interface, and a
   conformance suite tells you when another adapter is right.
 

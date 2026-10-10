@@ -736,6 +736,7 @@ describe("KP-6 restore outcomes", () => {
     await p.save(await newToken());
     const slot = await deriveSlotKeys(await auth.expectedPrf(auth.chosen!));
     const env = backend.store.get(slot.slotId)!;
+    if ("x" in env) throw new Error("unexpected expired slot");
     const ct = env.ct;
     env.ct = (ct[0] === "A" ? "B" : "A") + ct.slice(1);
     const err = await p.restore().catch((e: unknown) => e);

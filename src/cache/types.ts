@@ -26,6 +26,8 @@ export interface AppMeta {
   /** Greatest remote ts seen, for clock-skew correction (SYNC-11). */
   maxRemoteTs?: number;
   lastSyncAt?: number | null;
+  /** Next client-use renewal deadline; per app/device, at most 30 days away. */
+  renewAt?: number;
 }
 
 /**

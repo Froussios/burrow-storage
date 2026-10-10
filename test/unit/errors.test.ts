@@ -24,12 +24,14 @@ const BURROW_CODES: BurrowErrorCode[] = [
   "item-too-large",
   "backend",
   "conflict",
+  "expired",
   "quota",
   "decrypt-failed",
   "would-orphan",
 ];
 const BACKEND_CODES: BackendErrorCode[] = [
   "conflict",
+  "expired",
   "unauthorized",
   "too-large",
   "quota",
@@ -200,6 +202,7 @@ describe("API-13/BE-4 BurrowError and BackendError", () => {
     const leaky = new Error(`get ${ID} failed`);
     const map: Record<BackendErrorCode, BurrowErrorCode> = {
       conflict: "conflict",
+      expired: "expired",
       quota: "quota",
       "too-large": "item-too-large",
       unauthorized: "backend",

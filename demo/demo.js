@@ -53,6 +53,10 @@
         : status === "idle"
           ? "synced"
           : status;
+    if (error?.code === "expired")
+      say(
+        "Synced content expired. Local data is kept and still editable. Export it before choosing a fresh token.",
+      );
     if (error?.code === "decrypt-failed")
       say(
         "This device cannot read the synced data. Link it again with your storage token.",

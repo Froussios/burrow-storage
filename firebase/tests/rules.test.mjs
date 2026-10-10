@@ -169,3 +169,22 @@ test("partial update cannot bypass the chain", async () => {
   await setDoc(doc(db(), "burrow", id), envelope(0, "t0", "t1"));
   await assertFails(updateDoc(doc(db(), "burrow", id), { ct: "BBBB" }));
 });
+
+test("D-48 minimal owner stub preserves occupancy, write-chain authorization and no-delete", async () => {
+  const id = newId();
+  const ref = doc(db(), "burrow", id);
+  const e0 = envelope(0, "t0", "t1");
+  await assertSucceeds(setDoc(ref, e0));
+  const stub = { x: true, rev: 0, next: e0.next };
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "burrow", id), stub);
+  });
+  assert.deepEqual((await assertSucceeds(getDoc(ref))).data(), stub);
+  await assertFails(setDoc(ref, e0));
+  await assertFails(setDoc(ref, envelope(1, "wrong", "t2")));
+  await assertFails(setDoc(ref, envelope(2, "t1", "t2")));
+  await assertFails(deleteDoc(ref));
+  const e1 = envelope(1, "t1", "t2");
+  await assertSucceeds(setDoc(ref, e1));
+  assert.deepEqual((await getDoc(ref)).data(), e1);
+});
