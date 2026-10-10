@@ -126,8 +126,11 @@ A server pagination token can become unusable. If a stored cursor keeps producin
 `request-failed`, rerun the same target/cache with `--reset-cursor` (and `--apply` if that was
 the affected mode). It restarts only that target/mode's scan under the cache lock and preserves
 all project/day reservations and other scan cursors. It may revisit earlier pages and consumes
-the remaining read/write budget normally; exhausted quota still stops the run. Do not delete or
-edit the private cache to recover a cursor, and do not paste its contents into logs/issues.
+the remaining read/write budget normally; exhausted quota still stops the run. Use the flag
+for that one recovery run, then remove it from subsequent commands. Never leave it in a cron
+job or other schedule: each invocation restarts the scan, so earlier pages can consume the
+budget repeatedly while later documents remain unvisited. Do not delete or edit the private
+cache to recover a cursor, and do not paste its contents into logs/issues.
 
 For each non-stub document the tool uses the server's output-only `updateTime`, refusing missing
 or invalid timestamps. Only documents at least **395 days** old are eligible. Envelope `ts`,

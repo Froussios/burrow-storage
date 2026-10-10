@@ -326,7 +326,7 @@ export async function reap(options, { request, now = Date.now } = {}) {
 async function main() {
   if (process.argv.includes("--help")) {
     console.log(
-      "burrow-reaper --project ID --database ID --collection NAME --content-only [--apply] [--state PATH] [--max-reads N] [--max-writes N] [--page-size N] [--reset-cursor]\nDry-run by default. Content-only targets; never point at token-access or mixed stores. The default deployment shares a collection with passkey keyslots: verify/separate content before --apply. --content-only is your acknowledgment, not automatic classification. --reset-cursor restarts only the selected target/mode scan, preserving daily quota. See docs/retention.md.",
+      "burrow-reaper --project ID --database ID --collection NAME --content-only [--apply] [--state PATH] [--max-reads N] [--max-writes N] [--page-size N] [--reset-cursor]\nDry-run by default. Content-only targets; never point at token-access or mixed stores. The default deployment shares a collection with passkey keyslots: verify/separate content before --apply. --content-only is your acknowledgment, not automatic classification. --reset-cursor restarts only the selected target/mode scan, preserving daily quota. Use once for cursor recovery, then drop the flag; never leave it in schedules, which would repeatedly rescan earlier pages. See docs/retention.md.",
     );
     return;
   }

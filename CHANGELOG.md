@@ -23,6 +23,10 @@ path.
   Ordinary puts atomically reject `expired`; explicit low-level replacement still requires the
   revision/token chain. Core expiry pauses before remote cache merge/pruning, preserving local
   values and unsynced writes. Remote writes committed before a later expiry cannot be rolled back.
+- Before `burrow-reaper --apply`, every writer must use an expiry-aware build implementing D-48's
+  distinct stub reads and atomic ordinary-put refusal. Published 0.1.1 predates this behavior;
+  verify each deployed bundle or commit, rather than its package version. Existing rules still
+  permit older authenticated clients to rewrite stubs.
 
 
 ## [0.1.1] - 2026-10-10
