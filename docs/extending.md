@@ -124,11 +124,9 @@ adapter passes it against the emulator (`npm run test:firestore`); `MemoryBacken
 The underlying store must offer an atomic compare-and-set for `put`; Workers KV alone, for
 example, does not.
 
-See the [backend support overview](backend-candidates.md#support-status) for implemented
-adapters, candidates, rejected direct variants and backend-scoped follow-up issues. HTTP is
-only a transport: define and verify its chain/CAS, access and error protocol in the chosen
-backend's issue before implementing a generic client. No HTTP endpoint or candidate deployment
-is supplied by the core.
+HTTP is only a transport: define and verify its chain/CAS, access and error protocol in the
+chosen backend's issue before implementing a generic client. No HTTP endpoint or candidate
+deployment is supplied by the core.
 
 ## Another way to carry the token
 
@@ -215,6 +213,7 @@ New adapters should use their own subpath and a separate measured budget. `npm r
 enforces 2 KiB min+gzip for the Firestore adapter excluding its SDK, and 150 KiB for that
 lazy SDK. Core + memory remains 12 KiB and passkey backup adds at most 2 KiB.
 
-See [backend candidates](backend-candidates.md) for the current feasibility assessment. A
-registered adapter is not certified merely because a factory can instantiate it: its actual
-server policy, concurrency, quota behavior, CORS and access restrictions need verification.
+See the [backend support overview](backend-candidates.md#support-status) for implemented
+adapters, candidates, rejected direct variants and backend-scoped follow-up issues. A registered
+adapter is not certified merely because a factory can instantiate it: its actual server policy,
+concurrency, quota behavior, CORS and access restrictions need verification.

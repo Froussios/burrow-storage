@@ -13,7 +13,7 @@ resources were created.
   deployment's privacy, costs or rules; see the evidence below and the setup guide.
 - **Candidate:** a direction to investigate, conditional on the stated design/deployment
   gates. Opening its issue does not select it for implementation.
-- **Rejected as-is:** the direct variant fails a requirement. A gateway or different design
+- **Rejected:** the direct variant fails a requirement as-is. A gateway or different design
   would need separate approval and evidence.
 - **Want:** explicitly selected by the repo owner for implementation. **None selected.**
   Feasibility and candidate issue creation do not imply this status.
@@ -24,14 +24,14 @@ resources were created.
 | MemoryBackend | Supported | In-memory development/test adapter, not persistent hosted storage. |
 | Cloudflare Worker + D1 | Candidate | [#64](https://github.com/Froussios/burrow-storage/issues/64): private D1 binding, conditional SQL and Free Worker limits. |
 | Supabase private RPCs | Candidate | [#65](https://github.com/Froussios/burrow-storage/issues/65): private tables, audited grants and chain/CAS RPCs. |
-| PocketBase transactional routes | Candidate, conditional on self-hosting acceptance | [#66](https://github.com/Froussios/burrow-storage/issues/66): no bundled Free host; owner must accept hosting and the route design. |
-| Deno KV + chunking/gateway | Candidate, feasibility unproven | [#67](https://github.com/Froussios/burrow-storage/issues/67): prove full-envelope atomic chunking within transaction limits first. |
+| PocketBase transactional routes | Candidate | [#66](https://github.com/Froussios/burrow-storage/issues/66): conditional on self-hosting acceptance; no bundled Free host. Owner must accept hosting and the route design. |
+| Deno KV + chunking/gateway | Candidate | [#67](https://github.com/Froussios/burrow-storage/issues/67): feasibility unproven; prove full-envelope atomic chunking within transaction limits first. |
 | Upstash Redis + restricted gateway | Candidate | [#68](https://github.com/Froussios/burrow-storage/issues/68): private credentials and atomic script; verify Free hard stops. |
-| Worker + KV alone | Rejected as-is | No required atomic compare-and-set. |
-| S3-compatible direct | Rejected as-is | No native SHA-256 chain policy; provider free allowances may bill. |
-| Native Deno KV value per envelope | Rejected as-is | 64 KiB values cannot hold the current envelope size. |
-| Upstash Redis direct | Rejected as-is | Standard public tokens expose bypass writes/list/delete; read-only tokens cannot sync. |
-| Firebase Realtime Database direct | Rejected as-is | No documented SHA-256 rules primitive for the write chain. |
+| Worker + KV alone | Rejected | No required atomic compare-and-set. |
+| S3-compatible direct | Rejected | No native SHA-256 chain policy; provider free allowances may bill. |
+| Native Deno KV value per envelope | Rejected | 64 KiB values cannot hold the current envelope size. |
+| Upstash Redis direct | Rejected | Standard public tokens expose bypass writes/list/delete; read-only tokens cannot sync. |
+| Firebase Realtime Database direct | Rejected | No documented SHA-256 rules primitive for the write chain. |
 
 Generic HTTP is a transport, not a backend selection. Concrete HTTP protocol work belongs in
 the chosen backend's issue; it has no separate implementation issue. The five candidate issues

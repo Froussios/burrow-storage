@@ -36,7 +36,7 @@ afterAll(async () => {
 backendConformance("FirestoreBackend (emulator)", make);
 
 describe("Burrow over FirestoreBackend (emulator)", () => {
-  it("BE-3/D-50 separate configured projects keep identical document ids and watches isolated", async () => {
+  it("D-50 separate configured projects keep identical document ids and watches isolated", async () => {
     const projectId = "burrow-isolation-test";
     const rules = await readFile(
       new URL("../../firebase/firestore.rules", import.meta.url),
@@ -72,11 +72,18 @@ describe("Burrow over FirestoreBackend (emulator)", () => {
     expect(await content.get(id)).toEqual(content0);
     expect(await token.getMany([id])).toEqual([token0]);
 
-    const changes: Envelope[] = [];
-    const stop = token.subscribe(id, (env) => changes.push(env));
+    const contentChanges: Envelope[] = [];
+    const tokenChanges: Envelope[] = [];
+    const stopContent = content.subscribe(id, (env) =>
+      contentChanges.push(env),
+    );
+    const stopToken = token.subscribe(id, (env) => tokenChanges.push(env));
     try {
       await expect
-        .poll(() => changes, { timeout: 10_000 })
+        .poll(() => contentChanges, { timeout: 10_000 })
+        .toContainEqual(content0);
+      await expect
+        .poll(() => tokenChanges, { timeout: 10_000 })
         .toContainEqual(token0);
       const content1 = await seal(
         cipher,
@@ -86,19 +93,30 @@ describe("Burrow over FirestoreBackend (emulator)", () => {
         Date.now(),
       );
       await content.put(id, content1, 0);
+      await expect
+        .poll(() => contentChanges, { timeout: 10_000 })
+        .toContainEqual(content1);
       expect(await content.getMany([id])).toEqual([content1]);
       expect(await token.get(id)).toEqual(token0);
       const token1 = await seal(cipher, id, 1, utf8("new token"), Date.now());
       await token.put(id, token1, 0);
       await expect
-        .poll(() => changes, { timeout: 10_000 })
+        .poll(() => tokenChanges, { timeout: 10_000 })
         .toContainEqual(token1);
       expect(
-        changes.every((env) => env.ct === token0.ct || env.ct === token1.ct),
+        tokenChanges.every(
+          (env) => env.ct === token0.ct || env.ct === token1.ct,
+        ),
+      ).toBe(true);
+      expect(
+        contentChanges.every(
+          (env) => env.ct === content0.ct || env.ct === content1.ct,
+        ),
       ).toBe(true);
       expect(await content.get(id)).toEqual(content1);
     } finally {
-      stop();
+      stopContent();
+      stopToken();
     }
   });
 

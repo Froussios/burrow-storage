@@ -61,10 +61,8 @@ path.
 ### Changed
 
 - Publish backend support/candidate/rejected statuses and backend-scoped follow-up issues
-  (#23). Verify independent Firestore instance routing with identical ids in two emulator
-  projects; live two-project validation remains unperformed. Preserve D-50's independent
-  token-access/content boundary. Retrieving a token with an available credential is supported;
-  recovery after losing authenticating credentials is outside the project's scope.
+  (#23, D-52). Verify independent Firestore instance routing with identical ids in two emulator
+  projects; live two-project validation remains unperformed.
 - Documented independent token recovery and content storage (D-50, #22/#23/#36), with separate
   backend configuration and regression coverage for a recovery-service outage.
 - Passkey handles derive from the effective `userName`: repeated saves with the same RP and
