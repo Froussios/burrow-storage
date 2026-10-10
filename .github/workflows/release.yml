@@ -33,10 +33,11 @@ jobs:
       # website) before it becomes public (D-53).
       - name: Stage on npm with provenance
         run: npm stage publish --provenance --access public
+      # A draft until the owner approves the staged version and publishes it (D-53).
       - name: GitHub release with bundles and SRI
         env: { GH_TOKEN: "${{ github.token }}" }
         run: |
           { echo '## Script tag (SRI)'; echo; echo '```html'; cat sri-tags.html; echo '```'; echo;
             echo '## Bundle sizes (min+gzip)'; echo; echo '```'; grep -E '^(ok|FAIL) ' size.txt; echo '```'; echo;
             echo 'See CHANGELOG.md.'; } > notes.md
-          gh release create "$GITHUB_REF_NAME" dist/burrow.min.js dist/burrow-firestore.js dist/sri.json --notes-file notes.md
+          gh release create "$GITHUB_REF_NAME" --draft dist/burrow.min.js dist/burrow-firestore.js dist/sri.json --notes-file notes.md

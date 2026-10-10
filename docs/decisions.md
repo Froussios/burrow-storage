@@ -652,7 +652,11 @@ The trust relationship allows only `npm stage publish`, not `npm publish`, as np
 `v*` tag therefore stages the version, and it becomes public only when the owner approves it with
 2FA (`npm stage approve <stage-id>` or the package page on npmjs.com). Anyone who can push a tag
 can stage a release but cannot publish one. The workflow installs npm 11.21 or newer for
-`npm stage`. The GitHub release with the bundles is created at staging time, before approval.
+`npm stage`. The GitHub release with the bundles is created as a draft at staging time; the owner
+publishes it after approving the npm version, so a rejected stage leaves no public release. This
+paragraph replaces D-53's first wording, which had the workflow run `npm publish`; no version was
+ever published that way. Before re-running a release, check `npm stage list`: a version that is
+already staged cannot be staged again.
 
 ## Part B: planning decisions and their status
 
