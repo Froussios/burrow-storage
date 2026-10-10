@@ -862,6 +862,8 @@ export class Core implements BurrowArea {
   }
 
   #failed(e: unknown): void {
+    // A pending request can fail after a subscription already observed expiry.
+    if (this.#paused && this.#error?.code === "expired") return;
     const err = fromBackend(e);
     this.#log("error", { code: err.code });
     if (err.code === "decrypt-failed" || err.code === "expired") {

@@ -458,6 +458,57 @@ describe("D-48 content expiry and use-driven renewal", () => {
     expect(device.backend.stats.gets).toBe(gets);
   });
 
+  it.each(["network", "quota"] as const)(
+    "a delayed %s rejection cannot replace an already-observed manifest expiry",
+    async (failure) => {
+      world = new World();
+      const device = world.device({ cache: "memory" });
+      let notify: ((env: StoredDocument) => void) | undefined;
+      vi.spyOn(device.backend, "subscribe").mockImplementation((_id, cb) => {
+        notify = cb;
+        return () => {};
+      });
+      const area = await device.open({ debounceMs: 1e9 });
+      await area.set({ k: "cached" });
+      await area.syncNow();
+      await area.set({ pending: "dirty" });
+      const keys = await deriveAppKeys(
+        await decodeToken(await area.exportToken()),
+        "test",
+      );
+      const manifest = world.store.get(keys.base)!;
+      const cache = new MemoryCache("test", device.mem);
+      const before = await cache.loadItems();
+      const receipt = (await cache.getMeta()).renewAt;
+      let reject!: (error: BackendError) => void;
+      let waiting = false;
+      vi.spyOn(device.backend, "get").mockImplementationOnce(async () => {
+        waiting = true;
+        return new Promise((_resolve, no) => {
+          reject = no;
+        });
+      });
+      const statuses: string[] = [];
+      area.onStatus.addListener((s) => {
+        if (s.error) statuses.push(s.error.code);
+      });
+      const syncing = area.syncNow();
+      const settled = expect(syncing).rejects.toMatchObject({
+        code: "expired",
+      });
+      await until(() => waiting);
+      notify!({ x: true, rev: manifest.rev, next: manifest.next });
+      reject(new BackendError(failure));
+      await settled;
+      expect(area.status).toBe("error");
+      expect(statuses).toEqual(["expired"]);
+      expect(await cache.loadItems()).toEqual(before);
+      expect((await cache.getMeta()).renewAt).toBe(receipt);
+      expect(await area.get()).toEqual({ k: "cached", pending: "dirty" });
+      await expect(area.syncNow()).rejects.toMatchObject({ code: "expired" });
+    },
+  );
+
   it("due reads coalesce without indefinitely extending the renewal debounce", async () => {
     const { area, backend, cache } = await fixture();
     area.close();
