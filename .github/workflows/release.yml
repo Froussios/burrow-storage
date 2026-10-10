@@ -17,8 +17,8 @@ jobs:
           node-version: 24
           registry-url: "https://registry.npmjs.org"
           cache: npm
-      - name: npm with trusted publishing
-        run: npm install -g npm@^11.5.1
+      - name: npm with staged publishing
+        run: npm install -g npm@^11.21.0
       - run: npm ci
       - run: mkdir -p node_modules/.cache
       - run: npm run typecheck
@@ -29,12 +29,15 @@ jobs:
         run: test "v$(node -p 'require("./package.json").version')" = "$GITHUB_REF_NAME"
       - name: SRI hashes
         run: node scripts/sri.mjs | tee sri-tags.html
-      - name: Publish to npm with provenance
-        run: npm publish --provenance --access public
+      # Stages the version on npm; the owner approves it with 2FA (npm stage approve or the
+      # website) before it becomes public (D-53).
+      - name: Stage on npm with provenance
+        run: npm stage publish --provenance --access public
+      # A draft until the owner approves the staged version and publishes it (D-53).
       - name: GitHub release with bundles and SRI
         env: { GH_TOKEN: "${{ github.token }}" }
         run: |
           { echo '## Script tag (SRI)'; echo; echo '```html'; cat sri-tags.html; echo '```'; echo;
             echo '## Bundle sizes (min+gzip)'; echo; echo '```'; grep -E '^(ok|FAIL) ' size.txt; echo '```'; echo;
             echo 'See CHANGELOG.md.'; } > notes.md
-          gh release create "$GITHUB_REF_NAME" dist/burrow.min.js dist/burrow-firestore.js dist/sri.json --notes-file notes.md
+          gh release create "$GITHUB_REF_NAME" --draft dist/burrow.min.js dist/burrow-firestore.js dist/sri.json --notes-file notes.md

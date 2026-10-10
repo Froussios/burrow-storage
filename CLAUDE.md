@@ -6,9 +6,9 @@ an agent or contributor how to work here.
 
 ## State of the project
 
-The first release is `0.1.0` (tag `v0.1.0`, published to npm by `release.yml` through trusted
-publishing, D-53; `0.0.0` is a code-free placeholder that claimed the name). The repository is
-public. The documentation set is current with the code:
+The first release is `0.1.0` (tag `v0.1.0`, staged on npm by `release.yml` through trusted
+publishing and approved by the owner with 2FA, D-53; `0.0.0` is a code-free placeholder that
+claimed the name). The repository is public. The documentation set is current with the code:
 
 | Read | For |
 | --- | --- |
@@ -74,7 +74,8 @@ via fast-check, backend conformance), Playwright (`test/e2e`, three engines, a C
 authenticator for passkeys), `node --test` for the rules under the Firestore emulator
 (firebase-tools, Java 21). No linter is configured. GitHub Actions: `ci.yml`, `pages.yml`
 (demo to GitHub Pages at <https://froussios.github.io/burrow-storage/> on every push to `main`,
-then a smoke test against it), `release.yml` (npm publish with provenance on `v*` tags, through trusted publishing),
+then a smoke test against it), `release.yml` (on `v*` tags, stages the package on npm with
+provenance through trusted publishing; the owner approves it with 2FA),
 `claude-code-review.yml` (Claude reviews the owner's PRs with the `pr-review` skill in
 `.claude/skills/pr-review/SKILL.md` and approves on a "no blocking issues" verdict) and
 `claude.yml` (`@claude` mentions from people with write access).

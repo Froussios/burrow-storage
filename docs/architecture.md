@@ -368,8 +368,9 @@ backend and codec, with fresh throwaway keys and fixed, redacted output. It neve
 resources or runs in CI. `scripts/size.mjs` builds with esbuild and checks
 the core (≤ 12 KB min+gzip) and the passkey backup on top of it (≤ 2 KB); `scripts/sri.mjs` writes
 `dist/sri.json` and prints the script tags for release notes. The release workflow publishes with
-npm provenance on a `v*` tag, authenticated by npm trusted publishing rather than a stored token
-(D-53).
+npm provenance on a `v*` tag, authenticated by npm trusted publishing rather than a stored token.
+It stages the version and drafts the GitHub release; the owner approves the version on npm with
+2FA and then publishes the release (D-53).
 
 ## 12. Tests and CI
 
@@ -398,8 +399,8 @@ then the demo smoke test against `site/` under the emulator. `pages.yml` runs on
 origin, so `script-src 'self'` covers them, and the page footer stamped with the commit and build
 time), the job deploys it to GitHub Pages at <https://froussios.github.io/burrow-storage/>, and a
 second job runs the smoke test against the deployed page; a smoke failure fails the run (D-39,
-D-40). `release.yml` publishes on tags. Only the demo may use the owner's Firebase project;
-CI reaches it through the deployed page (D-43).
+D-40). `release.yml` stages on tags for the owner to approve (D-53). Only the demo may use the
+owner's Firebase project; CI reaches it through the deployed page (D-43).
 
 Local serving follows the same isolation rule (D-44): `scripts/serve.mjs` rewrites `demo/` and
 `site/` pages to use `FIRESTORE_EMULATOR_HOST`, defaulting to `127.0.0.1:8080`, or an explicit
