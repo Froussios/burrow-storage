@@ -368,8 +368,8 @@ backend and codec, with fresh throwaway keys and fixed, redacted output. It neve
 resources or runs in CI. `scripts/size.mjs` builds with esbuild and checks
 the core (≤ 12 KB min+gzip) and the passkey backup on top of it (≤ 2 KB); `scripts/sri.mjs` writes
 `dist/sri.json` and prints the script tags for release notes. The release workflow publishes with
-npm provenance on a `v*` tag, authenticated by npm trusted publishing rather than a stored token
-(D-53).
+npm provenance on a `v*` tag, authenticated by npm trusted publishing rather than a stored token.
+It stages the version; the owner approves it on npm with 2FA before it is public (D-53).
 
 ## 12. Tests and CI
 

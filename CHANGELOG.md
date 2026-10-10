@@ -57,8 +57,8 @@ First release.
   against the live store.
 - Script-tag build `burrow.min.js` (global `Burrow`) that loads the Firestore SDK as a
   same-directory classic script (`burrow-firestore.js`), so it also loads from `file://`.
-- SRI hashes and npm provenance in the release workflow, which publishes through npm trusted
-  publishing (D-53).
+- SRI hashes and npm provenance in the release workflow, which stages the package through npm
+  trusted publishing for the owner to approve with 2FA (D-53).
 - Documentation set for external users: README, API reference, guides for tokens and sync,
   localStorage migration, the shared store, and extending; SECURITY.md; architecture and
   decision log.

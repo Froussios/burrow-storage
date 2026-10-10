@@ -646,8 +646,13 @@ published by hand. The package is configured on npm to trust `release.yml` in
 `Froussios/burrow-storage`, so the workflow publishes with a short-lived GitHub Actions OIDC
 credential and the repository holds no `NPM_TOKEN`. npm now restricts long-lived tokens that
 bypass two-factor authentication, and a token that is never stored cannot leak from the
-repository's secrets. Provenance is unchanged. The workflow installs npm 11.5.1 or newer, the
-first version that supports trusted publishing.
+repository's secrets. Provenance is unchanged.
+
+The trust relationship allows only `npm stage publish`, not `npm publish`, as npm recommends. A
+`v*` tag therefore stages the version, and it becomes public only when the owner approves it with
+2FA (`npm stage approve <stage-id>` or the package page on npmjs.com). Anyone who can push a tag
+can stage a release but cannot publish one. The workflow installs npm 11.21 or newer for
+`npm stage`. The GitHub release with the bundles is created at staging time, before approval.
 
 ## Part B: planning decisions and their status
 
