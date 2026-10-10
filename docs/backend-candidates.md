@@ -33,6 +33,10 @@ resources were created.
 | Upstash Redis direct | Rejected | Standard public tokens expose bypass writes/list/delete; read-only tokens cannot sync. |
 | Firebase Realtime Database direct | Rejected | No documented SHA-256 rules primitive for the write chain. |
 
+Keep this overview current when a linked follow-up changes: update its status, scope/link and
+validation evidence here. Mark Want only with an explicit owner selection, Supported only
+after adapter implementation, and retain the limits of any hosted validation.
+
 Generic HTTP is a transport, not a backend selection. Concrete HTTP protocol work belongs in
 the chosen backend's issue; it has no separate implementation issue. The five candidate issues
 are unassigned backlog. Each requires a concrete proposal to @Froussios and explicit approval
