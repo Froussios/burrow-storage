@@ -100,6 +100,7 @@ npm run demo:build     # site/: the deployable demo, footer stamped with the com
 npm run test:smoke     # demo smoke test: BURROW_DEMO_URL=<deployed demo>, or site/ under the emulator:
                        #   node scripts/emulator.mjs "npm run test:smoke"
 npm run sri            # SRI hashes for the bundles → dist/sri.json
+npm run release:approve  # owner, after a v* release run: approve on npm (2FA), publish the draft release
 node scripts/gen-vectors.mjs   # regenerate test/vectors.json (output must not change within v1)
 ```
 

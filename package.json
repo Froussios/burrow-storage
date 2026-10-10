@@ -58,7 +58,8 @@
     "demo:build": "node scripts/build-demo.mjs",
     "sri": "node scripts/sri.mjs",
     "format": "prettier --write . && node scripts/wrap-comments.mjs",
-    "format:check": "prettier --check . && node scripts/wrap-comments.mjs --check"
+    "format:check": "prettier --check . && node scripts/wrap-comments.mjs --check",
+    "release:approve": "node scripts/approve-release.mjs"
   },
   "peerDependencies": {
     "firebase": ">=10"
