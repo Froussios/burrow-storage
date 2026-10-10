@@ -54,6 +54,73 @@ async function fixture(kind: "memory" | "indexeddb" = "memory") {
 }
 
 describe("D-48 content expiry and use-driven renewal", () => {
+  describe.each(["memory", "indexeddb"] as const)("%s retired keys", (kind) => {
+    it.each(["sync", "fresh read"])(
+      "delete/prune/reap then ordinary set and %s preserves every cache entry and dirty write",
+      async (operation) => {
+        let now = 1_000_000_000;
+        const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+        const { area, backend, keys, id, cache, read, stub } =
+          await fixture(kind);
+        now++;
+        await area.remove("k");
+        await area.syncNow();
+        const deletion = await read(id);
+        expect(deletion.deleted).toBe(true);
+
+        now += 31 * DAY;
+        await area.syncNow();
+        expect((await read(keys.base)).items).not.toHaveProperty("k");
+        expect((await cache.loadItems()).has("k")).toBe(false);
+        expect(await read(id)).toEqual(deletion);
+
+        // Simulate the owner's minimal stub, not a live cleanup invocation.
+        now += 396 * DAY;
+        stub(id);
+        await area.syncNow();
+        expect(area.status).toBe("idle");
+        expect((await read(keys.base)).items).not.toHaveProperty("k");
+        await area.set({ k: "new local value", unrelated: "also dirty" });
+        const before = await cache.loadItems();
+        const receipt = (await cache.getMeta()).renewAt;
+        const manifest = structuredClone(world.store.get(keys.base));
+        const expired = structuredClone(world.store.get(id));
+        const statuses: string[] = [];
+        area.onStatus.addListener((s) => {
+          if (s.error) statuses.push(s.error.code);
+        });
+
+        if (operation === "sync")
+          await expect(area.syncNow()).rejects.toMatchObject({
+            code: "expired",
+          });
+        else
+          expect(await area.get("k", { fresh: true })).toEqual({
+            k: "new local value",
+          });
+        expect(area.status).toBe("error");
+        expect(statuses).toContain("expired");
+        expect(await cache.loadItems()).toEqual(before);
+        expect((await cache.getMeta()).renewAt).toBe(receipt);
+        expect(before.get("k")).toMatchObject({ dirty: true });
+        expect(before.get("unrelated")).toMatchObject({ dirty: true });
+        expect(await area.get()).toEqual({
+          k: "new local value",
+          pruned: "old",
+          unrelated: "also dirty",
+        });
+        expect(world.store.get(keys.base)).toEqual(manifest);
+        expect(world.store.get(id)).toEqual(expired);
+        const gets = backend.stats.gets;
+        const puts = backend.stats.puts;
+        await expect(area.syncNow()).rejects.toMatchObject({ code: "expired" });
+        expect(await cache.loadItems()).toEqual(before);
+        expect(backend.stats).toMatchObject({ gets, puts });
+        clock.mockRestore();
+      },
+    );
+  });
+
   it("a cached-rev ordinary put cannot silently revive an independently expired item", async () => {
     const { area, backend, keys, id, stub, cache } = await fixture();
     stub(id);

@@ -242,6 +242,15 @@ prevent stale already-open tabs from renewing again. Failed publication or obser
 leaves cache, dirty data and renewal receipt intact, though earlier independent remote item
 writes may already exist. A token ownership change resets the receipt.
 
+After deletion is pruned from the manifest, the unlisted item document can later become an
+expiry stub while the rest of the account remains live. An ordinary `set()` cannot replace
+that stub: its next sync reports `expired` and pauses all remote work, preserving every cached
+entry and dirty write. `get(key, { fresh: true })` also detects an unlisted stub and pauses,
+returning the local value if present. Manifest absence grants no replacement authority to
+new writes or previously queued writes; the minimal stub retains no deletion timestamp/hash
+for the D-46 comparison. Local reads/writes still work, and linking the same token cannot
+remove the stub.
+
 `scripts/burrow-reaper.mjs` is optional owner maintenance outside CI, not a browser dependency or
 an app scheduler. It selects an explicit dedicated content target, scans with a three-field
 mask and private paginated checkpoint, and conditionally replaces eligible documents using
@@ -259,8 +268,11 @@ payloads remain untouched and restore stays read-only. See [retention.md](retent
 - `mergeDirectories(a, b, now)` keeps the winner per key and drops tombstones older than 30
   days. Both the manifest write (step 4) and the pull comparison (step 2) use `compare`.
 - `nextTs(now, previous, maxRemoteTs)` = `max(now, previous + 1, maxRemoteTs + 1)`.
-- A synced (non-dirty) local key missing from the manifest was a tombstone that expired: it is
-  deleted locally. A dirty one is kept and pushed, which after 30 days is a legitimate re-creation.
+- After a complete pass, a synced (non-dirty) local key missing from the manifest is removed
+  locally. A dirty one is retained. If its remote document is absent or unexpired, the push
+  reads/compares its current logical version when needed; a newer local write may re-create
+  the key, while a newer retained remote deletion still wins (D-46). An expired stub instead
+  refuses the ordinary push and pauses the entire sync, without applying local pruning.
 
 Property tests in `test/property/merge.test.ts` simulate devices with skewed clocks and random
 operation sequences and assert convergence.

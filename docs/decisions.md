@@ -682,6 +682,15 @@ token. Same-revision notifications preserve `x`. The core pauses with `expired`,
 cache/unsynced writes; no automatic republish or new high-level migration API. The encrypted
 Envelope, salts/AAD/token formats and reference client request shape stay unchanged.
 
+Ordinary-write refusal also covers unlisted retired keys. After a deletion's 30-day manifest
+pruning and later item reaping, ordinary `set()` keeps the new local value but sync encounters
+the stub and pauses all remote work with `expired`. A fresh single-key read also detects that
+stub, pauses and returns locally. All cache entries and dirty writes remain. Manifest absence
+does not authorize replacing a stub or republishing an older queued write: the stub lacks the
+deletion timestamp/hash needed for D-46. Unexpired retained documents still participate in the
+normal logical-version comparison. These are the approved ordinary-call restrictions, not an
+authorization for a new caller-confirmed replacement API.
+
 The owner tool uses only trusted server `updateTime`, with an exact observed-time precondition
 on whole-document replacement. It never deletes stubs or uses client `ts`/Firestore paid TTL.
 Explicit project/database/collection/content-only acknowledgment, dry-run default, pagination,

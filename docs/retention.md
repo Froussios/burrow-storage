@@ -68,6 +68,18 @@ independent item writes may already have committed before a later item/manifest 
 is no cross-document transaction or rollback. Cached values and unsynced writes remain intact,
 and no full-success receipt is recorded.
 
+This also applies to retired keys: deletion can be pruned from the manifest after 30 days,
+leaving an unlisted item document that the operator may later replace with a stub. The rest
+of the account can remain live and renew normally. An ordinary `set()` on that key keeps the
+new value locally, but its next sync encounters the stub and pauses **all** remote work with
+`expired`. `get(key, { fresh: true })` likewise pauses and returns the cached value if present
+(or no value if absent). Every cached entry and dirty write stays intact. Neither a new
+ordinary write nor an older queued write gains replacement authority because the key is
+unlisted; the minimal stub no longer has the deletion's logical timestamp/hash. With an
+unexpired old document, ordinary sync still compares logical versions, so a newer retained
+deletion can defeat an older offline write (D-46). Thirty-day pruning alone does not authorize
+replacing an expiry stub.
+
 Export local data/JSON and keep the storage token before choosing a fresh identity. Existing
 `link()`/`unlink()` rules still reject orphaning dirty writes unless `discardLocal: true` is
 explicit. Linking the same expired token merely retries and pauses again while a stub remains.
