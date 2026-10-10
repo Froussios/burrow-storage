@@ -8,8 +8,23 @@ import { readFileSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
 
 const pkg = JSON.parse(readFileSync("package.json", "utf8"));
-const version = process.argv[2] ?? pkg.version;
+const version = (process.argv[2] ?? pkg.version).replace(/^v/, "");
 const tag = `v${version}`;
+
+// Check the draft before the 2FA prompt: once npm approves, the stage is gone
+// and a rerun could not reach the GitHub step.
+let release;
+try {
+  release = JSON.parse(
+    execFileSync("gh", ["release", "view", tag, "--json", "isDraft,url"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }),
+  );
+} catch {
+  console.error(`No GitHub release ${tag} (or gh is not logged in).`);
+  process.exit(1);
+}
 
 const staged = JSON.parse(
   execFileSync("npm", ["stage", "list", pkg.name, "--json"], {
@@ -45,7 +60,9 @@ if (!otp) process.exit(1);
 execFileSync("npm", ["stage", "approve", stage.id, `--otp=${otp}`], {
   stdio: "inherit",
 });
-execFileSync("gh", ["release", "edit", tag, "--draft=false"], {
-  stdio: "inherit",
-});
-console.log(`Published ${pkg.name}@${version} and the ${tag} GitHub release.`);
+if (release.isDraft) {
+  execFileSync("gh", ["release", "edit", tag, "--draft=false"], {
+    stdio: "inherit",
+  });
+}
+console.log(`Published ${pkg.name}@${version}; GitHub release ${release.url}`);
