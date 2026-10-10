@@ -29,8 +29,8 @@ jobs:
         run: test "v$(node -p 'require("./package.json").version')" = "$GITHUB_REF_NAME"
       - name: SRI hashes
         run: node scripts/sri.mjs | tee sri-tags.html
-      # Stages the version on npm; the owner approves it with 2FA (npm stage approve or the
-      # website) before it becomes public (D-53).
+      # Stages the version on npm; the owner approves it with 2FA (npm run release:approve)
+      # before it becomes public (D-53).
       - name: Stage on npm with provenance
         run: npm stage publish --provenance --access public
       # A draft until the owner approves the staged version and publishes it (D-53).
