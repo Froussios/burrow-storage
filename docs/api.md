@@ -113,7 +113,7 @@ The remaining types are listed under [Types](#types).
 | `get({ a: 1, b: "x" })` | Stored values, with the object's values as defaults for missing keys. |
 | `get(keys, { fresh: true })` | With a backend: fetches those item documents (or runs a full sync when no keys are given) before answering. Network errors are swallowed and the cache answers. |
 | `set(items)` | Validates every key first, so an invalid batch writes nothing: keys must be strings, values must be JSON (`undefined`, `NaN`, `Infinity`, functions, `Date`, `Map`, class instances and cycles throw `TypeError`), and each item must fit `maxItemBytes` (`BurrowError("item-too-large")`). Resolves once the write is stored locally; **never** rejects because the store is unreachable. Writing a value equal to the current one fires no `onChanged` but is still a new write that syncs. |
-| `remove(keys)` | Marks live keys deleted; the tombstone syncs to other devices. Missing keys are ignored. |
+| `remove(keys)` | Marks live keys deleted; the tombstone syncs to other devices. Missing keys are ignored. If the deletion is later pruned and its item document reaped, ordinary reuse pauses all remote sync with `expired`, preserving cached values and unsynced writes. See [retention](retention.md#expiry-preserves-local-data). |
 | `clear()` | `remove()` of every key. |
 | `getBytesInUse(keys?)` | Sum of the UTF-8 lengths of each key and its JSON value, as `chrome.storage` counts it. |
 
