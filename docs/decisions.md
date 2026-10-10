@@ -497,6 +497,7 @@ above the measured 1.55/135.80 KiB baselines without hiding SDK growth in the co
 No other hosted adapter is certified. The [candidate assessment](backend-candidates.md)
 records feasibility, costs, setup and missing conformance evidence; #23 stays open pending
 backend choice/privacy approval and deployment tests. Setup work is tracked separately in #36.
+D-52 amends this remaining #23 scope at the owner's direction.
 
 ### D-46 Revalidate unlisted item results on manifest retries (SYNC-10, #55)
 
@@ -618,6 +619,25 @@ release. The owner withdrew FS-10's printed one-command setup. The steps live in
 only `burrow-setup check '<config JSON>'`. `firestore` fails with a pointer to both guides.
 `engines` rises to Node 20, the minimum for the checker and the agent guide's Firebase CLI. The
 requirements snapshot is not edited. This amends D-49's sentence on how FS-10 is met.
+
+### D-52 Narrow #23's scope; additional backend work moves to #64–#68
+
+The [owner's 2026-10-10 scope clarification](https://github.com/Froussios/burrow-storage/issues/23#issuecomment-6093262113)
+amends D-45's remaining #23 closure prerequisites. Public configuration/setup, independent
+token-access verification, an external support-status overview and backend-scoped follow-ups
+complete #23; additional backend implementation/deployment is separate work. The
+[overview](backend-candidates.md#support-status) links the unassigned candidate issues #64–#68.
+Their backend selection, BE-2 interpretation, concrete design approval and deployed conformance
+gates remain in those issues. No candidate is marked "want" or approved for deployment merely
+because its issue exists. HTTP is a transport whose protocol belongs to the selected backend.
+
+D-50's independent token/content boundary is unchanged. Core token-string access and the
+optional passkey utility's independent backend satisfy that boundary without a new provider
+interface. Retrieving a stored token with an available credential is supported token access;
+recovery after losing authenticating credentials is outside the project, as the
+[owner clarified separately](https://github.com/Froussios/burrow-storage/issues/22#issuecomment-6093406173).
+Emulator instance-isolation coverage is local routing evidence, not live two-project validation
+or certification of a candidate. Closing the completed #23 scope does not waive those gates.
 
 ## Part B: planning decisions and their status
 

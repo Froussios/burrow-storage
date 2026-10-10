@@ -13,6 +13,13 @@ to keep or recover it. Neither side should require access to the other's state o
 This lets a site choose availability, ownership, cost and retention separately for recovery
 and content. The decision is recorded in D-50 in [decisions.md](decisions.md).
 
+The token-access API is independent of content I/O: `exportToken()` and `link({ token })`
+exchange a string, and the optional `PasskeyBackup.save()` / `restore()` utility accesses its
+own selected backend. Retrieving a stored token with an available credential, including
+`PasskeyBackup.restore()`, is supported token access. Recovery after losing authenticating
+credentials is outside the project's scope. Reusing the envelope `Backend` protocol does not
+require sharing a configured instance or service.
+
 The passkey utility implements `PasskeyBackup`, created by `passkeyBackup()` from
 `burrow-storage/passkey`. It reuses the same `Backend` interface as the storage implementation,
 but its backend instance is independently selectable. All three arrangements are supported:
@@ -117,6 +124,10 @@ adapter passes it against the emulator (`npm run test:firestore`); `MemoryBacken
 The underlying store must offer an atomic compare-and-set for `put`; Workers KV alone, for
 example, does not.
 
+HTTP is only a transport: define and verify its chain/CAS, access and error protocol in the
+chosen backend's issue before implementing a generic client. No HTTP endpoint or candidate
+deployment is supplied by the core.
+
 ## Another way to carry the token
 
 There is no plug-in interface for this. The store deals only in the storage token, a 56-character
@@ -202,6 +213,7 @@ New adapters should use their own subpath and a separate measured budget. `npm r
 enforces 2 KiB min+gzip for the Firestore adapter excluding its SDK, and 150 KiB for that
 lazy SDK. Core + memory remains 12 KiB and passkey backup adds at most 2 KiB.
 
-See [backend candidates](backend-candidates.md) for the current feasibility assessment. A
-registered adapter is not certified merely because a factory can instantiate it: its actual
-server policy, concurrency, quota behavior, CORS and access restrictions need verification.
+See the [backend support overview](backend-candidates.md#support-status) for implemented
+adapters, candidates, rejected direct variants and backend-scoped follow-up issues. A registered
+adapter is not certified merely because a factory can instantiate it: its actual server policy,
+concurrency, quota behavior, CORS and access restrictions need verification.
