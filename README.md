@@ -245,8 +245,8 @@ With this tag (or `window.BURROW = { backend: { type: "firestore", … } }`) you
 also work. The adapter loads on demand. See
 [backend configuration](https://github.com/Froussios/burrow-storage/blob/main/docs/extending.md#page-configuration)
 and the
-[candidate assessment](https://github.com/Froussios/burrow-storage/blob/main/docs/backend-candidates.md)
-for other stores.
+[backend support overview](https://github.com/Froussios/burrow-storage/blob/main/docs/backend-candidates.md#support-status)
+for implemented adapters, candidates, rejected variants and their follow-up issues.
 
 ### 3. Use it
 

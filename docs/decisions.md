@@ -495,8 +495,15 @@ The Firestore subpath has a 2 KiB min+gzip adapter budget excluding the lazy SDK
 has a separate 150 KiB budget. Both are enforced by `npm run size`. This leaves headroom
 above the measured 1.55/135.80 KiB baselines without hiding SDK growth in the core budget.
 No other hosted adapter is certified. The [candidate assessment](backend-candidates.md)
-records feasibility, costs, setup and missing conformance evidence; #23 stays open pending
-backend choice/privacy approval and deployment tests. Setup work is tracked separately in #36.
+records feasibility, costs, setup and missing conformance evidence. The
+[owner's 2026-10-10 scope clarification](https://github.com/Froussios/burrow-storage/issues/23#issuecomment-6093262113)
+moves additional backend implementation, privacy/design approval and deployed conformance to
+the backend-scoped follow-up issues linked there. They are no longer prerequisites for closing
+#23's public configuration/setup, independent token-access verification and external overview
+scope. D-50's independent token/content boundary remains unchanged; recovery after losing
+authenticating credentials is outside the project, while retrieving a stored token with an
+available credential is token access. No additional backend is selected or approved by this
+scope change.
 
 ### D-46 Revalidate unlisted item results on manifest retries (SYNC-10, #55)
 

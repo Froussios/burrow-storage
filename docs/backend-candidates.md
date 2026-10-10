@@ -1,9 +1,43 @@
-# Backend candidates for public use
+# Backend support and candidates
 
-Assessment for [issue #23](https://github.com/Froussios/burrow-storage/issues/23), checked on
-2026-10-09. Firestore is the reference hosted adapter. This report evaluates possible next
-adapters; it does not certify them or provide deployable server code. No paid resources were
-created. Setup modernization is tracked in [#36](https://github.com/Froussios/burrow-storage/issues/36).
+Assessment for [issue #23](https://github.com/Froussios/burrow-storage/issues/23), with service
+documentation checked on 2026-10-09 and scope/status updated on 2026-10-10. At the
+[owner's direction](https://github.com/Froussios/burrow-storage/issues/23#issuecomment-6093262113),
+additional backend implementations are separate backlog issues. This overview records their
+status outside #23; it does not certify candidates or provide deployable server code. No paid
+resources were created.
+
+## Support status
+
+- **Supported:** an adapter is implemented in this repository. This does not certify every
+  deployment's privacy, costs or rules; see the evidence below and the setup guide.
+- **Candidate:** a direction to investigate, conditional on the stated design/deployment
+  gates. Opening its issue does not select it for implementation.
+- **Rejected as-is:** the direct variant fails a requirement. A gateway or different design
+  would need separate approval and evidence.
+- **Want:** explicitly selected by the repo owner for implementation. **None selected.**
+  Feasibility and candidate issue creation do not imply this status.
+
+| Backend or variant | Status | Scope / follow-up |
+| --- | --- | --- |
+| Firestore | Supported | Reference hosted adapter; caller-owned setup and live rules checks in [Firestore setup](firestore-setup.md). |
+| MemoryBackend | Supported | In-memory development/test adapter, not persistent hosted storage. |
+| Cloudflare Worker + D1 | Candidate | [#64](https://github.com/Froussios/burrow-storage/issues/64): private D1 binding, conditional SQL and Free Worker limits. |
+| Supabase private RPCs | Candidate | [#65](https://github.com/Froussios/burrow-storage/issues/65): private tables, audited grants and chain/CAS RPCs. |
+| PocketBase transactional routes | Candidate, conditional on self-hosting acceptance | [#66](https://github.com/Froussios/burrow-storage/issues/66): no bundled Free host; owner must accept hosting and the route design. |
+| Deno KV + chunking/gateway | Candidate, feasibility unproven | [#67](https://github.com/Froussios/burrow-storage/issues/67): prove full-envelope atomic chunking within transaction limits first. |
+| Upstash Redis + restricted gateway | Candidate | [#68](https://github.com/Froussios/burrow-storage/issues/68): private credentials and atomic script; verify Free hard stops. |
+| Worker + KV alone | Rejected as-is | No required atomic compare-and-set. |
+| S3-compatible direct | Rejected as-is | No native SHA-256 chain policy; provider free allowances may bill. |
+| Native Deno KV value per envelope | Rejected as-is | 64 KiB values cannot hold the current envelope size. |
+| Upstash Redis direct | Rejected as-is | Standard public tokens expose bypass writes/list/delete; read-only tokens cannot sync. |
+| Firebase Realtime Database direct | Rejected as-is | No documented SHA-256 rules primitive for the write chain. |
+
+Generic HTTP is a transport, not a backend selection. Concrete HTTP protocol work belongs in
+the chosen backend's issue; it has no separate implementation issue. The five candidate issues
+are unassigned backlog. Each requires a concrete proposal to @Froussios and explicit approval
+before backend implementation or deployment, including any BE-2 interpretation or requirement
+exception. These gates do not keep #23 open once its approved public-use scope is complete.
 
 A candidate must satisfy all of BE-1–BE-7: atomic compare-and-set on the stored revision,
 SHA-256 token-chain enforcement, public read by exact id with no listing, no unauthenticated
@@ -20,10 +54,11 @@ carriers.
 
 Ids are capabilities. Every store needs a primary lookup structure, but no extra secondary
 indexes or application logs should retain ids. Whether BE-2 permits that necessary lookup
-structure needs owner confirmation. Hosted request logs, backups and operator retention are
-not fully observable from public documentation. All candidates therefore have an unresolved
-privacy gate; use of ids in URL paths also needs a concrete logging audit. Retention/cleanup
-policy is separately pending in [#22](https://github.com/Froussios/burrow-storage/issues/22).
+structure needs owner confirmation in each candidate's issue. Hosted request logs, backups
+and operator retention are not fully observable from public documentation. All candidates
+have an unresolved privacy gate; use of ids in URL paths also needs a concrete logging audit.
+Retention/cleanup policy is separately pending in
+[#22](https://github.com/Froussios/burrow-storage/issues/22).
 
 ## Requirement matrix
 
@@ -161,14 +196,24 @@ Blaze meters overages. Setup would create an explicitly Spark database and deplo
 and caller config, but that still does not solve chain enforcement. Conformance: **not run**;
 rejected as a direct authenticated-chain backend.
 
-## Evidence and next decision
+## Evidence and remaining backend work
 
 `MemoryBackend` conformance runs with `npm test`. The reference Firestore suite uses the
 emulator (`npm run test:firestore`); an actual public Firebase project must separately pass
 raw setup checks. Emulator results cannot prove hosted cost, logs or quota behavior.
 
-No additional candidate has passed conformance or demonstrated every requirement. The owner
-has been asked on #23 to choose the next backend and clarify BE-2. Worker+D1 and private
-Supabase RPCs are feasible directions to investigate after approval; neither is a shipped
-adapter. The generic registry and configuration fallback can ship independently, without
-closing #23 or weakening the encryption/authentication guarantees.
+The existing `test/unit/passkey.test.ts` integration covers token save/restore through an
+independent `MemoryBackend`, linking that token to content storage, and continuing content
+sync while the token backend is unavailable without further token-backend calls. The Firestore
+emulator suite additionally creates two independently configured project instances with the
+shipped rules: identical document ids retain distinct envelopes through creates, updates,
+`get`, `getMany` and watch delivery. That verifies SDK project routing locally. It is not a
+live two-project test; hosted two-project validation has **not been performed**.
+
+No additional candidate has passed conformance or demonstrated every requirement. Backend
+selection, BE-2 decisions, implementation and deployed evidence now belong to the linked
+candidate issues. #23's approved scope is public configuration/setup, independent token access
+and content storage, this external status overview, and backend-scoped follow-ups. Completing
+that scope does not select a candidate or certify an additional hosted adapter. Retrieving a
+stored token with an available credential is token access. Recovery after losing authenticating
+credentials is outside the project's scope.

@@ -2,8 +2,13 @@
 // emulator with firebase/firestore.rules loaded (run via
 // `npm run test:firestore`).
 import { afterAll, describe, expect, it } from "vitest";
+import { readFile } from "node:fs/promises";
 import { FirestoreBackend } from "../../src/backends/firestore.js";
+import { b64url, randomBytes, utf8 } from "../../src/bytes.js";
+import { deriveAppKeys } from "../../src/codec/derive.js";
+import { seal } from "../../src/codec/envelope.js";
 import { checkFirestore } from "../../src/setup/check.js";
+import type { Envelope } from "../../src/types.js";
 import { World } from "../support/devices.js";
 import { backendConformance } from "./suite.js";
 
@@ -19,8 +24,8 @@ const config = {
 };
 
 const opened: FirestoreBackend[] = [];
-const make = () => {
-  const b = new FirestoreBackend(config);
+const make = (projectId = config.projectId) => {
+  const b = new FirestoreBackend({ ...config, projectId });
   opened.push(b);
   return b;
 };
@@ -31,6 +36,72 @@ afterAll(async () => {
 backendConformance("FirestoreBackend (emulator)", make);
 
 describe("Burrow over FirestoreBackend (emulator)", () => {
+  it("BE-3/D-50 separate configured projects keep identical document ids and watches isolated", async () => {
+    const projectId = "burrow-isolation-test";
+    const rules = await readFile(
+      new URL("../../firebase/firestore.rules", import.meta.url),
+      "utf8",
+    );
+    const response = await fetch(
+      `http://${hostEnv}/emulator/v1/projects/${projectId}:securityRules`,
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          rules: { files: [{ name: "firestore.rules", content: rules }] },
+        }),
+      },
+    );
+    expect(response.ok, await response.text()).toBe(true);
+
+    const content = make();
+    const token = make(projectId);
+    const id = b64url(randomBytes(32));
+    const keys = await deriveAppKeys(randomBytes(32), "isolation");
+    const cipher = {
+      key: keys.encKey,
+      mac: keys.macKey,
+      aad: id + "isolation",
+    };
+    const content0 = await seal(cipher, id, 0, utf8("content"), Date.now());
+    const token0 = await seal(cipher, id, 0, utf8("token"), Date.now());
+    await Promise.all([
+      content.put(id, content0, null),
+      token.put(id, token0, null),
+    ]);
+    expect(await content.get(id)).toEqual(content0);
+    expect(await token.getMany([id])).toEqual([token0]);
+
+    const changes: Envelope[] = [];
+    const stop = token.subscribe(id, (env) => changes.push(env));
+    try {
+      await expect
+        .poll(() => changes, { timeout: 10_000 })
+        .toContainEqual(token0);
+      const content1 = await seal(
+        cipher,
+        id,
+        1,
+        utf8("new content"),
+        Date.now(),
+      );
+      await content.put(id, content1, 0);
+      expect(await content.getMany([id])).toEqual([content1]);
+      expect(await token.get(id)).toEqual(token0);
+      const token1 = await seal(cipher, id, 1, utf8("new token"), Date.now());
+      await token.put(id, token1, 0);
+      await expect
+        .poll(() => changes, { timeout: 10_000 })
+        .toContainEqual(token1);
+      expect(
+        changes.every((env) => env.ct === token0.ct || env.ct === token1.ct),
+      ).toBe(true);
+      expect(await content.get(id)).toEqual(content1);
+    } finally {
+      stop();
+    }
+  });
+
   it("two devices sync through the emulator", async () => {
     const world = new World();
     try {
