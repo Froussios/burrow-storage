@@ -9,9 +9,10 @@ path.
 
 ## [Unreleased]
 
-## [0.1.0] - 2026-10-10
+## [0.1.1] - 2026-10-10
 
-First release.
+First release. The `v0.1.0` tag exists, but its release run failed before anything reached npm,
+so `0.1.0` was never published.
 
 ### Added
 

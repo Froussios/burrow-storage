@@ -6,7 +6,7 @@ an agent or contributor how to work here.
 
 ## State of the project
 
-The first release is `0.1.0` (tag `v0.1.0`, staged on npm by `release.yml` through trusted
+The first release is `0.1.1` (tag `v0.1.1`, staged on npm by `release.yml` through trusted
 publishing and approved by the owner with 2FA, D-53; `0.0.0` is a code-free placeholder that
 claimed the name). The repository is public. The documentation set is current with the code:
 
