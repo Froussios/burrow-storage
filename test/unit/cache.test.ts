@@ -2,13 +2,22 @@ import { IDBFactory } from "fake-indexeddb";
 import { describe, expect, it } from "vitest";
 import { IdbCache } from "../../src/cache/indexeddb.js";
 import { MemoryCache, MemoryDevice } from "../../src/cache/memory.js";
-import type { Cache, CachedItem } from "../../src/cache/types.js";
+import type { Cache, CachedItem, StoredToken } from "../../src/cache/types.js";
 
 type Make = (app: string) => Promise<Cache>;
 
+async function token(source: string, since: number): Promise<StoredToken> {
+  const kw = await crypto.subtle.generateKey(
+    { name: "AES-KW", length: 256 },
+    false,
+    ["wrapKey", "unwrapKey"],
+  );
+  return { kw, wrapped: new Uint8Array([1, 2, 3]), source, since };
+}
+
 function cacheSuite(name: string, factory: () => Make) {
   describe(`SYNC-1..3 cache: ${name}`, () => {
-    it("stores items, meta and device state", async () => {
+    it("stores items and meta", async () => {
       const make = factory();
       const c = await make("a");
       await c.putItems([
@@ -24,9 +33,6 @@ function cacheSuite(name: string, factory: () => Make) {
       await c.setMeta({ manifestRev: 3 });
       await c.setMeta({ lastSyncAt: 9 });
       expect(await c.getMeta()).toEqual({ manifestRev: 3, lastSyncAt: 9 });
-      await c.setDevice({ tokenSource: "token", tokenSince: 7 });
-      await c.setDevice({ tokenSince: undefined });
-      expect(await c.getDevice()).toEqual({ tokenSource: "token" });
     });
 
     it("SYNC-2 putItems is atomic: one record that cannot be stored mid-batch writes nothing", async () => {
@@ -87,27 +93,31 @@ function cacheSuite(name: string, factory: () => Make) {
       expect((await b.loadItems()).get("k")?.value).toBe(2);
     });
 
-    it("device state is shared by every app on the origin (KP-4)", async () => {
+    it("KP-2 persists the app's token whole, with a non-extractable CryptoKey", async () => {
       const make = factory();
-      const a = await make("a");
-      await a.setDevice({ tokenSource: "passkey" });
-      expect((await (await make("b")).getDevice()).tokenSource).toBe("passkey");
+      expect(await (await make("a")).getToken()).toBeUndefined();
+      await (await make("a")).setToken(await token("passkey", 7));
+      const t = await (await make("a")).getToken();
+      expect(t?.kw.extractable).toBe(false);
+      expect(t?.kw.algorithm.name).toBe("AES-KW");
+      expect([...t!.wrapped]).toEqual([1, 2, 3]);
+      expect(t).toMatchObject({ source: "passkey", since: 7 });
+      await (await make("a")).setToken(null);
+      expect(await (await make("a")).getToken()).toBeUndefined();
     });
 
-    it("KP-2 persists a non-extractable CryptoKey", async () => {
+    it("D-54 each app has its own token: replacing or removing one leaves another's", async () => {
       const make = factory();
-      const kw = await crypto.subtle.generateKey(
-        { name: "AES-KW", length: 256 },
-        false,
-        ["wrapKey", "unwrapKey"],
-      );
-      await (
-        await make("a")
-      ).setDevice({ kw, wrapped: new Uint8Array([1, 2, 3]) });
-      const dev = await (await make("a")).getDevice();
-      expect(dev.kw?.extractable).toBe(false);
-      expect(dev.kw?.algorithm.name).toBe("AES-KW");
-      expect([...dev.wrapped!]).toEqual([1, 2, 3]);
+      const a = await make("a"),
+        b = await make("b");
+      await a.setToken(await token("generated", 1));
+      expect(await b.getToken()).toBeUndefined();
+      await b.setToken(await token("generated", 2));
+      await a.setToken(await token("passkey", 3));
+      expect((await b.getToken())?.since).toBe(2);
+      await a.setToken(null);
+      expect(await a.getToken()).toBeUndefined();
+      expect((await b.getToken())?.since).toBe(2);
     });
   });
 }

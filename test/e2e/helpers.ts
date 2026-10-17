@@ -34,7 +34,7 @@ export type Store = {
   inspect(): Record<string, unknown>;
   storage: Storage;
   status: string;
-  token: { source: string; remembered: boolean; since: number | null };
+  token: { source: string; remembered: boolean; since: number };
 };
 
 /** `Burrow.passkeyBackup()` in the page, as the e2e specs use it. */

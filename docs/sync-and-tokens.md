@@ -31,10 +31,11 @@ storage when the disk runs low. The device then starts over with a new, empty to
 data can still be addressed with the old one, subject to the operator's [content retention policy](retention.md). That is why a kept token or a passkey backup matters even
 to users with a single device.
 
-Because the token is per origin, every Burrow app on the same origin shares it. A user who links
-one app has linked them all; each app still has its own documents. An app that is not open when
-another app links picks up the new token on its next load, and drops any writes it had not
-synced under the old one.
+Each app has its own token: the `app` passed to `burrow()` names an identity, not just a
+namespace. Pages that pass the same `app` share its token and data; other apps on the same origin,
+including unrelated sites that happen to share it (every GitHub Pages project of an account lives
+on `https://<user>.github.io`), have their own. Linking or unlinking one app leaves the others as
+they were. A site whose apps should share one identity uses one `app` name.
 
 ## Second device, option 1: the storage token
 
@@ -95,7 +96,8 @@ utility's configured backend. The passkey itself never becomes the secret, so se
 
 Saving again with the same RP ID and `userName` may replace the earlier passkey; the effective
 name defaults to the page's host. The app chooses the label and may append a distinguishing
-suffix to keep separate backups. `displayName` defaults to that label, sets only the new
+suffix to keep separate backups. A site with several apps gives each its own label, since each
+app's passkey holds a different token. `displayName` defaults to that label, sets only the new
 credential's visible name, and does not change its handle. Labels are visible to the password
 manager; they are not private account identifiers.
 

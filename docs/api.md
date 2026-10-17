@@ -52,7 +52,7 @@ interface BurrowConfig {
 
 | Option | Behaviour |
 | --- | --- |
-| `app` | Namespaces the cache and the derived keys. Two apps on one origin share the storage token but never see each other's data. An invalid id throws `TypeError`. |
+| `app` | Names the app. Each app has its own storage token on the device, its own cache and its own data; pages that pass the same `app` share all three. Two apps on one origin never see each other's data, and linking or unlinking one leaves the other alone. An invalid id throws `TypeError`. |
 | `backend` | An adapter instance or `{ type, …options }` for a registered factory. Takes precedence over `firestore` and page config. Without either caller option, discovery reads `burrow-backend` meta, then `window.BURROW.backend`, then legacy `burrow-firestore` meta / `window.BURROW.firestore`. Generic config wins over legacy config. With none present Burrow runs **local-only** (`idle`, one warning). Invalid config or a rejected factory also resolves a usable local store, with `status: "error"` and a fixed `backend` error. It does not fall back to another project. Correct the config and reload to enable sync. |
 | `firestore` | Shorthand for `backend: { type: "firestore", …config }`. Requires non-empty `apiKey` and `projectId`; `appId` is optional. The Firestore adapter and SDK load on demand. Use your own project. |
 | `cache` | `"memory"` keeps items in memory for the page's lifetime. If IndexedDB cannot be opened, Burrow falls back to memory and sets `status` to `"offline"` until a sync succeeds. |
@@ -152,10 +152,9 @@ declare class BurrowEvent<T> extends EventTarget {
 | `"error"` | Invalid backend config (`backend`, local operation continues; correct config and reload), `decrypt-failed` (sync is paused until the device links again), or `conflict` / `item-too-large` (retried on the next trigger). |
 
 `token.source` is `"generated"` (made on this device), `"token"` (passed to `link()` without a
-`source`), the `source` label the site passed to `link()` (such as `"passkey"`), or `"unknown"`
-(stored before the source was recorded). It is shared by every tab and survives reloads.
-`token.remembered` is true when the token was loaded from this browser's storage on page load;
-`token.since` is when the device obtained it.
+`source`), or the `source` label the site passed to `link()` (such as `"passkey"`). It is shared
+by every tab of the app and survives reloads. `token.remembered` is true when the token was loaded
+from this browser's storage on page load; `token.since` is when the device obtained it.
 
 Burrow does not track whether the token is backed up anywhere: it cannot see a token the user
 copied, and a passkey backup lives outside the store. `token.source === "generated"` is the
@@ -180,15 +179,15 @@ typed or pasted, or one a backup returned, such as `passkeyBackup().restore()`.
 - If it is the token in use, nothing changes but sync resumes. This is how a device recovers from
   `decrypt-failed`.
 - Otherwise this app's unsynced writes are pushed under the old token first; if any remain, it
-  rejects with `would-orphan` unless `discardLocal` is true. The new token then replaces the old
-  one **for every app on the origin**, `token.source` becomes `source` (default `"token"`), this
-  app's cache is refilled from the store, `onToken` fires, and `onChanged` reports the difference with `source: "remote"`. Open tabs of this app
-  switch at once; other apps on the origin switch on their next load and drop writes they had not
-  synced.
+  rejects with `would-orphan` unless `discardLocal` is true. The new token then replaces this
+  app's token, `token.source` becomes `source` (default `"token"`), this app's cache is refilled
+  from the store, `onToken` fires, and `onChanged` reports the difference with
+  `source: "remote"`. Open tabs of this app switch at once. Other apps on the origin keep their
+  own tokens and data.
 - It resolves even when the first sync afterwards fails; `status` reports that.
 
-`unlink(options)` forgets the token on this device, with the same `would-orphan` guard. The remote
-documents are untouched. The instance closes (every later call throws `BurrowError("unlinked")`),
+`unlink(options)` forgets this app's token on this device, with the same `would-orphan` guard.
+Other apps keep theirs, and the remote documents are untouched. The instance closes (every later call throws `BurrowError("unlinked")`),
 other tabs of this app close theirs, and the next `burrow()` on the device generates a fresh token
 and clears the old token's cached items before use.
 
@@ -386,8 +385,9 @@ device, session or user-chosen labels let backups coexist. Apps can append their
 distinguishing suffix; the library adds none. `displayName` sets the new credential's visible
 name without changing its handle; it does not rename a previously stored passkey. Both labels
 are visible to the password manager, so choose personal information only deliberately. The
-host fallback applies to every app that omits `userName`; pass explicit distinct labels when
-those backups should remain separate.
+host fallback applies to every app that omits `userName`. Each app has its own token, so give each
+app on a site its own label; otherwise one app's save replaces the passkey holding another app's
+token (D-54).
 
 Repeated saves with the same label leave one credential on a conforming discoverable
 authenticator. Existing credentials created with random handles remain; this utility does not
@@ -402,8 +402,8 @@ interface Envelope {          // live encrypted document
 }
 interface Manifest { v: 1; items: Record<string, { ts: number; deleted?: true; h?: string }> }
 interface Item { v: 1; key: string; value: unknown; ts: number; deleted?: true }
-interface TokenInfo { source: TokenSource; remembered: boolean; since: number | null }
-type TokenSource = "generated" | "token" | "unknown" | (string & {});
+interface TokenInfo { source: TokenSource; remembered: boolean; since: number }
+type TokenSource = "generated" | "token" | (string & {});
 type Status = "idle" | "syncing" | "offline" | "error";
 interface ChangedEvent { changes: StorageChanges; source: "local" | "remote" }
 type StorageChanges = Record<string, { oldValue?: unknown; newValue?: unknown }>;

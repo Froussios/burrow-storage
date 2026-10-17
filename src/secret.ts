@@ -1,8 +1,8 @@
 // KP-1/KP-2/ENC-10: the root secret. Held wrapped under a non-extractable
-// AES-KW key, in memory and (unless rememberDevice is false) in IndexedDB.
-// Unwrapped only for the length of one use.
+// AES-KW key, in memory and (unless rememberDevice is false) in IndexedDB, one
+// per app (D-54). Unwrapped only for the length of one use.
 import { randomBytes, subtle, zeroise } from "./bytes.js";
-import type { Cache } from "./cache/types.js";
+import type { Cache, StoredToken } from "./cache/types.js";
 
 const KW = { name: "AES-KW", length: 256 } as const;
 // The wrapping vehicle: an HMAC key holding the raw secret, extractable only so
@@ -33,12 +33,9 @@ export class SecretHolder {
     );
   }
 
-  /** KP-2: the persisted secret, or null when this device has none. */
-  static async load(cache: Cache): Promise<SecretHolder | null> {
-    const d = await cache.getDevice();
-    return d.kw && d.wrapped
-      ? new SecretHolder(d.kw, new Uint8Array(d.wrapped))
-      : null;
+  /** KP-2: the secret of a token record read from the cache. */
+  static restore(saved: StoredToken): SecretHolder {
+    return new SecretHolder(saved.kw, new Uint8Array(saved.wrapped));
   }
 
   /** KP-1: a fresh 32-byte secret from crypto.getRandomValues. */
@@ -55,9 +52,18 @@ export class SecretHolder {
     return this.#kw !== null;
   }
 
-  async persist(cache: Cache): Promise<void> {
+  /** Remember the secret as the app's token, with where it came from. */
+  async persist(
+    cache: Cache,
+    info: { source: string; since: number },
+  ): Promise<void> {
     if (!this.#kw || !this.#wrapped) throw new Error("secret was forgotten");
-    await cache.setDevice({ kw: this.#kw, wrapped: this.#wrapped });
+    await cache.setToken({
+      kw: this.#kw,
+      wrapped: this.#wrapped,
+      source: info.source,
+      since: info.since,
+    });
   }
 
   /**

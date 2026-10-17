@@ -144,8 +144,9 @@ export type BackendFactory = (
 /** Options for `burrow()`. Only `app` is required. */
 export interface BurrowConfig {
   /**
-   * Names the app's namespace in the cache and in key derivation. Must match
-   * /^[a-z0-9-]{1,64}$/.
+   * Names the app's namespace in the cache and in key derivation. Each app has
+   * its own storage token on the device; pages that pass the same `app` share
+   * it and its data. Must match /^[a-z0-9-]{1,64}$/.
    */
   app: string;
   /**
@@ -188,12 +189,11 @@ export interface BurrowConfig {
 export type Status = "idle" | "syncing" | "offline" | "error";
 
 /**
- * How this device got its storage token (the root secret): "generated" here on
- * first use (KP-1), "token" when passed to `link()` without a `source`, the
- * site's own label when passed with one (e.g. "passkey"), or "unknown" for
- * tokens stored before this was recorded.
+ * How this device got the app's storage token (the root secret): "generated"
+ * here on first use (KP-1), "token" when passed to `link()` without a `source`,
+ * or the site's own label when passed with one (e.g. "passkey").
  */
-export type TokenSource = "generated" | "token" | "unknown" | (string & {});
+export type TokenSource = "generated" | "token" | (string & {});
 
 export interface TokenInfo {
   source: TokenSource;
@@ -202,8 +202,8 @@ export interface TokenInfo {
    * obtained this page load.
    */
   remembered: boolean;
-  /** When this device obtained the token (ms), if known. */
-  since: number | null;
+  /** When this device obtained the token (ms). */
+  since: number;
 }
 
 export type StorageChanges = Record<
@@ -278,8 +278,8 @@ export interface BurrowArea {
    */
   readonly token: TokenInfo;
   /**
-   * Fires when this device's token changes: after `link()` in this tab or
-   * another.
+   * Fires when the app's token on this device changes: after `link()` in this
+   * tab or another tab of the app.
    */
   readonly onToken: BurrowEvent<TokenInfo>;
   /** Fires on every change of status or error. */
@@ -287,8 +287,8 @@ export interface BurrowArea {
   /**
    * Adopt an existing storage token on this device: one the user typed or
    * pasted, or one a backup returned (e.g. `passkeyBackup().restore()`).
-   * Replaces the token for every app on the origin. `source` labels it in
-   * `token.source` (default "token"). Rejects `bad-token` before any network
+   * Replaces this app's token only; other apps keep theirs. `source` labels it
+   * in `token.source` (default "token"). Rejects `bad-token` before any network
    * call, and `would-orphan` if this app has unsynced writes, unless
    * `discardLocal` is true.
    */
@@ -298,7 +298,8 @@ export interface BurrowArea {
     discardLocal?: boolean;
   }): Promise<void>;
   /**
-   * Forget the token on this device, like logging out, and close this instance.
+   * Forget the app's token on this device, like logging out, and close this
+   * instance. Other apps keep theirs.
    * Same `would-orphan` guard as `link()`.
    */
   unlink(options?: { discardLocal?: boolean }): Promise<void>;

@@ -844,3 +844,68 @@ describe("token source (demo journeys)", () => {
     expect(t2.token.remembered).toBe(true);
   });
 });
+
+describe.each(["indexeddb", "memory"] as const)(
+  "D-54 apps on one device each have their own token (%s cache)",
+  (cache) => {
+    it("D-54 each app generates its own token on first run and keeps it", async () => {
+      const d = fresh().device({ cache });
+      const [notes, settings] = await Promise.all([
+        d.open({ app: "notes" }),
+        d.open({ app: "settings" }),
+      ]);
+      const n = await notes.exportToken();
+      const s = await settings.exportToken();
+      expect(n).not.toBe(s);
+      notes.close();
+      settings.close();
+      expect(await (await d.open({ app: "notes" })).exportToken()).toBe(n);
+      expect(await (await d.open({ app: "settings" })).exportToken()).toBe(s);
+    });
+
+    it("D-54/SYNC-9 link() in one app leaves another app's token, data and unsynced writes alone", async () => {
+      const w = fresh();
+      const elsewhere = await w.device().open({ app: "notes" });
+      await elsewhere.set({ note: "from elsewhere" });
+      await elsewhere.syncNow();
+      const d = w.device({ cache });
+      const notes = await d.open({ app: "notes" });
+      const settings = await d.open({ app: "settings" });
+      await settings.set({ theme: "dark" });
+      await settings.syncNow();
+      const s = await settings.exportToken();
+      d.backend.failWith = "network";
+      await settings.set({ draft: "unsynced" });
+      settings.close();
+      d.backend.failWith = null;
+
+      await notes.link({ token: await elsewhere.exportToken() });
+      expect(await notes.get()).toEqual({ note: "from elsewhere" });
+
+      const again = await d.open({ app: "settings" });
+      expect(again.token).toMatchObject({ source: "generated" });
+      expect(await again.exportToken()).toBe(s);
+      expect(await again.get()).toEqual({ theme: "dark", draft: "unsynced" });
+      await again.syncNow();
+      const other = await w.device().open({ app: "settings" });
+      await other.link({ token: s });
+      expect(await other.get()).toEqual({ theme: "dark", draft: "unsynced" });
+    });
+
+    it("D-54/API-8 unlink() in one app forgets only that app's token", async () => {
+      const d = fresh().device({ cache });
+      const notes = await d.open({ app: "notes" });
+      const settings = await d.open({ app: "settings" });
+      await settings.set({ theme: "dark" });
+      const n = await notes.exportToken();
+      const s = await settings.exportToken();
+      await notes.unlink();
+      expect(await settings.exportToken()).toBe(s);
+      settings.close();
+      expect(await (await d.open({ app: "notes" })).exportToken()).not.toBe(n);
+      const again = await d.open({ app: "settings" });
+      expect(await again.exportToken()).toBe(s);
+      expect(await again.get()).toEqual({ theme: "dark" });
+    });
+  },
+);

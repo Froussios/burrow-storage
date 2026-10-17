@@ -94,11 +94,9 @@
     token: "pasted or typed in",
     passkey: "restored from your passkey",
   };
-  const when = (ms) => (ms ? ` · ${new Date(ms).toLocaleString()}` : "");
+  const when = (ms) => ` · ${new Date(ms).toLocaleString()}`;
   const describeToken = ({ source, remembered, since }) => {
-    const how =
-      SOURCES[source] ??
-      (source === "unknown" ? "" : `restored by “${source}”`);
+    const how = SOURCES[source] ?? `restored by “${source}”`;
     if (!remembered)
       return (
         how.charAt(0).toUpperCase() +
@@ -106,11 +104,7 @@
         (source === "generated" ? " (new)" : "") +
         when(since)
       );
-    return (
-      (how
-        ? `Remembered by this browser; originally ${how}`
-        : "Remembered by this browser") + when(since)
-    );
+    return `Remembered by this browser; originally ${how}` + when(since);
   };
   const showToken = async () => {
     $("code").textContent = await store.exportToken();

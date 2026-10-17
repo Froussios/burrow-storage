@@ -78,9 +78,9 @@ closed by `unlink()`, are removed so the next call starts fresh.
 2. Open the cache: `config.cache`, defaulting to `"indexeddb"`, or `"memory"` when
    `rememberDevice` is `false`. If IndexedDB cannot be opened, fall back to `MemoryCache` and
    remember to set `status` to `"offline"`.
-3. Under the `secret` lock: load the wrapped token from the device store (`rememberDevice`
-   only); otherwise generate 32 random bytes, wrap them, and persist them with
-   `tokenSource: "generated"`. `token` is set to `{ source, remembered, since }`.
+3. Under the `secret` lock: load the app's `_token` record (`rememberDevice` only); otherwise
+   generate 32 random bytes, wrap them, and persist them as the app's record with
+   `source: "generated"`. `token` is set to `{ source, remembered, since }`.
 4. `#adoptIdentity()`: derive the app keys; compute the cache's **owner fingerprint**
    `hex(SHA-256("owner:" + base))[0:16]`; if the app's stored `meta.owner` differs, clear the
    app's items and reset its meta. Load the mirror from the cache.
@@ -121,7 +121,7 @@ IndexedDB database `burrow`, one per origin:
 | --- | --- | --- |
 | `app:<app>` | item key | `CachedItem { value?, ts, h?, deleted?, dirty?, rev? }` |
 | `_meta` | `"app:<app>"` | `AppMeta { owner, manifestRev, maxRemoteTs, lastSyncAt, renewAt }` |
-| `_device` | field name | `DeviceMeta`: `wrapped`, `kw` (the non-extractable `CryptoKey` itself), `tokenSource`, `tokenSince` |
+| `_token` | `"app:<app>"` | `StoredToken { wrapped, kw, source, since }`: the app's wrapped token, `kw` being the non-extractable `CryptoKey` itself (D-54) |
 
 The first use of a new app bumps the database version to add its store; another tab holding the
 old version closes on `versionchange` and reconnects lazily (`IdbCache.#connect`, five attempts).
@@ -284,7 +284,7 @@ Tabs of one app share the IndexedDB cache. They talk over `BroadcastChannel("bur
 | Message | Sent when | Receiver does |
 | --- | --- | --- |
 | `{ t: "changed", keys, source }` | after a local write persisted, or after a pass applied remote changes | re-reads those keys from the cache (`#reload`) and emits `onChanged` with the given source |
-| `{ t: "identity" }` | after `link()` or `unlink()` | reloads the token from the device store: switches identity (fires `onToken`, re-adopts, emits the before/after difference) or, if none is stored, closes itself |
+| `{ t: "identity" }` | after `link()` or `unlink()` | reloads the app's token from the cache: switches identity (fires `onToken`, re-adopts, emits the before/after difference) or, if none is stored, closes itself |
 
 There is no leader election: any tab may run a pass, serialised by the Web Lock. Without
 `navigator.locks` passes are not serialised across tabs; without `BroadcastChannel` tabs do not
@@ -294,7 +294,8 @@ learn of each other's writes until their next pass.
 
 The token is wrapped on creation (`SecretHolder.wrap`): an extractable HMAC "vehicle" key holds
 the 32 bytes and is wrapped with AES-KW under a non-extractable key generated for the device;
-the pair `{ kw, wrapped }` is what `_device` stores. `use(fn)` unwraps, exports the raw bytes, runs
+the pair `{ kw, wrapped }`, with the token's `source` and `since`, is the app's `_token` record.
+Each app has its own (D-54); `link()` and `unlink()` affect only the calling app. `use(fn)` unwraps, exports the raw bytes, runs
 `fn`, and zeroises them. `exportToken()` is `use(encodeToken)`.
 
 **`link({ token, source, discardLocal })`** checks `source` (a non-empty string, default
@@ -306,14 +307,14 @@ then `#switchTo(secret, source, discardLocal)` and zeroises the decoded bytes:
 2. Otherwise flush; if dirty items exist and `discardLocal` is false, run a pass under the old
    token and reject `would-orphan` if any remain.
 3. Wrap the new token, wait for any running pass (`#drain`), then under the `sync` and `secret`
-   locks: persist it, swap `#secret`, set `token` (`source`, `since`) and store `tokenSource`
-   and `tokenSince` in `_device`, invalidate the cache's owner stamp, `#adoptIdentity()` (which
-   clears the app's items), unpause.
+   locks: persist it with its `source` and `since` as the app's `_token` record, swap `#secret`,
+   set `token`, invalidate the cache's owner stamp, `#adoptIdentity()` (which clears the app's
+   items), unpause.
 4. Broadcast `identity`, emit `onToken`, resubscribe, run a pass with `onChanged` suppressed, then
    emit one `onChanged("remote")` with the difference between the mirror before and after.
 
 **`unlink(options)`** has the same `would-orphan` guard, then forgets the secret, deletes the
-token fields from `_device`, broadcasts `identity` and closes the instance. Later calls throw
+app's `_token` record, broadcasts `identity` and closes the instance. Later calls throw
 `unlinked`.
 
 **The passkey backup** (`src/passkey.ts`, `burrow-storage/passkey`) never touches the core. It
@@ -459,10 +460,6 @@ Things the code does not do that a reader of the interfaces might expect:
   costs one read per `syncIntervalMs` (D-29).
 - `rememberDevice: false` generates a fresh token on every load and syncs under it immediately;
   data written before `link()` creates throwaway documents in the store.
-- The token is per origin but the `would-orphan` guard in `link()` and `unlink()` looks only at
-  the calling app; other apps' unsynced writes on the device are discarded on their next load.
-- Open tabs of *other* apps on the origin are not told about a `link()` or `unlink()` (the
-  channel is per app); they keep using the old token until they reload.
 - Burrow does not know whether a token is backed up anywhere; a site that wants to say so keeps
   its own record (the demo keeps it in the store, D-42).
 - `passkeyBackup().restore()` returns `null` both when the prompt is dismissed and when the chosen

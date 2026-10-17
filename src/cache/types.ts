@@ -31,19 +31,19 @@ export interface AppMeta {
 }
 
 /**
- * Origin-wide device state: the root secret is shared by every app on the
- * origin (KP-4).
+ * One app's remembered token on this device (KP-2, D-54). Each app has its
+ * own; the record is written and removed whole.
  */
-export interface DeviceMeta {
-  /** Root secret wrapped under `kw` (KP-2, ENC-10). */
-  wrapped?: Uint8Array;
+export interface StoredToken {
+  /** The token wrapped under `kw` (ENC-10). */
+  wrapped: Uint8Array;
   /**
    * Non-extractable AES-KW key; IndexedDB stores the CryptoKey object itself.
    */
-  kw?: CryptoKey;
-  /** How this device obtained the secret, and when (TokenInfo). */
-  tokenSource?: string;
-  tokenSince?: number;
+  kw: CryptoKey;
+  /** How this device obtained the token, and when (TokenInfo). */
+  source: string;
+  since: number;
 }
 
 export interface Cache {
@@ -67,8 +67,8 @@ export interface Cache {
   clearItems(): Promise<void>;
   getMeta(): Promise<AppMeta>;
   setMeta(patch: Partial<AppMeta>): Promise<void>;
-  getDevice(): Promise<DeviceMeta>;
-  /** Keys set to undefined are removed. */
-  setDevice(patch: Partial<DeviceMeta>): Promise<void>;
+  getToken(): Promise<StoredToken | undefined>;
+  /** `null` removes the app's token. */
+  setToken(token: StoredToken | null): Promise<void>;
   close(): void;
 }

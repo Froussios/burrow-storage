@@ -31,9 +31,10 @@ public issue.
 ## The one asset
 
 A user's identity is a **storage token** (the *root secret* below): 32 bytes from
-`crypto.getRandomValues`, generated silently the first time an app runs on a device. One token
-serves every Burrow app on the origin; each app derives its own keys from it. The token leaves the
-device only when the user carries it:
+`crypto.getRandomValues`, generated silently the first time an app runs on a device. Each app has
+its own token, shared by the pages that pass the same `app` and by no other app on the origin
+(D-54); the app derives its keys from it. The token leaves the device only when the user carries
+it:
 
 - typed or pasted, encoded as 56 Crockford base32 characters (`exportToken()`, `link()`), or
 - wrapped inside a **passkey keyslot** in the store, which only that passkey's PRF output can
@@ -166,12 +167,11 @@ must declare `capabilities.writeAuth = false`, and Burrow warns once in the cons
 ## Local cache at rest
 
 The cache stands in for `localStorage`, so items are stored in IndexedDB in plaintext, in one
-object store per app. The token is stored only wrapped (see above), with its wrapping key beside
-it. The cache is stamped with a
-fingerprint of the token that owns it; after `unlink()`, or when another app on the origin links
-a different token, the next `burrow()` finds the stamp wrong and clears the app's cache before use,
-so one identity's data never shows under another. Use `rememberDevice: false` on shared computers;
-the cache then defaults to memory.
+object store per app. Each app's token is stored only wrapped (see above), with its wrapping key
+beside it. The cache is stamped with a fingerprint of the token that owns it; after `unlink()`,
+the next `burrow()` generates a new token, finds the stamp wrong and clears the app's cache before
+use, so one identity's data never shows under another. Use `rememberDevice: false` on shared
+computers; the cache then defaults to memory.
 
 ## Optional content expiry (D-48)
 

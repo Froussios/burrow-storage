@@ -19,6 +19,17 @@ path.
 
 ### Changed
 
+- Each app has its own storage token on the device instead of one per origin (#76, D-54). `link()`
+  and `unlink()` affect only the calling app, so another app's token, data and unsynced writes
+  are never touched, and unrelated sites sharing an origin no longer share a token. Pages that
+  pass the same `app` still share one. Token format, derivation, envelope and keyslots are
+  unchanged. Sites with several apps should give each app's passkey backup its own `userName`.
+- Tokens are stored per app in a new `_token` object store; the origin-wide `_device` store is no
+  longer read. A browser that ran 0.1.1 starts each app with a new token and clears that app's
+  cache on first load, unsynced writes included; `link()` with the old token restores its
+  synced data.
+- `TokenInfo.since` is always a number, and `TokenSource` no longer includes `"unknown"`: every
+  remembered token records its source and time.
 - Backend reads/watches return `StoredDocument` (live envelope or distinct expiry stub).
   Ordinary puts atomically reject `expired`; explicit low-level replacement still requires the
   revision/token chain. Core expiry pauses before remote cache merge/pruning, preserving local
