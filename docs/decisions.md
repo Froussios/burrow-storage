@@ -73,9 +73,13 @@ id, never the id itself). `unlink()` leaves the cache and the remote documents i
 before use, so a logged-out user's data does not appear under the new identity. `unlink()` first
 tries to push unsynced writes and rejects with `would-orphan` if any remain, unless
 `{ discardLocal: true }` is passed; `link()` behaves the same way. After `unlink()` the instance is
-closed and its methods reject. The guard looks at the calling app's unsynced data only.
+closed and its methods reject. The guard looks at the calling app's unsynced data only, which since
+D-54 is all that a switch can drop.
 
 ### D-9 The token is per origin; per-app state is per app (KP-4, SYNC-1, SYNC-3)
+
+*The token is per app since D-54; the per-app state below is unchanged. Keyslots stay per origin:
+the PRF salt is fixed, so the passkey's `userName` is what keeps two apps' backups apart.*
 
 The wrapped token, the protection state and provider data live in an origin-wide `_device` object
 store. Per-app sync state (`manifestRev`, max remote `ts`, last sync, the `onUnprotected` flag)
@@ -312,7 +316,8 @@ The demo is always available at <https://froussios.github.io/burrow-storage/>, r
 every push to `main`. The owner chose GitHub Pages over Firebase Hosting on the store's project
 (`burrow-storage-shared.web.app`) and over Cloudflare Pages or Netlify, once the repository was
 public. The origin is effectively permanent: passkeys created on the demo are bound to the rp ID
-`froussios.github.io`, and the token is remembered per origin (D-9), so a move orphans both.
+`froussios.github.io`, and tokens are remembered in the origin's IndexedDB (D-54), so a move
+orphans both.
 
 What the choice costs:
 
@@ -703,6 +708,45 @@ payloads are excluded, restore remains read-only, and passkey saves can replace 
 (D-47). Opaque mixed collections cannot be classified, so reaping them is refused. No core
 keyslot service coupling, backend-owned renewal scheduler or lost-credential recovery is added.
 See [retention.md](retention.md) for the public contract, operator steps and evidence limits.
+
+### D-54 Each app has its own token (supersedes KP-4; amends D-8, D-9; #76)
+
+KP-4 made the token one value for every app on the origin, and D-9 stored it once, in an
+origin-wide `_device` store. The app name fed only the key derivation, so apps had separate data
+but one identity. `link()` in one app switched every app on the origin, and `unlink()` forgot the
+token for all of them. The other apps then dropped any writes they had not synced under the old
+token on their next load, which broke SYNC-9: `would-orphan` saw only the calling app. Unrelated
+sites on one origin, such as the GitHub Pages projects of one account, shared a token and could
+switch it under each other. First runs of two apps also raced: the `secret` lock was per app, so
+each could generate a token, and the app whose write lost cleared its cache on its next load.
+
+Putting apps on one origin does not declare that they share an identity; passing the same `app`
+does. Each app now has its own token on the device:
+
+- The `_token` object store holds one `StoredToken { wrapped, kw, source, since }` per app, keyed
+  by the app's store name as in `_meta`. It is written and deleted whole, so the secret and its
+  source cannot disagree. The library no longer reads or clears the `_device` store. `TokenInfo`
+  loses `"unknown"` and `since: null`, which described tokens stored before the source was
+  recorded.
+- `link()` and `unlink()` change only the calling app; `would-orphan` now covers everything a
+  switch can drop. Tab messages and the `secret` lock were already per app.
+- An app with no token of its own generates one. There is no migration from the origin-wide store:
+  the owner directed none, as the demo is the only client. A browser that ran 0.1.1 starts each
+  app with a new token and clears the app's cache on first load, unsynced writes included. This is
+  a deliberate exception to SYNC-9 for 0.1.1 data; linking the old token restores the synced
+  data. After `unlink()` such a browser would still hold the old wrapped token in `_device`, so the
+  demo deletes that store from its visitors' browsers before opening Burrow. That code is temporary,
+  marked `TODO(2026-11-18)` in `demo/demo.js` and its e2e test, and is removed a month after
+  release.
+
+The token format, derivation, envelope and keyslot are unchanged. The passkey backup takes a token
+string and needs no change, but D-47's label-derived user handle now matters across apps: two apps
+that save under the same `userName` (by default the host) replace each other's passkey, which now
+holds a different token. Sites with several apps pass a distinct label per app; #75 proposes a
+token-derived handle that would make this automatic.
+
+This separates identities, not code. Any script on the origin can still read every app's cache
+and use its token, as SECURITY.md already assumes.
 
 ## Part B: planning decisions and their status
 

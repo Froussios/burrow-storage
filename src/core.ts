@@ -3,7 +3,7 @@
 import { hex, sha256, utf8 } from "./bytes.js";
 import { MemoryCache } from "./cache/memory.js";
 import { configuredBackend } from "./config.js";
-import type { AppMeta, Cache, CachedItem } from "./cache/types.js";
+import type { AppMeta, Cache, CachedItem, StoredToken } from "./cache/types.js";
 import { type AppKeys, deriveAppKeys, docId } from "./codec/derive.js";
 import {
   type DocCipher,
@@ -123,7 +123,7 @@ export class Core implements BurrowArea {
   #keys: AppKeys | null = null;
   #mirror = new Map<string, Entry>();
   #meta: AppMeta = {};
-  #token: TokenInfo = { source: "generated", remembered: false, since: null };
+  #token!: TokenInfo;
   #status: Status = "idle";
   #error: BurrowError | undefined;
   #paused = false;
@@ -221,30 +221,18 @@ export class Core implements BurrowArea {
       degraded = true;
     }
     await this.#lock("secret", async () => {
-      let s = this.#remember ? await SecretHolder.load(this.#cache) : null;
-      if (s) {
-        const d = await this.#cache.getDevice();
-        this.#token = {
-          source: d.tokenSource ?? "unknown",
-          remembered: true,
-          since: d.tokenSince ?? null,
-        };
-      } else {
-        s = await SecretHolder.generate(); // KP-1
-        this.#token = {
-          source: "generated",
-          remembered: false,
-          since: Date.now(),
-        };
-        if (this.#remember) {
-          await s.persist(this.#cache);
-          await this.#cache.setDevice({
-            tokenSource: "generated",
-            tokenSince: this.#token.since!,
-          });
-        }
+      const saved = this.#remember ? await this.#cache.getToken() : undefined;
+      if (saved) {
+        this.#restore(saved);
+        return;
       }
-      this.#secret = s;
+      this.#secret = await SecretHolder.generate(); // KP-1
+      this.#token = {
+        source: "generated",
+        remembered: false,
+        since: Date.now(),
+      };
+      if (this.#remember) await this.#secret.persist(this.#cache, this.#token);
     });
     await this.#adoptIdentity();
     if (degraded) this.#setStatus("offline");
@@ -259,6 +247,17 @@ export class Core implements BurrowArea {
       );
     }
     this.#start();
+  }
+
+  /** Hold the app's remembered token, replacing the one held. */
+  #restore(saved: StoredToken): void {
+    this.#secret?.forget();
+    this.#secret = SecretHolder.restore(saved);
+    this.#token = {
+      source: saved.source,
+      remembered: true,
+      since: saved.since,
+    };
   }
 
   /**
@@ -716,20 +715,13 @@ export class Core implements BurrowArea {
         msg.source ?? "local",
       );
     } else if (msg.t === "identity") {
-      const s = this.#remember ? await SecretHolder.load(this.#cache) : null;
-      if (!s) {
+      const saved = this.#remember ? await this.#cache.getToken() : undefined;
+      if (!saved) {
         this.close();
         return;
       } // another tab unlinked
       const before = new Map(this.#mirror);
-      this.#secret?.forget();
-      this.#secret = s;
-      const d = await this.#cache.getDevice();
-      this.#token = {
-        source: d.tokenSource ?? "unknown",
-        remembered: true,
-        since: d.tokenSince ?? null,
-      };
+      this.#restore(saved);
       this.onToken.emit({ ...this.#token });
       this.#paused = false;
       await this.#adoptIdentity();
@@ -1388,17 +1380,13 @@ export class Core implements BurrowArea {
     // inside the sync lock.
     await this.#drain();
     await this.#lock("sync", async () => {
+      const token = { source, remembered: false, since: Date.now() };
       await this.#lock("secret", async () => {
-        if (this.#remember) await holder.persist(this.#cache);
+        if (this.#remember) await holder.persist(this.#cache, token);
       });
       this.#secret?.forget();
       this.#secret = holder;
-      this.#token = { source, remembered: false, since: Date.now() };
-      if (this.#remember)
-        await this.#cache.setDevice({
-          tokenSource: source,
-          tokenSince: this.#token.since!,
-        });
+      this.#token = token;
       // the cache now belongs to nobody; #adoptIdentity resets it
       await this.#cache.setMeta({ owner: "" });
       await this.#adoptIdentity();
@@ -1442,12 +1430,7 @@ export class Core implements BurrowArea {
     // stay.
     this.#secret?.forget();
     this.#secret = null;
-    await this.#cache.setDevice({
-      kw: undefined,
-      wrapped: undefined,
-      tokenSource: undefined,
-      tokenSince: undefined,
-    });
+    await this.#cache.setToken(null);
     this.#broadcast({ t: "identity" });
     this.close();
   }

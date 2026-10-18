@@ -1,29 +1,34 @@
-import type { AppMeta, Cache, CachedItem, DeviceMeta } from "./types.js";
+import type { AppMeta, Cache, CachedItem, StoredToken } from "./types.js";
 
 /**
  * Holds what a device would keep in IndexedDB. One per simulated device; the
  * page has one.
  */
 export class MemoryDevice {
-  readonly device: DeviceMeta = {};
-  readonly apps = new Map<
-    string,
-    { items: Map<string, CachedItem>; meta: AppMeta }
-  >();
+  readonly apps = new Map<string, MemoryApp>();
+}
+
+interface MemoryApp {
+  items: Map<string, CachedItem>;
+  meta: AppMeta;
+  token?: StoredToken;
 }
 
 const pageDevice = new MemoryDevice();
 
 const copy = <T>(v: T): T => structuredClone(v);
+// The CryptoKey is immutable and shared; the wrapped bytes are copied.
+const copyToken = (t: StoredToken): StoredToken => ({
+  ...t,
+  wrapped: new Uint8Array(t.wrapped),
+});
 
 /** SYNC-1: the memory cache, for tests and private-mode fallback (SYNC-4). */
 export class MemoryCache implements Cache {
   readonly kind = "memory" as const;
-  readonly #dev: MemoryDevice;
-  readonly #app: { items: Map<string, CachedItem>; meta: AppMeta };
+  readonly #app: MemoryApp;
 
   constructor(app: string, device: MemoryDevice = pageDevice) {
-    this.#dev = device;
     let a = device.apps.get(app);
     if (!a) device.apps.set(app, (a = { items: new Map(), meta: {} }));
     this.#app = a;
@@ -73,18 +78,12 @@ export class MemoryCache implements Cache {
   async setMeta(patch: Partial<AppMeta>) {
     Object.assign(this.#app.meta, copy(patch));
   }
-  async getDevice() {
-    return { ...this.#dev.device };
+  async getToken() {
+    return this.#app.token && copyToken(this.#app.token);
   }
-
-  async setDevice(patch: Partial<DeviceMeta>) {
-    for (const [k, v] of Object.entries(patch) as [
-      keyof DeviceMeta,
-      unknown,
-    ][]) {
-      if (v === undefined) delete this.#dev.device[k];
-      else (this.#dev.device as Record<string, unknown>)[k] = v;
-    }
+  async setToken(token: StoredToken | null) {
+    if (token) this.#app.token = copyToken(token);
+    else delete this.#app.token;
   }
 
   close() {}

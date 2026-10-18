@@ -7,6 +7,34 @@
     $("message").textContent = text;
   };
 
+  // TODO(2026-11-18): remove. Burrow 0.1.1 kept one origin-wide token in a
+  // "_device" store that later versions neither read nor clear (D-54, #76).
+  // Drop it from visitors' browsers so no unused key material outlives the
+  // switch. Runs before burrow() opens the database; a failure only means a
+  // retry on the next load.
+  await new Promise((done) => {
+    try {
+      const r = indexedDB.open("burrow");
+      r.onerror = () => done();
+      r.onsuccess = () => {
+        const db = r.result;
+        const legacy = db.objectStoreNames.contains("_device");
+        const version = db.version + 1;
+        db.close();
+        if (!legacy) return done();
+        const up = indexedDB.open("burrow", version);
+        up.onupgradeneeded = () => up.result.deleteObjectStore("_device");
+        up.onsuccess = () => {
+          up.result.close();
+          done();
+        };
+        up.onerror = () => done();
+      };
+    } catch {
+      done();
+    }
+  });
+
   const store = await Burrow.burrow({ app: "burrow-demo" });
   const s = store.storage; // drop-in for localStorage
   // The token's passkey backup lives outside the store
@@ -94,11 +122,9 @@
     token: "pasted or typed in",
     passkey: "restored from your passkey",
   };
-  const when = (ms) => (ms ? ` · ${new Date(ms).toLocaleString()}` : "");
+  const when = (ms) => ` · ${new Date(ms).toLocaleString()}`;
   const describeToken = ({ source, remembered, since }) => {
-    const how =
-      SOURCES[source] ??
-      (source === "unknown" ? "" : `restored by “${source}”`);
+    const how = SOURCES[source] ?? `restored by “${source}”`;
     if (!remembered)
       return (
         how.charAt(0).toUpperCase() +
@@ -106,11 +132,7 @@
         (source === "generated" ? " (new)" : "") +
         when(since)
       );
-    return (
-      (how
-        ? `Remembered by this browser; originally ${how}`
-        : "Remembered by this browser") + when(since)
-    );
+    return `Remembered by this browser; originally ${how}` + when(since);
   };
   const showToken = async () => {
     $("code").textContent = await store.exportToken();

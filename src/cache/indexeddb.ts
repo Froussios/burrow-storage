@@ -1,11 +1,12 @@
 // SYNC-1: one IndexedDB database per origin named "burrow", one object store
 // per app, so clearing one app never touches another. "_meta" holds per-app
-// sync state, "_device" the wrapped secret.
-import type { AppMeta, Cache, CachedItem, DeviceMeta } from "./types.js";
+// sync state, "_token" each app's wrapped token (D-54); both are keyed by the
+// app's store name.
+import type { AppMeta, Cache, CachedItem, StoredToken } from "./types.js";
 
 const DB = "burrow";
 const META = "_meta";
-const DEVICE = "_device";
+const TOKEN = "_token";
 const storeFor = (app: string) => "app:" + app;
 
 const req = <T>(r: IDBRequest<T>) =>
@@ -22,7 +23,7 @@ function openDb(
   return new Promise((res, rej) => {
     const r = version ? idb.open(DB, version) : idb.open(DB);
     r.onupgradeneeded = () => {
-      for (const s of [META, DEVICE, ...stores])
+      for (const s of [META, TOKEN, ...stores])
         if (!r.result.objectStoreNames.contains(s))
           r.result.createObjectStore(s);
     };
@@ -69,7 +70,7 @@ export class IdbCache implements Cache {
   async #connect(): Promise<IDBDatabase> {
     for (let attempt = 0; attempt < 5; attempt++) {
       const db = await openDb(this.#idb);
-      const need = [META, DEVICE, this.#store].some(
+      const need = [META, TOKEN, this.#store].some(
         (s) => !db.objectStoreNames.contains(s),
       );
       if (!need) return this.#watch(db);
@@ -193,22 +194,16 @@ export class IdbCache implements Cache {
     });
   }
 
-  getDevice(): Promise<DeviceMeta> {
-    return this.#tx([DEVICE], "readonly", async (t) => {
-      const s = t.objectStore(DEVICE);
-      const [keys, vals] = await Promise.all([
-        req(s.getAllKeys()),
-        req(s.getAll()),
-      ]);
-      return Object.fromEntries(keys.map((k, i) => [k, vals[i]])) as DeviceMeta;
-    });
+  getToken(): Promise<StoredToken | undefined> {
+    return this.#tx([TOKEN], "readonly", (t) =>
+      req(t.objectStore(TOKEN).get(this.#store)),
+    );
   }
 
-  setDevice(patch: Partial<DeviceMeta>): Promise<void> {
-    return this.#tx([DEVICE], "readwrite", (t) => {
-      const s = t.objectStore(DEVICE);
-      for (const [k, v] of Object.entries(patch))
-        v === undefined ? s.delete(k) : s.put(v, k);
+  setToken(token: StoredToken | null): Promise<void> {
+    return this.#tx([TOKEN], "readwrite", (t) => {
+      const s = t.objectStore(TOKEN);
+      token ? s.put(token, this.#store) : s.delete(this.#store);
     });
   }
 

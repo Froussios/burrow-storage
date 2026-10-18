@@ -71,6 +71,36 @@ test("SYNC-14 a write in one tab shows up in another tab of the same profile", a
     .toBe("from tab 1");
 });
 
+test("D-54 two apps on one origin: linking one leaves the other's token and data", async ({
+  browser,
+}) => {
+  const elsewhere = await browser.newContext();
+  const source = await openArea(elsewhere, "notes");
+  await withStore(source, (s) => s.set({ note: "from elsewhere" }));
+  await withStore(source, (s) => s.syncNow());
+  const linked = await withStore(source, (s) => s.exportToken());
+
+  const device = await browser.newContext();
+  const notes = await openArea(device, "notes");
+  const settings = await openArea(device, "settings");
+  await withStore(settings, (s) => s.set({ theme: "dark" }));
+  const own = await withStore(settings, (s) => s.exportToken());
+  expect(own).not.toBe(await withStore(notes, (s) => s.exportToken()));
+  await withStore(notes, (s, token) => s.link({ token }), linked);
+
+  // reload both
+  await openArea(device, "settings", settings);
+  await openArea(device, "notes", notes);
+  expect(await withStore(settings, (s) => s.exportToken())).toBe(own);
+  expect(await withStore(settings, (s) => s.get())).toEqual({ theme: "dark" });
+  expect(await withStore(notes, (s) => s.exportToken())).toBe(linked);
+  expect(await withStore(notes, (s) => s.get())).toEqual({
+    note: "from elsewhere",
+  });
+  await elsewhere.close();
+  await device.close();
+});
+
 test("API-11 facade writes survive leaving the page immediately (pagehide flush)", async ({
   context,
 }) => {

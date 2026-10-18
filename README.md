@@ -338,7 +338,7 @@ the same token to `link()`; the store does not care how. Burrow supports two way
   gives it back on another device with one prompt. Needs HTTPS or `localhost` and PRF support,
   which still varies: `available()` says whether it can work, without prompting.
   Saving again with the same `userName` on the same site may replace its earlier passkey;
-  pass distinct labels to keep separate backups. Warn first and keep the current and any
+  pass distinct labels to keep separate backups, and give each app on a site its own. Warn first and keep the current and any
   earlier storage tokens: a failed save after creation can lose the earlier passkey route.
   [Naming and replacement limits](https://github.com/Froussios/burrow-storage/blob/main/docs/api.md#passkey-backup).
 
@@ -351,10 +351,10 @@ was made on this device and exists nowhere else as far as Burrow knows: the mome
 user to keep it
 ([how](https://github.com/Froussios/burrow-storage/blob/main/docs/sync-and-tokens.md#what-to-show)).
 
-`link()` with a different token replaces the token for every Burrow app on the origin, refills the
-cache from the store, and fires `onToken` and `onChanged`. Writes this app has not synced are pushed
-first; if any remain, it rejects with `would-orphan`, unless called with `discardLocal: true`. Other
-apps on the origin switch on their next load and drop what they had not synced.
+Each `app` has its own token; pages that pass the same `app` share it. `link()` with a different
+token replaces this app's token, refills its cache from the store, and fires `onToken` and
+`onChanged`. Writes this app has not synced are pushed first; if any remain, it rejects with
+`would-orphan`, unless called with `discardLocal: true`. Other apps on the origin are not affected.
 
 `burrow({ app, rememberDevice: false })` keeps the token in memory only, for shared computers.
 Anything written before `link()` belongs to a throwaway token.
