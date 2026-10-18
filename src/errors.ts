@@ -12,7 +12,8 @@ export type BurrowErrorCode =
   | "quota"
   | "decrypt-failed"
   | "expired"
-  | "would-orphan";
+  | "would-orphan"
+  | "would-replace";
 
 export class BurrowError extends Error {
   override readonly name = "BurrowError";

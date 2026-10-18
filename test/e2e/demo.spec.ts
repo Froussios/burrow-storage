@@ -2,6 +2,7 @@
 // errors. It always shows the storage token in use and where it came from, and
 // syncs a second device.
 import { type ConsoleMessage, type Page, expect, test } from "@playwright/test";
+import { type MemoryDemoWindow, openMemoryDemo } from "./helpers.js";
 
 const TOKEN = /^([0-9A-Z]{4}-){13}[0-9A-Z]{4}$/;
 
@@ -142,56 +143,156 @@ test("journey 4: an invalid token shows an error and keeps the current token", a
   );
 });
 
-// TODO(2026-11-18): remove with the demo's "_device" cleanup (D-54, #76).
-test("D-54 the demo drops the 0.1.1 origin-wide token store and starts its own token", async ({
+test("the demo confirms populated token changes, while empty and same-token changes need no dialog", async ({
   page,
 }) => {
-  // A same-origin page that does not open Burrow seeds a 0.1.1-shaped database.
-  await page.goto("/test/e2e/harness.html");
-  await page.evaluate(
-    () =>
-      new Promise<void>((done, fail) => {
-        const r = indexedDB.open("burrow", 2);
-        r.onupgradeneeded = () => {
-          for (const s of ["_meta", "_device", "app:burrow-demo"])
-            r.result.createObjectStore(s);
-        };
-        r.onsuccess = async () => {
-          const kw = await crypto.subtle.generateKey(
-            { name: "AES-KW", length: 256 },
-            false,
-            ["wrapKey", "unwrapKey"],
-          );
-          const t = r.result.transaction("_device", "readwrite");
-          const s = t.objectStore("_device");
-          s.put(kw, "kw");
-          s.put(new Uint8Array(40), "wrapped");
-          s.put("generated", "tokenSource");
-          t.oncomplete = () => {
-            r.result.close();
-            done();
-          };
-          t.onerror = () => fail(t.error);
-        };
-        r.onerror = () => fail(r.error);
-      }),
+  await openMemoryDemo(page);
+  const first = (await page.locator("#code").textContent())!;
+  const target = await page.evaluate(async () => {
+    const { Burrow, demoBackend } = window as unknown as MemoryDemoWindow;
+    const other = await Burrow.createBurrow(
+      {
+        app: "burrow-demo",
+        backend: demoBackend,
+        rememberDevice: false,
+      },
+      Burrow.browserEnv("demo-link-target"),
+    );
+    await other.set({ draft: "another backup" });
+    await other.syncNow();
+    return other.exportToken();
+  });
+  const dialogs: string[] = [];
+  const answers: boolean[] = [];
+  page.on("dialog", async (d) => {
+    dialogs.push(d.message());
+    if (answers.shift()) await d.accept();
+    else await d.dismiss();
+  });
+  const link = async (token: string) => {
+    await page.locator("#link-code").fill(token);
+    await page.locator("#link-form button[type=submit]").click();
+  };
+
+  // Empty current data can be replaced directly, then the same token relinks.
+  await link(target);
+  await expect(page.locator("#code")).toHaveText(target);
+  await expect(page.locator("#draft")).toHaveValue("another backup");
+  await link(target);
+  await expect(page.locator("#message")).toHaveText(
+    "Linked. Your data is here.",
   );
-  await page.goto("/demo/index.html");
+  expect(dialogs).toEqual([]);
+
+  await link(first);
+  await expect(page.locator("#message")).toHaveText(
+    "Kept this device as it was.",
+  );
+  await expect(page.locator("#code")).toHaveText(target);
+  await expect(page.locator("#draft")).toHaveValue("another backup");
+  expect(dialogs).toHaveLength(1);
+  expect(dialogs[0]).toContain("Replace this device's storage token and data?");
+  answers.push(true);
+  await link(first);
+  await expect(page.locator("#code")).toHaveText(first);
+  await expect(page.locator("#draft")).toHaveValue("");
+  expect(dialogs).toHaveLength(2);
+
+  // Forgetting an empty identity needs no confirmation.
+  const emptyReload = page.waitForEvent("load");
+  await page.locator("#forget").click();
+  await emptyReload;
   await expect(page.locator("body")).toHaveAttribute("data-ready", "true");
-  await expect(page.locator("#code")).toHaveText(TOKEN);
-  await expect(page.locator("#token-source")).toContainText(
-    "Generated on this device (new)",
+  expect(dialogs).toHaveLength(2);
+  const beforeForget = (await page.locator("#code").textContent())!;
+  await page.locator("#draft").fill("data worth keeping");
+  await expect(page.locator("#status")).toHaveText("synced");
+  await page.locator("#forget").click();
+  await expect(page.locator("#message")).toHaveText(
+    "Kept this device as it was.",
   );
-  const stores = await page.evaluate(
-    () =>
-      new Promise<string[]>((done) => {
-        const r = indexedDB.open("burrow");
-        r.onsuccess = () => {
-          done([...r.result.objectStoreNames]);
-          r.result.close();
-        };
-      }),
-  );
-  expect(stores).not.toContain("_device");
-  expect(stores).toContain("_token");
+  await expect(page.locator("#code")).toHaveText(beforeForget);
+  await expect(page.locator("#draft")).toHaveValue("data worth keeping");
+  expect(dialogs).toHaveLength(3);
+  expect(dialogs[2]).toContain("Forget this device's storage token and data?");
+  answers.push(true);
+  const populatedReload = page.waitForEvent("load");
+  await page.locator("#forget").click();
+  await populatedReload;
+  await expect(page.locator("body")).toHaveAttribute("data-ready", "true");
+  await expect(page.locator("#code")).not.toHaveText(beforeForget);
+  expect(dialogs).toHaveLength(4);
 });
+
+for (const action of ["link", "forget"] as const) {
+  test(`the demo requires separate unsynced-data and replacement consent to ${action}`, async ({
+    page,
+  }) => {
+    await openMemoryDemo(page);
+    const original = (await page.locator("#code").textContent())!;
+    const target = await page.evaluate(async () => {
+      const { Burrow, demoBackend } = window as unknown as MemoryDemoWindow;
+      await (await Burrow.burrow({ app: "burrow-demo" })).syncNow();
+      const other = await Burrow.burrow({
+        app: "demo-offline-target",
+        backend: demoBackend,
+        cache: "memory",
+      });
+      const token = await other.exportToken();
+      // Reads still work, including loading the destination after consent.
+      demoBackend.put = async () => {
+        throw new Burrow.BackendError("network");
+      };
+      return token;
+    });
+    await page.locator("#draft").fill("not synced");
+    await expect(page.locator("#status")).toHaveText("offline");
+    await page.locator("#link-code").fill(target);
+    const messages: string[] = [];
+    const answers: boolean[] = [];
+    page.on("dialog", async (d) => {
+      messages.push(d.message());
+      if (answers.shift()) await d.accept();
+      else await d.dismiss();
+    });
+    const change = () =>
+      page
+        .locator(
+          action === "link" ? "#link-form button[type=submit]" : "#forget",
+        )
+        .click();
+
+    await change();
+    await expect(page.locator("#message")).toHaveText(
+      "Kept this device as it was.",
+    );
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toContain("changes that are not synced yet");
+    await expect(page.locator("#code")).toHaveText(original);
+    await expect(page.locator("#draft")).toHaveValue("not synced");
+
+    answers.push(true, false);
+    await change();
+    await expect(page.locator("#message")).toHaveText(
+      "Kept this device as it was.",
+    );
+    await expect.poll(() => messages.length).toBe(3);
+    expect(messages[1]).toContain("changes that are not synced yet");
+    expect(messages[2]).toContain("storage token and data?");
+    await expect(page.locator("#code")).toHaveText(original);
+    await expect(page.locator("#draft")).toHaveValue("not synced");
+
+    answers.push(true, true);
+    const reloaded = action === "forget" ? page.waitForEvent("load") : null;
+    await change();
+    if (reloaded) await reloaded;
+    await expect(page.locator("body")).toHaveAttribute("data-ready", "true");
+    await expect(page.locator("#code")).not.toHaveText(original);
+    await expect(page.locator("#draft")).toHaveValue("");
+    expect(messages).toHaveLength(5);
+    expect(messages[3]).toContain("changes that are not synced yet");
+    expect(messages[4]).toContain("storage token and data?");
+    if (action === "link")
+      await expect(page.locator("#code")).toHaveText(target);
+  });
+}

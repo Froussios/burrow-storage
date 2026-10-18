@@ -1,9 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryBackend } from "../../src/backends/memory.js";
+import { MemoryCache } from "../../src/cache/memory.js";
 import { deriveAppKeys, docId } from "../../src/codec/derive.js";
 import { decodeToken } from "../../src/codec/token.js";
 import { BackendError, BurrowError } from "../../src/errors.js";
-import type { ChangedEvent, Envelope, StatusEvent } from "../../src/types.js";
+import type {
+  BurrowArea,
+  ChangedEvent,
+  Envelope,
+  StatusEvent,
+} from "../../src/types.js";
 import { World, until } from "../support/devices.js";
 
 let world: World;
@@ -662,9 +668,13 @@ describe("§6 link, unlink", () => {
     B.backend.failWith = null;
     await a.set({ fromA: 1 });
     await a.syncNow();
-    // With discardLocal the device adopts the other secret.
+    // Both independent guards must be explicitly bypassed.
     B.backend.failWith = "network";
-    await b.link({ token: await a.exportToken(), discardLocal: true });
+    await b.link({
+      token: await a.exportToken(),
+      discardLocal: true,
+      replace: true,
+    });
     B.backend.failWith = null;
     await b.syncNow();
     expect(await b.get()).toEqual({ fromA: 1 });
@@ -676,7 +686,7 @@ describe("§6 link, unlink", () => {
     const b = await w.device().open();
     const oldCode = await b.exportToken();
     await b.set({ mine: 1 });
-    await b.link({ token: await a.exportToken() });
+    await b.link({ token: await a.exportToken(), replace: true });
     const c = await w.device().open();
     await c.link({ token: oldCode });
     expect(await c.get()).toEqual({ mine: 1 });
@@ -690,7 +700,7 @@ describe("§6 link, unlink", () => {
     await a.syncNow();
     const code = await a.exportToken();
     const docs = w.store.size;
-    await a.unlink();
+    await a.unlink({ replace: true });
     expect(await d.idb.databases()).toHaveLength(1);
     expect(w.store.size).toBe(docs);
     await expect(a.get()).rejects.toMatchObject({
@@ -711,7 +721,167 @@ describe("§6 link, unlink", () => {
     d.backend.failWith = "network";
     await a.set({ k: 1 });
     await expect(a.unlink()).rejects.toMatchObject({ code: "would-orphan" });
-    await a.unlink({ discardLocal: true });
+    await a.unlink({ discardLocal: true, replace: true });
+  });
+
+  describe.each(["link", "unlink"] as const)(
+    "%s replacement guard",
+    (method) => {
+      const change = async (
+        area: BurrowArea,
+        token: string,
+        options: { replace?: boolean; discardLocal?: boolean } = {},
+      ) =>
+        method === "link"
+          ? area.link({ token, ...options })
+          : area.unlink(options);
+
+      it("allows an empty local-only store without confirmation", async () => {
+        const w = fresh();
+        const area = await w.device().open({ backend: undefined });
+        const token = await (await w.device().open()).exportToken();
+        await expect(change(area, token)).resolves.toBeUndefined();
+      });
+
+      it("rejects replacing synced live data without network work or token changes", async () => {
+        const w = fresh();
+        const d = w.device();
+        const area = await d.open({ debounceMs: 1e9 });
+        const target = await w.device().open();
+        const token = await target.exportToken();
+        // Token provenance does not establish whether a backup exists.
+        await area.link({ token, source: "passkey" });
+        await area.set({ saved: "keep" });
+        await area.syncNow();
+        const next = await (await w.device().open()).exportToken();
+        const stats = { ...d.backend.stats };
+        const info = area.token;
+        const seen = vi.fn();
+        area.onToken.addListener(seen);
+
+        await expect(change(area, next)).rejects.toMatchObject({
+          code: "would-replace",
+        });
+        expect(d.backend.stats).toEqual(stats);
+        expect(await area.exportToken()).toBe(token);
+        expect(area.token).toEqual(info);
+        expect(await area.get()).toEqual({ saved: "keep" });
+        expect(seen).not.toHaveBeenCalled();
+
+        await expect(
+          change(area, next, { replace: true }),
+        ).resolves.toBeUndefined();
+        if (method === "link") {
+          expect(await area.exportToken()).toBe(next);
+          expect(await area.get()).toEqual({});
+        } else
+          await expect(area.exportToken()).rejects.toMatchObject({
+            code: "unlinked",
+          });
+      });
+
+      it("requires both opt-ins for pending local-only facade writes", async () => {
+        const w = fresh();
+        const area = await w.device().open({ backend: undefined });
+        const token = await (await w.device().open()).exportToken();
+        const before = await area.exportToken();
+        area.storage.setItem("draft", "keep");
+
+        await expect(
+          change(area, token, { replace: true }),
+        ).rejects.toMatchObject({
+          code: "would-orphan",
+        });
+        await expect(
+          change(area, token, { discardLocal: true }),
+        ).rejects.toMatchObject({ code: "would-replace" });
+        expect(await area.exportToken()).toBe(before);
+        expect(area.storage.getItem("draft")).toBe("keep");
+        await expect(
+          change(area, token, { replace: true, discardLocal: true }),
+        ).resolves.toBeUndefined();
+      });
+
+      it("still requires replacement consent after preserving pending writes remotely", async () => {
+        const w = fresh();
+        const area = await w.device().open({ debounceMs: 1e9 });
+        const token = await (await w.device().open()).exportToken();
+        const before = await area.exportToken();
+        await area.set({ draft: "preserved" });
+        await expect(change(area, token)).rejects.toMatchObject({
+          code: "would-replace",
+        });
+        expect(area.inspect().dirtyKeys).toBe(0);
+        expect(await area.exportToken()).toBe(before);
+        const reader = await w.device().open();
+        await reader.link({ token: before });
+        expect(await reader.get()).toEqual({ draft: "preserved" });
+      });
+
+      it("rechecks live data pulled by an already running sync pass", async () => {
+        const w = fresh();
+        const d = w.device({ cache: "memory", latencyMs: 20 });
+        const original = await d.open({ debounceMs: 1e9 });
+        await original.set({ remote: "keep" });
+        await original.syncNow();
+        const before = await original.exportToken();
+        original.close();
+        await new MemoryCache("test", d.mem).clearItems();
+        const token = await (await w.device().open()).exportToken();
+        const area = await d.open({ debounceMs: 1e9 });
+        expect(await area.get()).toEqual({});
+        await expect(change(area, token)).rejects.toMatchObject({
+          code: "would-replace",
+        });
+        expect(await area.exportToken()).toBe(before);
+        expect(await area.get()).toEqual({ remote: "keep" });
+      });
+
+      it("guards dirty tombstones only against orphaning", async () => {
+        const w = fresh();
+        const area = await w.device().open({ backend: undefined });
+        const token = await (await w.device().open()).exportToken();
+        await area.set({ deleted: "value" });
+        await area.remove("deleted");
+        expect(await area.get()).toEqual({});
+        expect(area.inspect().dirtyKeys).toBe(1);
+
+        await expect(change(area, token)).rejects.toMatchObject({
+          code: "would-orphan",
+        });
+        await expect(
+          change(area, token, { discardLocal: true }),
+        ).resolves.toBeUndefined();
+      });
+
+      it("allows synced tombstones without confirmation", async () => {
+        const w = fresh();
+        const area = await w.device().open({ debounceMs: 1e9 });
+        const token = await (await w.device().open()).exportToken();
+        await area.set({ deleted: "value" });
+        await area.syncNow();
+        await area.remove("deleted");
+        await area.syncNow();
+        expect(area.inspect().dirtyKeys).toBe(0);
+        await expect(change(area, token)).resolves.toBeUndefined();
+      });
+    },
+  );
+
+  it("link() bypasses both guards for a normalized spelling of the current token", async () => {
+    const area = await fresh().device().open({ backend: undefined });
+    await area.set({ draft: "unsynced" });
+    const token = await area.exportToken();
+    const info = area.token;
+    const normalized = token
+      .toLowerCase()
+      .replace(/-/g, " ")
+      .replace(/0/g, "o");
+    await area.link({ token: normalized, source: "passkey" });
+    expect(await area.exportToken()).toBe(token);
+    expect(area.token).toEqual(info);
+    expect(await area.get()).toEqual({ draft: "unsynced" });
+    expect(area.inspect().dirtyKeys).toBe(1);
   });
 
   it("KP-13 (not implemented, D-41) a #burrow=<code> fragment is ignored and left in the URL", async () => {

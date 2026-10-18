@@ -11,8 +11,12 @@ import {
   sha256,
   utf8,
 } from "../../src/bytes.js";
-import { PRF_SALT_V1, deriveSlotKeys } from "../../src/codec/derive.js";
-import { encodeToken } from "../../src/codec/token.js";
+import {
+  PRF_SALT_V1,
+  derivePasskeyUserHandle,
+  deriveSlotKeys,
+} from "../../src/codec/derive.js";
+import { decodeToken, encodeToken } from "../../src/codec/token.js";
 import { BackendError, BurrowError } from "../../src/errors.js";
 import { type PasskeyBackup, passkeyBackup } from "../../src/passkey.js";
 import type { BackendConfig } from "../../src/types.js";
@@ -301,17 +305,18 @@ describe("KP-5/KP-6 save and restore", () => {
     vi.stubGlobal("location", { hostname: "notes.example" });
     await p.save(await newToken());
     const pk = auth.createCalls[0]!.publicKey;
-    expect(pk.rp).toEqual({ name: "notes.example" });
+    expect(pk.rp).toEqual({ id: "notes.example", name: "notes.example" });
     expect(pk.user).toMatchObject({
       name: "notes.example",
       displayName: "notes.example",
     });
   });
 
-  it("KP-5 user handle is stable per userName, differs between labels, and displayName does not change it (D-47)", async () => {
+  it("KP-5 user handles identify tokens independently of presentation labels", async () => {
+    const token = await newToken();
     const handle = async (o: { userName?: string; displayName?: string }) => {
       auth.createCalls.length = 0;
-      await passkeyBackup({ backend, ...o }).save(await newToken());
+      await passkeyBackup({ backend, ...o }).save(token);
       const pk = auth.createCalls[0]!.publicKey;
       return { id: b64url(new Uint8Array(pk.user.id as ArrayBuffer)), pk };
     };
@@ -319,7 +324,7 @@ describe("KP-5/KP-6 save and restore", () => {
     const a2 = await handle({ userName: "a", displayName: "Alice's laptop" });
     const b = await handle({ userName: "b" });
     expect(a1.id).toBe(a2.id);
-    expect(a1.id).not.toBe(b.id);
+    expect(a1.id).toBe(b.id);
     expect(a1.id).toHaveLength(22); // 16 bytes
     expect(a2.pk.user).toMatchObject({
       name: "a",
@@ -327,19 +332,105 @@ describe("KP-5/KP-6 save and restore", () => {
     });
   });
 
-  it("KP-5 the host fallback shares the handle of an explicit identical label across new backup utilities (D-47)", async () => {
-    vi.stubGlobal("location", { hostname: "notes.example" });
+  it("KP-5 normalized spellings of a token share a handle, while different tokens do not", async () => {
+    const token = await encodeToken(new Uint8Array(32));
+    await p.save(token);
+    await p.save(token.toLowerCase().replace(/-/g, " \n").replace(/0/g, "o"));
     await p.save(await newToken());
-    const first = auth.createCalls[0]!.publicKey;
-    await passkeyBackup({ backend, userName: "notes.example" }).save(
-      await newToken(),
+    const ids = auth.createCalls.map((c) => c.publicKey.user.id);
+    expect(ids[0]).toEqual(ids[1]);
+    expect(ids[0]).not.toEqual(ids[2]);
+    expect(ids[0]).toEqual(
+      await derivePasskeyUserHandle(await decodeToken(token), "localhost"),
     );
+  });
+
+  it("KP-5 default and explicit current-host RP IDs share a handle across new backup utilities", async () => {
+    vi.stubGlobal("location", { hostname: "notes.example" });
+    const token = await newToken();
+    await p.save(token);
+    const first = auth.createCalls[0]!.publicKey;
+    await passkeyBackup({ backend, rpId: "NOTES.Example" }).save(token);
     const second = auth.createCalls[1]!.publicKey;
     expect(second.user.id).toEqual(first.user.id);
     expect(second.user.displayName).toBe("notes.example");
+    expect(first.rp.id).toBe("notes.example");
+    expect(second.rp.id).toBe("notes.example");
     // The stable identity does not make the WebAuthn challenge predictable.
     expect(second.challenge).not.toEqual(first.challenge);
   });
+
+  it("KP-5 the effective RP scopes a handle, with shared parent RPs agreeing across subdomains", async () => {
+    const token = await newToken();
+    vi.stubGlobal("location", { hostname: "notes.example.com" });
+    await passkeyBackup({ backend, rpId: "EXAMPLE.com" }).save(token);
+    await p.save(token);
+    vi.stubGlobal("location", { hostname: "tasks.example.com" });
+    await passkeyBackup({ backend, rpId: "example.com" }).save(token);
+    await p.save(token);
+    const ids = auth.createCalls.map((c) => c.publicKey.user.id);
+    expect(ids[0]).toEqual(ids[2]);
+    expect(
+      new Set(ids.map((id) => b64url(new Uint8Array(id as ArrayBuffer)))).size,
+    ).toBe(3);
+  });
+
+  it("KP-5/KP-6 canonicalizes IDNs consistently for creation, follow-up assertions and restore", async () => {
+    const token = await newToken();
+    auth.createMode = "enabled-only";
+    vi.stubGlobal("location", { hostname: "xn--bcher-kva.example" });
+    const unicode = passkeyBackup({ backend, rpId: "BÜCHER.Example" });
+    await unicode.save(token);
+    await p.save(token);
+    expect(auth.createCalls[0]!.publicKey.user.id).toEqual(
+      auth.createCalls[1]!.publicKey.user.id,
+    );
+    expect(await unicode.restore()).toBe(token);
+    expect(auth.createCalls.map((c) => c.publicKey.rp.id)).toEqual([
+      "xn--bcher-kva.example",
+      "xn--bcher-kva.example",
+    ]);
+    expect(auth.getCalls.map((c) => c.publicKey.rpId)).toEqual([
+      "xn--bcher-kva.example",
+      "xn--bcher-kva.example",
+      "xn--bcher-kva.example",
+    ]);
+  });
+
+  it.each([
+    "",
+    "https://example.com",
+    "example.com:443",
+    "example.com/",
+    "example.com/path",
+    "example.com?x",
+    "example.com#x",
+    "user@example.com",
+    "example.com\\path",
+    " example.com",
+    "example.com\n",
+    "%65xample.com",
+    null,
+    42,
+  ])(
+    "KP-5/KP-6 rejects an invalid RP ID %j before prompting or backend access",
+    async (rpId) => {
+      const invalid = passkeyBackup({ backend, rpId: rpId as string });
+      const token = await newToken();
+      await expect(invalid.save(token)).rejects.toMatchObject({
+        code: "prf-unsupported",
+        message: "invalid relying-party id",
+      });
+      await expect(invalid.restore()).rejects.toMatchObject({
+        code: "prf-unsupported",
+        message: "invalid relying-party id",
+      });
+      expect(auth.create).not.toHaveBeenCalled();
+      expect(auth.get).not.toHaveBeenCalled();
+      expect(backend.stats.gets).toBe(0);
+      expect(backend.stats.puts).toBe(0);
+    },
+  );
 
   it("KP-5 create() with prf.enabled but no results takes exactly one follow-up get() for the PRF output", async () => {
     auth.createMode = "enabled-only";
@@ -871,7 +962,12 @@ describe("KP-5/KP-6 with the StorageArea", () => {
       code: "would-orphan",
     });
     B.backend.failWith = null;
-    await b.link({ token, source: "passkey", discardLocal: true });
+    await b.link({
+      token,
+      source: "passkey",
+      discardLocal: true,
+      replace: true,
+    });
     expect(await b.get()).toEqual({ theme: "dark" });
     expect(auth.get).toHaveBeenCalledOnce();
   });

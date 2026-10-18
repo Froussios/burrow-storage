@@ -1,10 +1,18 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import vectors from "../vectors.json" with { type: "json" };
-import { b64url, fromB64url, hex, sha256, utf8 } from "../../src/bytes.js";
+import {
+  b64url,
+  fromB64url,
+  hex,
+  sha256,
+  subtle,
+  utf8,
+} from "../../src/bytes.js";
 import {
   commitment,
   deriveAppKeys,
+  derivePasskeyUserHandle,
   deriveSlotKeys,
   docId,
   token,
@@ -98,6 +106,40 @@ describe("ENC-1/ENC-2 derivation matches the committed vectors", () => {
     const s = await deriveSlotKeys(fromHex(vectors.slot.prfHex));
     expect(s.slotId).toBe(vectors.slot.slotId);
     expect(await token(s.slotMac, s.slotId, 0)).toBe(vectors.slot.tok0);
+  });
+
+  it.each(vectors.passkeyUser)(
+    "passkey user handle for $rpId matches the frozen 128-bit HKDF vector",
+    async ({ rootSecretHex, rpId, handleHex }) => {
+      const secret = fromHex(rootSecretHex);
+      expect(hex(await derivePasskeyUserHandle(secret, rpId))).toBe(handleHex);
+      expect(hex(secret)).toBe(rootSecretHex);
+      expect(handleHex).toHaveLength(32);
+    },
+  );
+
+  it("passkey user handles use a separate HKDF domain from app and keyslot keys", async () => {
+    const rpId = vectors.passkeyUser[0]!.rpId;
+    const handle = hex(await derivePasskeyUserHandle(root, rpId));
+    const ikm = await subtle().importKey("raw", root, "HKDF", false, [
+      "deriveBits",
+    ]);
+    for (const [salt, info] of [
+      ["burrow/v1", "path" + rpId],
+      ["burrow/v1", "enc" + rpId],
+      ["burrow/v1", "auth" + rpId],
+      ["burrow/slot/v1", "kek"],
+      ["burrow/slot/v1", "auth"],
+      ["burrow/slot/v1", "slot"],
+      ["burrow/v1", "burrow/passkey-user/v1" + rpId],
+    ]) {
+      const other = await subtle().deriveBits(
+        { name: "HKDF", hash: "SHA-256", salt: utf8(salt!), info: utf8(info!) },
+        ikm,
+        128,
+      );
+      expect(handle).not.toBe(hex(new Uint8Array(other)));
+    }
   });
 
   it("ENC-1 ids are 43 chars and unique per app, key and secret", async () => {

@@ -49,7 +49,7 @@ const tokenBackend = new FirestoreBackend({
 const store = await burrow({ app: "my-app", backend: contentBackend });
 const backup = passkeyBackup({ backend: tokenBackend });
 
-// First device, after the site's passkey-replacement warning, from a click:
+// First device, from a click; keep the token and retry if saving fails:
 await backup.save(await store.exportToken());
 // Later, on another device configured for these same stores, from a click:
 const token = await backup.restore();

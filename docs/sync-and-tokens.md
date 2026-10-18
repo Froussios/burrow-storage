@@ -48,6 +48,7 @@ try {
   await store.link({ token: input.value });
 } catch (e) {
   if (e.code === "bad-token") say("That token is not right. Check it and try again.");
+  else throw e; // For an existing device, handle the replacement guards described below.
 }
 ```
 
@@ -68,18 +69,13 @@ try {
 import { passkeyBackup } from "burrow-storage/passkey";
 const backup = passkeyBackup({ userName: "notes" });
 
-// first device, from a click, after keeping the current and earlier tokens
-if (
-  (await backup.available()) &&
-  confirm(
-    "An earlier notes passkey may be replaced, even if this save fails. " +
-      "Have you kept the storage tokens and want to continue?",
-  )
-) {
+// first device, from a click
+if (await backup.available()) {
   try {
     await backup.save(await store.exportToken());
+    say("Saved in a passkey.");
   } catch (e) {
-    if (e.code === "prf-unsupported") say("This browser cannot use passkeys for this. Keep your token instead.");
+    say("Passkey backup may be unavailable. Keep your storage token and try again.");
   }
 }
 
@@ -94,26 +90,26 @@ key, a write-token key and a document id, and writes the token, encrypted, at th
 utility's configured backend. The passkey itself never becomes the secret, so several passkeys
 (one per platform) can each hold a keyslot for the same token.
 
-Saving again with the same RP ID and `userName` may replace the earlier passkey; the effective
-name defaults to the page's host. The app chooses the label and may append a distinguishing
-suffix to keep separate backups. A site with several apps gives each its own label, since each
-app's passkey holds a different token. `displayName` defaults to that label, sets only the new
-credential's visible name, and does not change its handle. Labels are visible to the password
-manager; they are not private account identifiers.
+The decoded token and canonical effective RP ID determine the passkey's handle. Different
+tokens can coexist with the same visible labels, including different apps on one site.
+`userName` defaults to the page's host and `displayName` defaults to `userName`; both are public
+presentation only. Changing labels does not create another backup of the same token on one RP.
+An explicit parent `rpId` lets eligible subdomains share that passkey identity; see
+[RP normalization and replacement limits](api.md#passkey-backup).
 
-Warn before each save and ask the user to keep the current and any earlier storage tokens.
-Replacement happens before PRF evaluation and the keyslot write. Saving a different token
-under the same label loses the old token's passkey route; even for the same token, a failed
-save after creation can leave no usable passkey backup. The kept token or another backup is
-the recovery route. Older random-handle duplicates remain. The replacement tests use only
-Chromium's virtual authenticator; iCloud Keychain, Google Password Manager, Windows Hello,
-1Password and Bitwarden have not been validated on real devices.
+Re-saving the same token on one RP may replace its earlier credential before PRF evaluation
+and the keyslot write. A failure after creation can leave no usable passkey backup. Keep the
+token and retry if saving fails; an earlier successful save does not establish current
+recoverability. Show success only after `save()` resolves, and mark backup status uncertain
+after a failed attempt. The replacement tests use only Chromium's virtual authenticator;
+iCloud Keychain, Google Password Manager, Windows Hello, 1Password and Bitwarden have not
+been validated on real devices.
 
 `restore()` evaluates the PRF again, derives the same id, reads and unwraps the keyslot, and
 returns the token. If the chosen passkey has no keyslot, or the user cancels, it returns `null`
-and nothing changes. Because the token comes back as a value, a `would-orphan` retry of `link()`
-reuses it without a second prompt. `source: "passkey"` labels it in `store.token.source`, so the
-UI can say where it came from.
+and nothing changes. Because the token comes back as a value, a `would-replace` or
+`would-orphan` retry of `link()` reuses it without a second passkey prompt. `source: "passkey"`
+labels it in `store.token.source`, so the UI can say where it came from.
 
 PRF support varies by browser, operating system and authenticator, and not every security key
 offers it. `backup.available()` checks without prompting. Cross-ecosystem use (an Apple passkey on
@@ -141,17 +137,23 @@ The demo (`demo/`, [user-journeys.md](user-journeys.md)) is the reference UI. It
      showBanner("Keep your storage token, or create a passkey backup, to get this back elsewhere.");
    });
    ```
-3. **Confirm before discarding.** `link()` and `unlink()` reject with `would-orphan` when this
-   device has writes that never synced. Ask, then retry with `discardLocal: true`.
+3. **Confirm when leaving data.** `link()` and `unlink()` reject with `would-replace` when the
+   current app has live cached data. Ask whether the token is kept, then retry with
+   `replace: true`. Empty stores need no replacement confirmation, and linking the token
+   already in use bypasses both guards. Unsynced writes have an independent `would-orphan`
+   guard: confirm discarding them before retrying with `discardLocal: true`. If both guards
+   apply, both overrides are required. Cached data does not reveal remote-only data, and
+   token provenance does not prove that a backup exists.
 4. **Say it plainly:** "Burrow cannot reset your data. Keep your storage token."
 5. On `decrypt-failed` (status `"error"`), tell the user to link the device again.
 
 Shared computers: `burrow({ app, rememberDevice: false })` keeps the token in memory only and the
 cache in memory too. Each session starts with a fresh token until the user links.
 
-Logging out: `unlink()` forgets the token on the device. The remote documents stay; the next
-`burrow()` generates a new token and clears the old token's cached items before use, so the next
-user of the device never sees the previous one's data in the site. Until then the old items remain
+Logging out: `unlink({ replace: true })`, after confirming when data is present, forgets the
+token on the device. The remote documents stay; the next `burrow()` generates a new token and
+clears the old token's cached items before use, so the next user of the device never sees the
+previous one's data in the site. Until then the old items remain
 in IndexedDB in plaintext; on a shared computer, `rememberDevice: false` keeps them off the disk
 altogether.
 

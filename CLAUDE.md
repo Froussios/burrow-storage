@@ -50,10 +50,10 @@ them as history unless the owner says otherwise.
   explicit project config to use your own live or pre-production store; invalid config or
   simultaneous live and emulator settings stop the server (D-44).
 - **Public contract**, major version to change: the `Envelope` format, HKDF salts `burrow/v1`,
-  `burrow/slot/v1`, PRF salt `burrow/prf/v1`, the info labels, the AAD and token formats, the
-  storage-token encoding, and the passkey user-handle derivation with its `burrow/user/v1`
-  prefix (`SECURITY.md`, D-47). Changing the handle derivation requires a migration path to
-  preserve replacement of earlier credentials.
+  `burrow/slot/v1`, PRF salt `burrow/prf/v1`, info labels, AAD and token formats, storage-token
+  encoding, and the token/RP-bound passkey handle under `burrow/passkey-user/v1` (`SECURITY.md`,
+  D-55). D-55 supersedes D-47's label derivation with an owner-authorized clean break: the demo
+  is the only client, so this change needs no major release, migration or compatibility code.
 - Size budgets (min+gzip, `npm run size`): core + memory backend ≤ 12 KB; the passkey backup
   (`burrow-storage/passkey`) ≤ 2 KB on top.
 - Terminology: the **storage token** (`exportToken()`, `link({ token })`, `bad-token`) and the

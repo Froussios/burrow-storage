@@ -3,10 +3,11 @@
 Burrow keeps per-user data in a store that anyone may read by id, yet neither the store's operator
 nor the site's developer can read it, and nothing in it names a user. This document is the
 normative description of how, and the plain list of what it does not protect. Everything under
-*Derivation* and *Formats* is frozen public contract for v1, including the passkey user-handle
-derivation and its `burrow/user/v1` prefix: changing any of it is a major release with a migration
-path. Changing a passkey handle without migration stops replacement of earlier credentials and
-allows duplicate labels again.
+*Derivation* and *Formats*, including the token/RP-bound passkey handle, is frozen public
+contract for v1: future changes require a major release with a migration path. D-55 explicitly
+supersedes the earlier label-derived handle under the owner's direction. The demo is the only
+client, so this change is a clean break with no migration or compatibility layer and does not
+require a major release.
 
 **In brief.** Burrow aims to guarantee that:
 
@@ -73,8 +74,8 @@ kek      = HKDF-Expand(sprk, "kek", 32)               AES-256-GCM, wraps the roo
 slotMac  = HKDF-Expand(sprk, "auth", 32)              HMAC-SHA-256, write tokens for the keyslot
 slotId   = base64url(SHA-256(HKDF-Expand(sprk, "slot", 32)))[0:43]
 
-Passkey user handle (public identity, not a key; D-47):
-user.id  = SHA-256("burrow/user/v1" || userName)[0:16]
+Passkey user handle (public identity, not a key; D-55):
+user.id  = HKDF-Expand(prk, "burrow/passkey-user/v1" || 0x00 || effectiveRpId, 16)
 ```
 
 `||` is concatenation of UTF-8 bytes; `app` matches `/^[a-z0-9-]{1,64}$/`. WebCrypto's HKDF
@@ -82,13 +83,16 @@ performs extract and expand in one `deriveBits` call. Test vectors produced by a
 implementation (`node:crypto`, `scripts/gen-vectors.mjs`) are committed in `test/vectors.json`,
 and the unit tests check the WebCrypto code against them.
 
-For the passkey handle, `userName` is the effective public label (the page's host by default).
-The RP ID scopes credential use, but is not hashed into the handle: the same explicit label on
-two sites gives the same handle. This is a hash of the label, not a secret or an independent user
-identifier; anyone who knows the label can compute it. Apps should choose non-sensitive public
-labels and can use site-specific labels to avoid matching handles across sites. `displayName`
-does not enter the derivation. The prefix, UTF-8 input, SHA-256 and first-16-byte truncation are
-stable v1 public contract (D-47).
+The passkey handle uses the decoded token secret and a separate HKDF info domain, not a
+content or keyslot key. `effectiveRpId` is the explicit `rpId`, or the current hostname
+(`localhost` outside a page), canonicalized by URL hostname parsing to lowercase ASCII/IDNA;
+a trailing dot is retained. The same canonical RP ID is supplied to credential creation and
+assertions. Invalid RP syntax rejects before prompting;
+the browser enforces whether that RP is permitted for the page's origin. The zero byte frames
+the fixed domain separately from the RP ID. Equivalent token encodings yield the same handle;
+different tokens or RPs yield independent handles. `userName` and `displayName` are public
+presentation labels and do not enter the derivation. Sharing a token across apps on one RP
+also shares this passkey identity, even when labels or recovery backends differ.
 
 A token derived from something the user types (a passphrase) would have to pass through
 PBKDF2-SHA-256 with at least 600 000 iterations first. v1 has no such path and accepts only random
@@ -197,7 +201,7 @@ preserving cached and dirty data. Independent item writes already committed befo
 expiry cannot be rolled back. It never automatically republishes an expired identity. Older
 clients may decrypt-fail or authentically rewrite a stub. Token-access payloads are fully
 excluded; empty keyslot ciphertext would destroy token access with a working authenticator.
-`restore()` remains read-only and repeated passkey `save()` is not safe renewal (D-47).
+`restore()` remains read-only and repeated passkey `save()` is not safe renewal (D-55).
 
 Only a dedicated content target is eligible for this reaper: encrypted mixed collections cannot
 be classified. The operator explicitly acknowledges this boundary. The locked, private daily
@@ -242,15 +246,15 @@ other except by timing. Key names and values are never visible.
 - Passkeys use `residentKey: "required"`, `userVerification: "required"` and no attestation. The
   passkey's `user.name` is the site's chosen `userName`, or the page's host. `displayName`
   defaults to that name; neither default contains an email. These labels are visible to the
-  authenticator or password manager and are not confidential. The effective `userName` fixes
-  the user handle; the RP ID scopes credential replacement, and `displayName` does not affect
-  it. Distinct backups that must coexist on one authenticator need distinct `userName` values.
+  authenticator or password manager and are not confidential. Neither label changes the user
+  handle; the decoded token and effective RP ID determine credential replacement. Different
+  tokens can coexist with the same labels.
 - A conforming discoverable authenticator replaces an existing credential for the same RP ID
   and user handle during `credentials.create()`, before the new PRF-backed keyslot is written.
-  A different token saved under that label loses its earlier passkey recovery route. Even for
-  the same token, an unsupported PRF, dismissed follow-up prompt or failed keyslot write can
-  leave no usable passkey backup. Sites must warn before creating and ask users to keep the
-  current and any earlier storage tokens elsewhere. This utility cannot undo replacement.
-  Existing random-handle credentials and their encrypted keyslots are retained. Replacement
+  Different tokens have different handles and do not replace each other. Re-saving the same
+  token can still lose its earlier passkey route if PRF evaluation, a follow-up prompt or the
+  keyslot write fails. Keep the storage token, and retry after a failure; the utility cannot
+  undo replacement. A record of an earlier successful save is historical, not proof of current
+  recoverability. Replacement
   has been checked only on Chromium's virtual authenticator; no real-manager guarantee is
   claimed for iCloud Keychain, Google Password Manager, Windows Hello, 1Password or Bitwarden.

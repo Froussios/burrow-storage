@@ -115,5 +115,27 @@
   "otherApp": {
     "app": "other",
     "base": "G4wbI34boDMXw-jinB2Yo8BsMU8qT-w6N3yHDFn5rvY"
-  }
+  },
+  "passkeyUser": [
+    {
+      "rootSecretHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "rpId": "example.com",
+      "handleHex": "68127e7f59376e42d8d8c3f8c53e5155"
+    },
+    {
+      "rootSecretHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "rpId": "notes.example.com",
+      "handleHex": "a1b5b85a4e965a7c062dfa7db7f07929"
+    },
+    {
+      "rootSecretHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "rpId": "xn--bcher-kva.example",
+      "handleHex": "6735b38b392daf0e220bc83eaa46be06"
+    },
+    {
+      "rootSecretHex": "43f3d9f154f34b2614fc1b8a5462925e467f04ea66f6a10734836c05efa51dd2",
+      "rpId": "example.com",
+      "handleHex": "0eecb75291e58ce187a1add0f5f01861"
+    }
+  ]
 }

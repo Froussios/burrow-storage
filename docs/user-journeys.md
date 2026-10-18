@@ -2,9 +2,7 @@
 
 These five journeys define what a person must be able to do on the Burrow demo page
 (`demo/index.html`, deployed at <https://froussios.github.io/burrow-storage/>). They drive the
-demo's design and its browser tests. The page also has **Forget this device**, which calls
-`unlink()` (API-8): the token is forgotten here, the next load starts a new one, and the old token
-still links back to the data.
+demo's design and its browser tests. The page also has **Forget this device**, described below.
 
 ## Terms
 
@@ -35,7 +33,10 @@ The **Storage token** panel is always visible. It shows:
 
   Each source also shows when this device obtained the token. The page reads the source from
   `BurrowArea.token` (`{ source, remembered, since }`) and updates it on `BurrowArea.onToken`.
-- whether a successful passkey save was recorded; the page cannot verify current recovery.
+- the recorded passkey backup status: *Yes, in a passkey.* after a successful save, *Not
+  confirmed. Keep the storage token or try saving again.* while a save is pending or after it
+  fails, or *None yet. Create one below, or keep the token yourself.* before either. This record travels with the
+  data; it cannot verify that a previously saved passkey is still available.
 
 ## Summary
 
@@ -52,24 +53,28 @@ The **Storage token** panel is always visible. It shows:
 **Starting state:** no token. The page has just generated one, and the panel says *Generated on
 this device (new)* and *Passkey backup: None yet*.
 
-**Steps:** the user keeps the current and any earlier storage tokens, clicks **Create new backup
-with key**, accepts the replacement warning, and confirms the passkey prompt. Declining the
-warning creates nothing and leaves any existing passkey backup usable.
+**Steps:** the user clicks **Create new backup with key** and confirms the passkey prompt. The
+page does not ask for a separate confirmation.
 
-**Outcome:** the token is stored behind a new passkey. The panel says *Passkey backup: Previously
-saved with a passkey. Keep the storage token.* This reports a successful save in the past,
-not a guarantee that the passkey can still recover it. The data the user writes syncs to the
-store under that token.
+**Outcome:** the token is stored behind a new passkey. The panel says *Passkey backup: Yes, in a
+passkey.* This records the successful save, rather than continuously checking recovery. The
+data the user writes syncs to the store under that token.
 
 **How:** `passkeyBackup({ userName: "burrow-demo" }).save(await store.exportToken())` creates a
 discoverable passkey, evaluates its PRF, and writes a keyslot holding the token wrapped under the
-PRF output. The demo then records the backup in the store under its own `backup` key, so every
-device linked to the token shows it.
+PRF output. The user handle derives from the decoded token and effective relying party ID
+using a separate HKDF domain. The label is only for display: different tokens coexist even
+under the same label, while saving the same token again on the same relying party replaces its
+credential regardless of label. The demo records `backup: "passkey"` in the store, so every
+device linked to the token shows the recorded status.
 
 **Notes:**
-- A passkey with the same label may be replaced before PRF evaluation or writing the new
-  keyslot. A failure afterward can leave no usable passkey backup, even for the same token;
-  the kept storage tokens or another backup recover the data. The demo warns on every save.
+- Re-saving the same token may replace its credential before PRF evaluation or writing the
+  new keyslot. A failure afterward can leave no usable passkey backup. Before starting a save,
+  the demo persists `backup: "unknown"` and shows *Not confirmed. Keep the storage token or try
+  saving again.* This survives closing the page during a save. Success records `"passkey"`
+  only if the current token still matches the saved token. The user can retry or copy the token
+  they still have on this device.
 - Data syncs within seconds of being written, before any passkey exists. The passkey is what
   makes the token recoverable after the browser forgets it.
 - Where the browser or authenticator lacks the PRF extension (support varies), the page says the
@@ -90,9 +95,15 @@ existing data appears, typically within a few seconds.
 `BurrowArea.link({ token, source: "passkey" })` makes it this device's token and pulls the data.
 
 **Notes:**
-- If the user wrote anything under the fresh token first, linking would abandon it. The page
-  asks before discarding it (`would-orphan`), then links the token it already has, without a
-  second prompt.
+- If the current token has locally cached live data, `link()` rejects with `would-replace`.
+  The page asks before replacing it and retries with `replace: true` only after confirmation.
+  An empty local cache or linking the token already in use needs no replacement confirmation.
+- Unsynced writes have an independent `would-orphan` guard. The page asks before discarding
+  them and retries with `discardLocal: true` only after confirmation; accepting this does not
+  bypass the replacement guard. Declining either confirmation leaves the device as it was.
+- Restore runs once. All confirmation retries reuse its token without another passkey prompt.
+  The guards inspect local state; they do not establish whether the current token has data
+  stored only on another device or in the shared store.
 - A passkey from another ecosystem works only through the QR/hybrid flow. This has not been
   tested on real hardware.
 - If the user picks a passkey that has no backup, the page says "No passkey backup was used", the
@@ -112,6 +123,10 @@ Their existing data appears.
 **How:** `BurrowArea.link({ token })` checks the token's checksum before any network call, adopts it
 and pulls the data. Case, spaces and hyphens are ignored, and `O`/`0` and `I`/`L`/`1` count as
 the same.
+
+**Notes:** linking over locally cached live data or unsynced writes follows the same independent
+replacement and discard confirmations as restoring from a passkey. Linking an empty device or
+its current token needs no replacement confirmation.
 
 ## 4. Paste an invalid token
 
@@ -143,3 +158,17 @@ API-10). That takes 6 ms in Chromium and 11 ms in Firefox, against a 50 ms budge
 
 **Notes:** clearing site data, a private window or another browser profile means no token. The
 user then goes through journey 2 or 3.
+
+## Forget this device
+
+**Forget this device** calls `unlink()` (API-8). If locally cached live data exists, the library
+rejects with `would-replace`; the page asks for confirmation before retrying with `replace:
+true`. Unsynced writes independently require confirmation to retry with `discardLocal: true`.
+Declining either confirmation keeps the current token and data. An empty device with no
+unsynced writes is forgotten without confirmation.
+
+After unlinking, the page reloads and starts a new token. Other devices and remote documents
+are unaffected; the old token still links back to its data. The prompts depend on the local
+cache and pending writes, not proof of what exists remotely or whether a passkey can recover
+the old token. The user should keep that token or another working backup if they want to
+return to it.

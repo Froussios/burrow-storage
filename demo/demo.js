@@ -7,34 +7,6 @@
     $("message").textContent = text;
   };
 
-  // TODO(2026-11-18): remove. Burrow 0.1.1 kept one origin-wide token in a
-  // "_device" store that later versions neither read nor clear (D-54, #76).
-  // Drop it from visitors' browsers so no unused key material outlives the
-  // switch. Runs before burrow() opens the database; a failure only means a
-  // retry on the next load.
-  await new Promise((done) => {
-    try {
-      const r = indexedDB.open("burrow");
-      r.onerror = () => done();
-      r.onsuccess = () => {
-        const db = r.result;
-        const legacy = db.objectStoreNames.contains("_device");
-        const version = db.version + 1;
-        db.close();
-        if (!legacy) return done();
-        const up = indexedDB.open("burrow", version);
-        up.onupgradeneeded = () => up.result.deleteObjectStore("_device");
-        up.onsuccess = () => {
-          up.result.close();
-          done();
-        };
-        up.onerror = () => done();
-      };
-    } catch {
-      done();
-    }
-  });
-
   const store = await Burrow.burrow({ app: "burrow-demo" });
   const s = store.storage; // drop-in for localStorage
   // The token's passkey backup lives outside the store
@@ -100,8 +72,10 @@
   const showBackup = () => {
     $("token-backup").textContent =
       s.getItem("backup") === "passkey"
-        ? "Previously saved with a passkey. Keep the storage token."
-        : "None yet. Create one below, or keep the token yourself.";
+        ? "Yes, in a passkey."
+        : s.getItem("backup") === "unknown"
+          ? "Not confirmed. Keep the storage token or try saving again."
+          : "None yet. Create one below, or keep the token yourself.";
   };
 
   // A low-key nudge, once per visit, when there is something worth keeping and
@@ -153,46 +127,80 @@
   // Passkey (KP-5)
   const NO_PASSKEY =
     "This browser cannot use passkeys for this. Keep your storage token instead.";
+  let saving = false;
+  const tokenControls = document.querySelectorAll(
+    "#passkey, #forget, #link-passkey, #link-form button[type=submit]",
+  );
   $("passkey").addEventListener("click", async () => {
-    if (!(await backup.available())) return say(NO_PASSKEY);
-    if (
-      !confirm(
-        "Creating a “burrow-demo” passkey may replace an existing passkey with that name. Keep the storage tokens for your current and any earlier backup first: replacement can make the earlier backup unreachable, even if saving this backup fails. Have you kept those tokens and want to continue?",
-      )
-    )
-      return say("No passkey backup was created.");
+    if (saving) return;
+    saving = true;
+    for (const control of tokenControls) control.disabled = true;
     try {
-      await backup.save(await store.exportToken());
-      s.setItem("backup", "passkey");
+      if (!(await backup.available())) return say(NO_PASSKEY);
+      const token = await store.exportToken();
+      // Persist uncertainty before credential replacement, including if the
+      // user closes the page while the authenticator or keyslot write waits.
+      await store.set({ backup: "unknown" });
+      await backup.save(token);
+      // Another tab can change the identity while the passkey prompt is open.
+      if ((await store.exportToken()) !== token)
+        return say("Passkey backup created for the previous storage token.");
+      await store.set({ backup: "passkey" });
       say(
         "Backup created. On another device, go to “Link to existing backup” and choose “Use my passkey”.",
       );
     } catch (e) {
       say(
         e.code === "prf-unsupported"
-          ? `${NO_PASSKEY} An earlier passkey may already have been replaced.`
+          ? NO_PASSKEY
           : e.code === "cancelled"
-            ? "Passkey backup was not saved. Keep the storage token; an earlier passkey may have been replaced."
-            : `Passkey backup was not saved (${e.code ?? e.name}). Keep the storage token; an earlier passkey may have been replaced.`,
+            ? "Passkey backup was not saved. Keep the storage token or try again."
+            : `Passkey backup was not saved (${e.code ?? e.name}). Keep the storage token or try again.`,
       );
+    } finally {
+      saving = false;
+      for (const control of tokenControls) control.disabled = false;
+      showBackup();
+      debug();
     }
-    debug();
   });
+
+  // Confirm only when the library reports current data or unsynced changes.
+  // Retry with the same options, including a token restored by a passkey.
+  const changeToken = async (change, options, action) => {
+    for (;;) {
+      try {
+        await change(options);
+        return true;
+      } catch (e) {
+        const prompt =
+          e.code === "would-orphan"
+            ? `This device has changes that are not synced yet. Discard them and ${action} anyway?`
+            : e.code === "would-replace"
+              ? action === "link"
+                ? "Replace this device's storage token and data? Keep the current token or a passkey so you can return to them."
+                : "Forget this device's storage token and data? Keep the token or a passkey so you can return to them."
+              : null;
+        if (!prompt) throw e;
+        if (!confirm(prompt)) return false;
+        options = {
+          ...options,
+          ...(e.code === "would-orphan"
+            ? { discardLocal: true }
+            : { replace: true }),
+        };
+      }
+    }
+  };
 
   // Linking (API-7)
   const link = async (options) => {
+    if (saving) return;
     try {
-      await store.link(options);
+      if (!(await changeToken((o) => store.link(o), options, "link")))
+        return say("Kept this device as it was.");
       say("Linked. Your data is here.");
     } catch (e) {
-      if (
-        e.code === "would-orphan" &&
-        confirm(
-          "This device has changes that are not synced yet. Discard them and link anyway?",
-        )
-      ) {
-        return link({ ...options, discardLocal: true });
-      }
       say(
         e.code === "bad-token"
           ? "That token is not right. Check it and try again."
@@ -207,7 +215,7 @@
     e.preventDefault();
     link({ token: $("link-code").value });
   });
-  // KP-6: one passkey prompt; a would-orphan retry reuses the token it gave.
+  // KP-6: confirmation retries reuse the token from one passkey prompt.
   $("link-passkey").addEventListener("click", async () => {
     let token;
     try {
@@ -239,34 +247,12 @@
   // Forget the token on this device, like logging out (API-8). The next visit
   // starts a new token.
   $("forget").addEventListener("click", async () => {
-    if (
-      !confirm(
-        "Forget the storage token on this device? Your data stays in the backup; keep the token or a passkey to get it back.",
-      )
-    )
-      return;
+    if (saving) return;
     try {
-      await store.unlink();
+      if (!(await changeToken((o) => store.unlink(o), {}, "forget")))
+        return say("Kept this device as it was.");
     } catch (e) {
-      if (
-        e.code !== "would-orphan" ||
-        !confirm(
-          "This device has changes that are not synced yet. Discard them and forget anyway?",
-        )
-      ) {
-        say(
-          e.code === "would-orphan"
-            ? "Kept this device as it was."
-            : `Could not forget this device (${e.code ?? e.name}).`,
-        );
-        return;
-      }
-      try {
-        await store.unlink({ discardLocal: true });
-      } catch (e2) {
-        say(`Could not forget this device (${e2.code ?? e2.name}).`);
-        return;
-      }
+      return say(`Could not forget this device (${e.code ?? e.name}).`);
     }
     location.reload();
   });

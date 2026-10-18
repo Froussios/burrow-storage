@@ -144,6 +144,24 @@ const v = {
     app: "other",
     base: id(sha(expand(rootSecret, "burrow/v1", "pathother"))),
   },
+  passkeyUser: [
+    [rootSecret, "example.com"],
+    [rootSecret, "notes.example.com"],
+    [rootSecret, "xn--bcher-kva.example"],
+    [root2, "example.com"],
+  ].map(([secret, rpId]) => ({
+    rootSecretHex: secret.toString("hex"),
+    rpId,
+    handleHex: Buffer.from(
+      hkdfSync(
+        "sha256",
+        secret,
+        "burrow/v1",
+        "burrow/passkey-user/v1\0" + rpId,
+        16,
+      ),
+    ).toString("hex"),
+  })),
 };
 writeFileSync(
   new URL("../test/vectors.json", import.meta.url),

@@ -1,8 +1,13 @@
 // burrow-storage/passkey. KP-5..8, ENC-11, SEC-7: a passkey backs up the
 // storage token in a keyslot, a backend document encrypted under a key derived
 // from the passkey's PRF output. The passkey never becomes the token.
-import { randomBytes, sha256, utf8, zeroise } from "./bytes.js";
-import { PRF_SALT_V1, deriveSlotKeys, type SlotKeys } from "./codec/derive.js";
+import { randomBytes, utf8, zeroise } from "./bytes.js";
+import {
+  PRF_SALT_V1,
+  derivePasskeyUserHandle,
+  deriveSlotKeys,
+  type SlotKeys,
+} from "./codec/derive.js";
 import { type DocCipher, open, seal } from "./codec/envelope.js";
 import { decodeToken, encodeToken } from "./codec/token.js";
 import { defaultBackend, validateBackend } from "./config.js";
@@ -19,16 +24,16 @@ export interface PasskeyBackupOptions {
   backend?: Backend;
   /**
    * WebAuthn rp.id. Default: the page's host. Set it to the registrable domain
-   * to share across subdomains.
+   * to share across subdomains. Case and IDNs are canonicalised as URL hosts;
+   * empty IDs, URLs, ports and other URL fields reject before prompting.
    */
   rpId?: string;
   /** Relying-party display name. Default: the page's host. */
   rpName?: string;
   /**
    * user.name shown by the authenticator. Default: the page's host. Never an
-   * email unless you choose one. The user handle derives from this label:
-   * saving again on the same rp may replace its earlier passkey. Use distinct
-   * labels for backups you want to keep separately, and warn before saving.
+   * email unless you choose one. Presentation only: the user handle derives
+   * from the decoded token and effective RP ID, independently of this label.
    */
   userName?: string;
   /**
@@ -50,10 +55,10 @@ export interface PasskeyBackup {
   available(): Promise<boolean>;
   /**
    * Create a passkey and store `token` in a keyslot only it can open (KP-5).
-   * A passkey for the same rp and `userName` may be replaced (D-47), before
-   * this backup is written. Keep the current and any earlier storage tokens
-   * elsewhere, and warn the user before calling, even when saving the same
-   * token again. A failure after creation does not restore the old passkey.
+   * A passkey for the same token and RP may be replaced before this backup is
+   * written, regardless of its labels. Different tokens have distinct handles.
+   * Keep the token elsewhere: a failure after creation does not restore its
+   * old passkey. Restore also needs the backend that holds the keyslot.
    * Call from a user gesture. Rejects `bad-token`, `cancelled` (the prompt was
    * dismissed), `prf-unsupported`, `backend` or `conflict`.
    */
@@ -80,10 +85,18 @@ const bytes = (b: BufferSource) =>
       ? b
       : b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength),
   );
-// D-47: a stable user handle per label, so a repeat save replaces the passkey
-// instead of adding an identical entry.
-const userHandle = async (name: string) =>
-  (await sha256(utf8("burrow/user/v1" + name))).slice(0, 16);
+// Use the same canonical RP for the handle and every WebAuthn request. Reject
+// URL fields rather than silently dropping them; WebAuthn validates whether
+// the resulting domain is allowed for the current origin.
+function canonicalRpId(value: string): string {
+  try {
+    if (typeof value !== "string" || !value || /[:/?#@\\%\s]/.test(value))
+      throw 0;
+    return new URL("https://" + value).hostname;
+  } catch {
+    throw new BurrowError("prf-unsupported", "invalid relying-party id");
+  }
+}
 const slotCipher = (s: SlotKeys): DocCipher => ({
   key: s.kek,
   mac: s.slotMac,
@@ -126,6 +139,8 @@ export function passkeyBackup(
   options: PasskeyBackupOptions = {},
 ): PasskeyBackup {
   const host = () => globalThis.location?.hostname ?? "localhost";
+  const rp = () =>
+    canonicalRpId(options.rpId === undefined ? host() : options.rpId);
   const timeout = options.timeoutMs ?? 120_000;
   let backend: Promise<Backend> | undefined;
   const store = () =>
@@ -154,6 +169,7 @@ export function passkeyBackup(
    * the user picks the passkey.
    */
   async function evaluate(
+    rpId: string,
     credentialId?: Uint8Array<ArrayBuffer>,
   ): Promise<Uint8Array | null> {
     let cred: PublicKeyCredential | null;
@@ -161,7 +177,7 @@ export function passkeyBackup(
       cred = (await navigator.credentials.get({
         publicKey: {
           challenge: randomBytes(32),
-          ...(options.rpId ? { rpId: options.rpId } : {}),
+          rpId,
           userVerification: "required",
           timeout,
           allowCredentials: credentialId
@@ -209,16 +225,17 @@ export function passkeyBackup(
     async save(token) {
       const secret = await decodeToken(token); // bad-token before any prompt
       try {
+        const rpId = rp();
         const b = await store();
         const userName = options.userName ?? host();
-        const userId = await userHandle(userName);
+        const userId = await derivePasskeyUserHandle(secret, rpId);
         let cred: PublicKeyCredential | null;
         try {
           cred = (await navigator.credentials.create({
             publicKey: {
               rp: {
                 name: options.rpName ?? host(),
-                ...(options.rpId ? { id: options.rpId } : {}),
+                id: rpId,
               },
               user: {
                 id: userId,
@@ -257,7 +274,7 @@ export function passkeyBackup(
         // assertion.
         const out = prf.results?.first
           ? bytes(prf.results.first)
-          : await evaluate(new Uint8Array(cred.rawId));
+          : await evaluate(rpId, new Uint8Array(cred.rawId));
         if (!out)
           throw new BurrowError(
             "cancelled",
@@ -275,8 +292,9 @@ export function passkeyBackup(
 
     // KP-6: one passkey prompt per new device.
     async restore() {
+      const rpId = rp();
       const b = await store();
-      const prf = await evaluate();
+      const prf = await evaluate(rpId);
       if (!prf) return null;
       let secret: Uint8Array | undefined;
       try {

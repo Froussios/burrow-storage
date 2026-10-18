@@ -295,26 +295,32 @@ learn of each other's writes until their next pass.
 The token is wrapped on creation (`SecretHolder.wrap`): an extractable HMAC "vehicle" key holds
 the 32 bytes and is wrapped with AES-KW under a non-extractable key generated for the device;
 the pair `{ kw, wrapped }`, with the token's `source` and `since`, is the app's `_token` record.
-Each app has its own (D-54); `link()` and `unlink()` affect only the calling app. `use(fn)` unwraps, exports the raw bytes, runs
-`fn`, and zeroises them. `exportToken()` is `use(encodeToken)`.
+Each app has its own (D-54); `link()` and `unlink()` affect only the calling app. `use(fn)`
+unwraps, exports the raw bytes, runs `fn`, and zeroises them. `exportToken()` is `use(encodeToken)`.
 
-**`link({ token, source, discardLocal })`** checks `source` (a non-empty string, default
+**`link({ token, source, replace, discardLocal })`** checks `source` (a non-empty string, default
 `"token"`; else `TypeError`), decodes `token` with `decodeToken()` (`bad-token` before any I/O),
-then `#switchTo(secret, source, discardLocal)` and zeroises the decoded bytes:
+then `#switchTo(secret, source, options)` and zeroises the decoded bytes:
 
 1. If the new token derives the same `base` as the current one: unpause, sync. Nothing else
    changes, `token.source` included. This is the `decrypt-failed` recovery path.
 2. Otherwise flush; if dirty items exist and `discardLocal` is false, run a pass under the old
    token and reject `would-orphan` if any remain.
-3. Wrap the new token, wait for any running pass (`#drain`), then under the `sync` and `secret`
-   locks: persist it with its `source` and `since` as the app's `_token` record, swap `#secret`,
-   set `token`, invalidate the cache's owner stamp, `#adoptIdentity()` (which clears the app's
+3. If live, non-deleted data remains in the current app's cache, including pending facade
+   writes, reject `would-replace` unless `replace` is true. Dirty tombstones are covered by
+   step 2 independently. Neither token provenance nor a cached item count proves that a
+   backup exists or that remote-only data does not exist.
+4. Wait for any running pass (`#drain`), then under the `sync` lock flush pending facade
+   writes and check both guards again. Wrap the new token and, under the `secret` lock,
+   persist it with its `source` and `since` as the app's `_token` record. Swap `#secret`, set
+   `token`, invalidate the cache's owner stamp, `#adoptIdentity()` (which clears the app's
    items), unpause.
-4. Broadcast `identity`, emit `onToken`, resubscribe, run a pass with `onChanged` suppressed, then
+5. Broadcast `identity`, emit `onToken`, resubscribe, run a pass with `onChanged` suppressed, then
    emit one `onChanged("remote")` with the difference between the mirror before and after.
 
-**`unlink(options)`** has the same `would-orphan` guard, then forgets the secret, deletes the
-app's `_token` record, broadcasts `identity` and closes the instance. Later calls throw
+**`unlink(options)`** has the same independent `would-orphan`/`discardLocal` and
+`would-replace`/`replace` guards, then forgets the secret, deletes the app's `_token` record,
+broadcasts `identity` and closes the instance. Later calls throw
 `unlinked`.
 
 **The passkey backup** (`src/passkey.ts`, `burrow-storage/passkey`) never touches the core. It
@@ -336,18 +342,22 @@ For separate backend configuration and token carriers, see
   `credentials.create` with a discoverable credential, user verification, ES256/RS256, no
   attestation, the PRF extension with salt `burrow/prf/v1`, `rp.name` and `user.name` from the
   options or the page's host, `user.displayName` from its option or effective `userName`, and
-  `rp.id` only when `rpId` is given. `user.id` is the first 16 bytes of
-  SHA-256(`"burrow/user/v1"` ‖ effective `userName`) (D-47); `displayName` does not enter it. A
-  dismissed prompt is `cancelled`; other errors are `prf-unsupported`. If the authenticator did
+  the canonical effective RP ID for both creation and assertions. `user.id` is 16 bytes from
+  HKDF-SHA256 over the decoded token secret, with salt `burrow/v1` and UTF-8 info
+  `"burrow/passkey-user/v1\0" + effectiveRpId` (D-55). The RP is the explicit `rpId` or current
+  hostname (`localhost` outside a page), canonicalized to lowercase ASCII/IDNA; invalid syntax
+  rejects `prf-unsupported` before prompting. Labels do not enter the derivation. A dismissed
+  prompt is `cancelled`; other credential errors are `prf-unsupported`. If the authenticator did
   not return the PRF output at creation, one `credentials.get` for that credential follows. The
   keyslot is written at `slotId` with `writeSlot()` (read, then put at `rev + 1`, three tries on
   conflict). The decoded secret and the PRF output are zeroised.
   A conforming discoverable authenticator replaces a credential for the same RP and handle
   during creation, before the PRF evaluation and keyslot write. Failure afterward cannot undo
-  replacement, even for a repeated save of the same token. Sites warn and ask users to keep
-  the current and earlier tokens first, or use distinct labels to retain separate backups.
-  Old random-handle credentials/keyslots remain. Only Chromium's virtual authenticator has
-  been validated; there is no universal password-manager guarantee.
+  replacement for a repeated save of the same token. Different tokens have different handles,
+  regardless of their labels. A failed re-save must not preserve a claim of confirmed
+  recoverability: keep the token and retry. No migration or credential registry is added.
+  Only Chromium's virtual authenticator has been validated; there is no universal
+  password-manager guarantee.
 - `restore()`: a discoverable `credentials.get` (the browser's account picker), derive the slot
   keys, `get(slotId)`, `open()`, `encodeToken()`; a missing slot or a dismissed prompt is `null`.
 
