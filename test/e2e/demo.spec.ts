@@ -141,3 +141,57 @@ test("journey 4: an invalid token shows an error and keeps the current token", a
     "Generated on this device",
   );
 });
+
+// TODO(2026-11-18): remove with the demo's "_device" cleanup (D-54, #76).
+test("D-54 the demo drops the 0.1.1 origin-wide token store and starts its own token", async ({
+  page,
+}) => {
+  // A same-origin page that does not open Burrow seeds a 0.1.1-shaped database.
+  await page.goto("/test/e2e/harness.html");
+  await page.evaluate(
+    () =>
+      new Promise<void>((done, fail) => {
+        const r = indexedDB.open("burrow", 2);
+        r.onupgradeneeded = () => {
+          for (const s of ["_meta", "_device", "app:burrow-demo"])
+            r.result.createObjectStore(s);
+        };
+        r.onsuccess = async () => {
+          const kw = await crypto.subtle.generateKey(
+            { name: "AES-KW", length: 256 },
+            false,
+            ["wrapKey", "unwrapKey"],
+          );
+          const t = r.result.transaction("_device", "readwrite");
+          const s = t.objectStore("_device");
+          s.put(kw, "kw");
+          s.put(new Uint8Array(40), "wrapped");
+          s.put("generated", "tokenSource");
+          t.oncomplete = () => {
+            r.result.close();
+            done();
+          };
+          t.onerror = () => fail(t.error);
+        };
+        r.onerror = () => fail(r.error);
+      }),
+  );
+  await page.goto("/demo/index.html");
+  await expect(page.locator("body")).toHaveAttribute("data-ready", "true");
+  await expect(page.locator("#code")).toHaveText(TOKEN);
+  await expect(page.locator("#token-source")).toContainText(
+    "Generated on this device (new)",
+  );
+  const stores = await page.evaluate(
+    () =>
+      new Promise<string[]>((done) => {
+        const r = indexedDB.open("burrow");
+        r.onsuccess = () => {
+          done([...r.result.objectStoreNames]);
+          r.result.close();
+        };
+      }),
+  );
+  expect(stores).not.toContain("_device");
+  expect(stores).toContain("_token");
+});

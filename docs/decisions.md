@@ -78,7 +78,8 @@ D-54 is all that a switch can drop.
 
 ### D-9 The token is per origin; per-app state is per app (KP-4, SYNC-1, SYNC-3)
 
-*The token is per app since D-54; the per-app state below is unchanged.*
+*The token is per app since D-54; the per-app state below is unchanged. Keyslots stay per origin:
+the PRF salt is fixed, so the passkey's `userName` is what keeps two apps' backups apart.*
 
 The wrapped token, the protection state and provider data live in an origin-wide `_device` object
 store. Per-app sync state (`manifestRev`, max remote `ts`, last sync, the `onUnprotected` flag)
@@ -724,14 +725,19 @@ does. Each app now has its own token on the device:
 
 - The `_token` object store holds one `StoredToken { wrapped, kw, source, since }` per app, keyed
   by the app's store name as in `_meta`. It is written and deleted whole, so the secret and its
-  source cannot disagree. The `_device` store is gone, and `TokenInfo` loses `"unknown"` and
-  `since: null`, which described tokens stored before the source was recorded.
+  source cannot disagree. The library no longer reads or clears the `_device` store. `TokenInfo`
+  loses `"unknown"` and `since: null`, which described tokens stored before the source was
+  recorded.
 - `link()` and `unlink()` change only the calling app; `would-orphan` now covers everything a
   switch can drop. Tab messages and the `secret` lock were already per app.
 - An app with no token of its own generates one. There is no migration from the origin-wide store:
-  the owner directed none, as there are no clients to preserve. A browser that ran 0.1.1 starts
-  each app with a new token and clears the app's cache on first load, unsynced writes included;
-  linking the old token restores the synced data.
+  the owner directed none, as the demo is the only client. A browser that ran 0.1.1 starts each
+  app with a new token and clears the app's cache on first load, unsynced writes included. This is
+  a deliberate exception to SYNC-9 for 0.1.1 data; linking the old token restores the synced
+  data. After `unlink()` such a browser would still hold the old wrapped token in `_device`, so the
+  demo deletes that store from its visitors' browsers before opening Burrow. That code is temporary,
+  marked `TODO(2026-11-18)` in `demo/demo.js` and its e2e test, and is removed a month after
+  release.
 
 The token format, derivation, envelope and keyslot are unchanged. The passkey backup takes a token
 string and needs no change, but D-47's label-derived user handle now matters across apps: two apps

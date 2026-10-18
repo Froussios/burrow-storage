@@ -25,7 +25,7 @@ path.
   pass the same `app` still share one. Token format, derivation, envelope and keyslots are
   unchanged. Sites with several apps should give each app's passkey backup its own `userName`.
 - Tokens are stored per app in a new `_token` object store; the origin-wide `_device` store is no
-  longer read. A browser that ran 0.1.1 starts each app with a new token and clears that app's
+  longer read or cleared (the demo deletes it from its visitors' browsers until 2026-11-18). A browser that ran 0.1.1 starts each app with a new token and clears that app's
   cache on first load, unsynced writes included; `link()` with the old token restores its
   synced data.
 - `TokenInfo.since` is always a number, and `TokenSource` no longer includes `"unknown"`: every
