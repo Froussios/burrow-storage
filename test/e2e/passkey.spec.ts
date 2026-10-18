@@ -249,6 +249,70 @@ test("journeys 1 and 2 in the demo: create a backup with a passkey, wipe the sit
   );
 });
 
+for (const failure of ["network", "cancelled"] as const) {
+  test(`a first ${failure} passkey save keeps the empty demo empty for linking and Forget`, async ({
+    context,
+  }) => {
+    const page = await context.newPage();
+    const { cdp, authenticatorId } = await authenticator(page);
+    await openMemoryDemo(page);
+    const original = (await page.locator("#code").textContent())!;
+    const dialogs: string[] = [];
+    page.on("dialog", async (d) => {
+      dialogs.push(d.message());
+      await d.dismiss();
+    });
+    await page.evaluate((failure) => {
+      if (failure === "network")
+        (window as unknown as MemoryDemoWindow).demoBackend.failWith =
+          "network";
+      else
+        navigator.credentials.create = async () => {
+          throw new DOMException("The prompt was dismissed", "NotAllowedError");
+        };
+    }, failure);
+    await page.locator("#passkey").click();
+    await expect(page.locator("#message")).toContainText(
+      "Passkey backup was not saved",
+    );
+    await expect(page.locator("#token-backup")).toContainText("None yet");
+    const credentials = (
+      await cdp.send("WebAuthn.getCredentials", { authenticatorId })
+    ).credentials;
+    expect(credentials).toHaveLength(failure === "network" ? 1 : 0);
+    const target = await page.evaluate(async () => {
+      const { Burrow, demoBackend } = window as unknown as MemoryDemoWindow;
+      const current = await Burrow.burrow({ app: "burrow-demo" });
+      const state = {
+        data: await current.get(),
+        dirty: current.inspect().dirtyKeys,
+      };
+      demoBackend.failWith = null;
+      const other = await Burrow.burrow({
+        app: "first-failure-target",
+        backend: demoBackend,
+        cache: "memory",
+      });
+      return { ...state, token: await other.exportToken() };
+    });
+    expect(target.data).toEqual({});
+    expect(target.dirty).toBe(0);
+    await expect(page.locator("#code")).toHaveText(original);
+    await page.locator("#link-code").fill(target.token);
+    await page.locator("#link-form button[type=submit]").click();
+    await expect(page.locator("#code")).toHaveText(target.token);
+    await expect(page.locator("#message")).toHaveText(
+      "Linked. Your data is here.",
+    );
+    const reloaded = page.waitForEvent("load");
+    await page.locator("#forget").click();
+    await reloaded;
+    await expect(page.locator("body")).toHaveAttribute("data-ready", "true");
+    await expect(page.locator("#code")).not.toHaveText(target.token);
+    expect(dialogs).toEqual([]);
+  });
+}
+
 test("the demo clears a successful backup claim after a failed re-save and can retry", async ({
   context,
 }) => {

@@ -25,7 +25,8 @@ export interface PasskeyBackupOptions {
   /**
    * WebAuthn rp.id. Default: the page's host. Set it to the registrable domain
    * to share across subdomains. Case and IDNs are canonicalised as URL hosts;
-   * empty IDs, URLs, ports and other URL fields reject before prompting.
+   * empty IDs, URLs, ports and other URL fields reject with TypeError before
+   * prompting.
    */
   rpId?: string;
   /** Relying-party display name. Default: the page's host. */
@@ -61,6 +62,7 @@ export interface PasskeyBackup {
    * old passkey. Restore also needs the backend that holds the keyslot.
    * Call from a user gesture. Rejects `bad-token`, `cancelled` (the prompt was
    * dismissed), `prf-unsupported`, `backend` or `conflict`.
+   * Invalid `rpId` rejects with TypeError before prompting or backend access.
    */
   save(token: string): Promise<void>;
   /**
@@ -68,6 +70,7 @@ export interface PasskeyBackup {
    * prompt. Resolves `null` when the prompt is dismissed or the passkey has no
    * keyslot. Call from a user gesture (KP-8). Rejects `prf-unsupported`,
    * `decrypt-failed` or `backend`.
+   * Invalid `rpId` rejects with TypeError before prompting or backend access.
    */
   restore(): Promise<string | null>;
 }
@@ -94,7 +97,7 @@ function canonicalRpId(value: string): string {
       throw 0;
     return new URL("https://" + value).hostname;
   } catch {
-    throw new BurrowError("prf-unsupported", "invalid relying-party id");
+    throw new TypeError("invalid relying-party id");
   }
 }
 const slotCipher = (s: SlotKeys): DocCipher => ({

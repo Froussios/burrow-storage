@@ -724,151 +724,151 @@ describe("§6 link, unlink", () => {
     await a.unlink({ discardLocal: true, replace: true });
   });
 
-  describe.each(["link", "unlink"] as const)(
-    "%s replacement guard",
-    (method) => {
-      const change = async (
-        area: BurrowArea,
-        token: string,
-        options: { replace?: boolean; discardLocal?: boolean } = {},
-      ) =>
-        method === "link"
-          ? area.link({ token, ...options })
-          : area.unlink(options);
+  describe.each([
+    ["API-7", "link"],
+    ["API-8", "unlink"],
+  ] as const)("%s %s replacement guard", (_requirement, method) => {
+    const change = async (
+      area: BurrowArea,
+      token: string,
+      options: { replace?: boolean; discardLocal?: boolean } = {},
+    ) =>
+      method === "link"
+        ? area.link({ token, ...options })
+        : area.unlink(options);
 
-      it("allows an empty local-only store without confirmation", async () => {
-        const w = fresh();
-        const area = await w.device().open({ backend: undefined });
-        const token = await (await w.device().open()).exportToken();
-        await expect(change(area, token)).resolves.toBeUndefined();
+    it("allows an empty local-only store without confirmation", async () => {
+      const w = fresh();
+      const area = await w.device().open({ backend: undefined });
+      const token = await (await w.device().open()).exportToken();
+      await expect(change(area, token)).resolves.toBeUndefined();
+    });
+
+    it("rejects replacing synced live data without network work or token changes", async () => {
+      const w = fresh();
+      const d = w.device();
+      const area = await d.open({ debounceMs: 1e9 });
+      const target = await w.device().open();
+      const token = await target.exportToken();
+      // Token provenance does not establish whether a backup exists.
+      await area.link({ token, source: "passkey" });
+      await area.set({ saved: "keep" });
+      await area.syncNow();
+      const next = await (await w.device().open()).exportToken();
+      const stats = { ...d.backend.stats };
+      const info = area.token;
+      const seen = vi.fn();
+      area.onToken.addListener(seen);
+
+      await expect(change(area, next)).rejects.toMatchObject({
+        code: "would-replace",
       });
+      expect(d.backend.stats).toEqual(stats);
+      expect(await area.exportToken()).toBe(token);
+      expect(area.token).toEqual(info);
+      expect(await area.get()).toEqual({ saved: "keep" });
+      expect(seen).not.toHaveBeenCalled();
 
-      it("rejects replacing synced live data without network work or token changes", async () => {
-        const w = fresh();
-        const d = w.device();
-        const area = await d.open({ debounceMs: 1e9 });
-        const target = await w.device().open();
-        const token = await target.exportToken();
-        // Token provenance does not establish whether a backup exists.
-        await area.link({ token, source: "passkey" });
-        await area.set({ saved: "keep" });
-        await area.syncNow();
-        const next = await (await w.device().open()).exportToken();
-        const stats = { ...d.backend.stats };
-        const info = area.token;
-        const seen = vi.fn();
-        area.onToken.addListener(seen);
-
-        await expect(change(area, next)).rejects.toMatchObject({
-          code: "would-replace",
-        });
-        expect(d.backend.stats).toEqual(stats);
-        expect(await area.exportToken()).toBe(token);
-        expect(area.token).toEqual(info);
-        expect(await area.get()).toEqual({ saved: "keep" });
-        expect(seen).not.toHaveBeenCalled();
-
-        await expect(
-          change(area, next, { replace: true }),
-        ).resolves.toBeUndefined();
-        if (method === "link") {
-          expect(await area.exportToken()).toBe(next);
-          expect(await area.get()).toEqual({});
-        } else
-          await expect(area.exportToken()).rejects.toMatchObject({
-            code: "unlinked",
-          });
-      });
-
-      it("requires both opt-ins for pending local-only facade writes", async () => {
-        const w = fresh();
-        const area = await w.device().open({ backend: undefined });
-        const token = await (await w.device().open()).exportToken();
-        const before = await area.exportToken();
-        area.storage.setItem("draft", "keep");
-
-        await expect(
-          change(area, token, { replace: true }),
-        ).rejects.toMatchObject({
-          code: "would-orphan",
-        });
-        await expect(
-          change(area, token, { discardLocal: true }),
-        ).rejects.toMatchObject({ code: "would-replace" });
-        expect(await area.exportToken()).toBe(before);
-        expect(area.storage.getItem("draft")).toBe("keep");
-        await expect(
-          change(area, token, { replace: true, discardLocal: true }),
-        ).resolves.toBeUndefined();
-      });
-
-      it("still requires replacement consent after preserving pending writes remotely", async () => {
-        const w = fresh();
-        const area = await w.device().open({ debounceMs: 1e9 });
-        const token = await (await w.device().open()).exportToken();
-        const before = await area.exportToken();
-        await area.set({ draft: "preserved" });
-        await expect(change(area, token)).rejects.toMatchObject({
-          code: "would-replace",
-        });
-        expect(area.inspect().dirtyKeys).toBe(0);
-        expect(await area.exportToken()).toBe(before);
-        const reader = await w.device().open();
-        await reader.link({ token: before });
-        expect(await reader.get()).toEqual({ draft: "preserved" });
-      });
-
-      it("rechecks live data pulled by an already running sync pass", async () => {
-        const w = fresh();
-        const d = w.device({ cache: "memory", latencyMs: 20 });
-        const original = await d.open({ debounceMs: 1e9 });
-        await original.set({ remote: "keep" });
-        await original.syncNow();
-        const before = await original.exportToken();
-        original.close();
-        await new MemoryCache("test", d.mem).clearItems();
-        const token = await (await w.device().open()).exportToken();
-        const area = await d.open({ debounceMs: 1e9 });
+      await expect(
+        change(area, next, { replace: true }),
+      ).resolves.toBeUndefined();
+      if (method === "link") {
+        expect(await area.exportToken()).toBe(next);
         expect(await area.get()).toEqual({});
-        await expect(change(area, token)).rejects.toMatchObject({
-          code: "would-replace",
+      } else
+        await expect(area.exportToken()).rejects.toMatchObject({
+          code: "unlinked",
         });
-        expect(await area.exportToken()).toBe(before);
-        expect(await area.get()).toEqual({ remote: "keep" });
+    });
+
+    it("requires both opt-ins for pending local-only facade writes", async () => {
+      const w = fresh();
+      const area = await w.device().open({ backend: undefined });
+      const token = await (await w.device().open()).exportToken();
+      const before = await area.exportToken();
+      area.storage.setItem("draft", "keep");
+
+      await expect(
+        change(area, token, { replace: true }),
+      ).rejects.toMatchObject({
+        code: "would-orphan",
       });
+      await expect(
+        change(area, token, { discardLocal: true }),
+      ).rejects.toMatchObject({ code: "would-replace" });
+      expect(await area.exportToken()).toBe(before);
+      expect(area.storage.getItem("draft")).toBe("keep");
+      await expect(
+        change(area, token, { replace: true, discardLocal: true }),
+      ).resolves.toBeUndefined();
+    });
 
-      it("guards dirty tombstones only against orphaning", async () => {
-        const w = fresh();
-        const area = await w.device().open({ backend: undefined });
-        const token = await (await w.device().open()).exportToken();
-        await area.set({ deleted: "value" });
-        await area.remove("deleted");
-        expect(await area.get()).toEqual({});
-        expect(area.inspect().dirtyKeys).toBe(1);
-
-        await expect(change(area, token)).rejects.toMatchObject({
-          code: "would-orphan",
-        });
-        await expect(
-          change(area, token, { discardLocal: true }),
-        ).resolves.toBeUndefined();
+    it("still requires replacement consent after preserving pending writes remotely", async () => {
+      const w = fresh();
+      const area = await w.device().open({ debounceMs: 1e9 });
+      const token = await (await w.device().open()).exportToken();
+      const before = await area.exportToken();
+      await area.set({ draft: "preserved" });
+      await expect(change(area, token)).rejects.toMatchObject({
+        code: "would-replace",
       });
+      expect(area.inspect().dirtyKeys).toBe(0);
+      expect(await area.exportToken()).toBe(before);
+      const reader = await w.device().open();
+      await reader.link({ token: before });
+      expect(await reader.get()).toEqual({ draft: "preserved" });
+    });
 
-      it("allows synced tombstones without confirmation", async () => {
-        const w = fresh();
-        const area = await w.device().open({ debounceMs: 1e9 });
-        const token = await (await w.device().open()).exportToken();
-        await area.set({ deleted: "value" });
-        await area.syncNow();
-        await area.remove("deleted");
-        await area.syncNow();
-        expect(area.inspect().dirtyKeys).toBe(0);
-        await expect(change(area, token)).resolves.toBeUndefined();
+    it("rechecks live data pulled by an already running sync pass", async () => {
+      const w = fresh();
+      const d = w.device({ cache: "memory", latencyMs: 20 });
+      const original = await d.open({ debounceMs: 1e9 });
+      await original.set({ remote: "keep" });
+      await original.syncNow();
+      const before = await original.exportToken();
+      original.close();
+      await new MemoryCache("test", d.mem).clearItems();
+      const token = await (await w.device().open()).exportToken();
+      const area = await d.open({ debounceMs: 1e9 });
+      expect(await area.get()).toEqual({});
+      await expect(change(area, token)).rejects.toMatchObject({
+        code: "would-replace",
       });
-    },
-  );
+      expect(await area.exportToken()).toBe(before);
+      expect(await area.get()).toEqual({ remote: "keep" });
+    });
 
-  it("link() bypasses both guards for a normalized spelling of the current token", async () => {
+    it("guards dirty tombstones only against orphaning", async () => {
+      const w = fresh();
+      const area = await w.device().open({ backend: undefined });
+      const token = await (await w.device().open()).exportToken();
+      await area.set({ deleted: "value" });
+      await area.remove("deleted");
+      expect(await area.get()).toEqual({});
+      expect(area.inspect().dirtyKeys).toBe(1);
+
+      await expect(change(area, token)).rejects.toMatchObject({
+        code: "would-orphan",
+      });
+      await expect(
+        change(area, token, { discardLocal: true }),
+      ).resolves.toBeUndefined();
+    });
+
+    it("allows synced tombstones without confirmation", async () => {
+      const w = fresh();
+      const area = await w.device().open({ debounceMs: 1e9 });
+      const token = await (await w.device().open()).exportToken();
+      await area.set({ deleted: "value" });
+      await area.syncNow();
+      await area.remove("deleted");
+      await area.syncNow();
+      expect(area.inspect().dirtyKeys).toBe(0);
+      await expect(change(area, token)).resolves.toBeUndefined();
+    });
+  });
+
+  it("API-7 link bypasses both guards for a normalized spelling of the current token", async () => {
     const area = await fresh().device().open({ backend: undefined });
     await area.set({ draft: "unsynced" });
     const token = await area.exportToken();

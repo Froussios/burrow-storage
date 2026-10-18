@@ -417,14 +417,14 @@ describe("KP-5/KP-6 save and restore", () => {
     async (rpId) => {
       const invalid = passkeyBackup({ backend, rpId: rpId as string });
       const token = await newToken();
-      await expect(invalid.save(token)).rejects.toMatchObject({
-        code: "prf-unsupported",
-        message: "invalid relying-party id",
-      });
-      await expect(invalid.restore()).rejects.toMatchObject({
-        code: "prf-unsupported",
-        message: "invalid relying-party id",
-      });
+      for (const operation of [
+        () => invalid.save(token),
+        () => invalid.restore(),
+      ]) {
+        const error = await operation().catch((e: unknown) => e);
+        expect(error).toBeInstanceOf(TypeError);
+        expect(error).toMatchObject({ message: "invalid relying-party id" });
+      }
       expect(auth.create).not.toHaveBeenCalled();
       expect(auth.get).not.toHaveBeenCalled();
       expect(backend.stats.gets).toBe(0);

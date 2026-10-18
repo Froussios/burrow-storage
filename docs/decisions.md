@@ -741,7 +741,7 @@ branch, credential registry, migration utility or temporary demo cleanup.
 `"burrow/v1"` and UTF-8 info `"burrow/passkey-user/v1\0" + effectiveRpId`. The zero byte frames
 this new domain separately from the RP ID. The effective RP is explicit `rpId`, or the current
 hostname (`localhost` outside a page), canonicalized by URL hostname parsing to lowercase
-ASCII/IDNA, with a trailing dot retained. Invalid RP syntax rejects `prf-unsupported` before
+ASCII/IDNA, with a trailing dot retained. Invalid RP syntax rejects with `TypeError` before
 prompting, and the same canonical RP is supplied to creation and assertions.
 The browser remains responsible for origin, domain-suffix and public-suffix eligibility.
 Equivalent token encodings and equivalent RP spellings agree; different tokens and RPs have
@@ -756,10 +756,11 @@ credential, and restore still requires the matching backend configuration.
 The demo calls `save()` without a preliminary confirmation. Credential replacement remains
 possible for a repeated save of the same token and happens before PRF evaluation and the
 keyslot write. If saving fails after creation, the previous passkey route may no longer work;
-keep the token and retry. The demo reports success only after the write succeeds, and marks
-backup status uncertain after a failed re-save rather than presenting historical success as
-current recoverability. Password-manager replacement evidence remains limited to Chromium's
-virtual authenticator.
+keep the token and retry. The demo reports success only after the write succeeds. Before
+re-saving an existing backup record, it persists uncertainty and retains it on failure rather
+than presenting historical success as current recoverability. A failed or cancelled first
+save adds no backup record, so an otherwise empty store remains empty. Password-manager
+replacement evidence remains limited to Chromium's virtual authenticator.
 
 Both `link()` and `unlink()` require `replace: true` when leaving live, non-deleted data cached
 for the current app, including pending facade writes. They reject `would-replace` otherwise.

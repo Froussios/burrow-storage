@@ -87,8 +87,8 @@ The passkey handle uses the decoded token secret and a separate HKDF info domain
 content or keyslot key. `effectiveRpId` is the explicit `rpId`, or the current hostname
 (`localhost` outside a page), canonicalized by URL hostname parsing to lowercase ASCII/IDNA;
 a trailing dot is retained. The same canonical RP ID is supplied to credential creation and
-assertions. Invalid RP syntax rejects before prompting;
-the browser enforces whether that RP is permitted for the page's origin. The zero byte frames
+assertions. Invalid RP syntax rejects with `TypeError` before prompting. The browser enforces
+whether that RP is permitted for the page's origin. The zero byte frames
 the fixed domain separately from the RP ID. Equivalent token encodings yield the same handle;
 different tokens or RPs yield independent handles. `userName` and `displayName` are public
 presentation labels and do not enter the derivation. Sharing a token across apps on one RP

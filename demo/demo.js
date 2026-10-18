@@ -138,9 +138,11 @@
     try {
       if (!(await backup.available())) return say(NO_PASSKEY);
       const token = await store.exportToken();
-      // Persist uncertainty before credential replacement, including if the
-      // user closes the page while the authenticator or keyslot write waits.
-      await store.set({ backup: "unknown" });
+      // An earlier backup may become unreachable during replacement. Persist
+      // uncertainty before re-saving, without creating data on a first attempt.
+      const previousBackup = s.getItem("backup");
+      if (previousBackup === "passkey" || previousBackup === "unknown")
+        await store.set({ backup: "unknown" });
       await backup.save(token);
       // Another tab can change the identity while the passkey prompt is open.
       if ((await store.exportToken()) !== token)

@@ -346,7 +346,7 @@ For separate backend configuration and token carriers, see
   HKDF-SHA256 over the decoded token secret, with salt `burrow/v1` and UTF-8 info
   `"burrow/passkey-user/v1\0" + effectiveRpId` (D-55). The RP is the explicit `rpId` or current
   hostname (`localhost` outside a page), canonicalized to lowercase ASCII/IDNA; invalid syntax
-  rejects `prf-unsupported` before prompting. Labels do not enter the derivation. A dismissed
+  rejects with `TypeError` before prompting. Labels do not enter the derivation. A dismissed
   prompt is `cancelled`; other credential errors are `prf-unsupported`. If the authenticator did
   not return the PRF output at creation, one `credentials.get` for that credential follows. The
   keyslot is written at `slotId` with `writeSlot()` (read, then put at `rev + 1`, three tries on

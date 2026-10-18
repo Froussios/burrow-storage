@@ -53,6 +53,8 @@ const backup = passkeyBackup({ backend: tokenBackend });
 await backup.save(await store.exportToken());
 // Later, on another device configured for these same stores, from a click:
 const token = await backup.restore();
+// On would-replace, ask for consent and retry with replace: true.
+// Handle would-orphan separately: discardLocal: true needs consent to drop unsynced writes.
 if (token) await store.link({ token, source: "passkey" });
 ```
 

@@ -81,6 +81,8 @@ if (await backup.available()) {
 
 // second device, from a click: one passkey prompt
 const token = await backup.restore();      // null if declined or no backup
+// On would-replace, ask for consent and retry with replace: true.
+// Handle would-orphan separately: discardLocal: true needs consent to drop unsynced writes.
 if (token) await store.link({ token, source: "passkey" });
 ```
 
@@ -100,10 +102,11 @@ An explicit parent `rpId` lets eligible subdomains share that passkey identity; 
 Re-saving the same token on one RP may replace its earlier credential before PRF evaluation
 and the keyslot write. A failure after creation can leave no usable passkey backup. Keep the
 token and retry if saving fails; an earlier successful save does not establish current
-recoverability. Show success only after `save()` resolves, and mark backup status uncertain
-after a failed attempt. The replacement tests use only Chromium's virtual authenticator;
-iCloud Keychain, Google Password Manager, Windows Hello, 1Password and Bitwarden have not
-been validated on real devices.
+recoverability. Show success only after `save()` resolves. Before re-saving a recorded backup,
+mark its status uncertain and retain that uncertainty on failure. A failed first save needs
+no backup record. The replacement tests use only Chromium's virtual authenticator; iCloud
+Keychain, Google Password Manager, Windows Hello, 1Password and Bitwarden have not been
+validated on real devices.
 
 `restore()` evaluates the PRF again, derives the same id, reads and unwraps the keyslot, and
 returns the token. If the chosen passkey has no keyslot, or the user cancels, it returns `null`

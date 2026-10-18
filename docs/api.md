@@ -249,7 +249,7 @@ anything that looks like an id or token.
 | `would-orphan` | `link()`, `unlink()` | This app has writes that never synced; pass `discardLocal: true` to drop them. This override is independent of `replace`. |
 | `unlinked` | any call after `unlink()` | This instance was unlinked; call `burrow()` again. |
 | `cancelled` | `passkeyBackup().save()` | A passkey prompt was dismissed. No new keyslot was written, but an earlier credential may already have been replaced if creation succeeded before the follow-up prompt. |
-| `prf-unsupported` | `passkeyBackup().save()`, `.restore()` | WebAuthn PRF is unavailable, or the RP ID syntax is invalid. Correct the RP configuration or offer the storage token. |
+| `prf-unsupported` | `passkeyBackup().save()`, `.restore()` | WebAuthn PRF is unavailable here. Offer the storage token instead. |
 | `decrypt-failed` | `onStatus`, `passkeyBackup().restore()` | A document does not decrypt under this token (corruption or a version mismatch). Sync pauses, the cache is untouched; `link()` resumes it. |
 | `expired` | `onStatus`, `syncNow()` | An operator expired a content document. Sync pauses; local values and unsynced writes stay intact. Export local data before explicitly choosing a fresh identity; linking the same stubbed identity pauses again. See [retention](retention.md). |
 | `conflict` | `onStatus`, `syncNow()`, `passkeyBackup().save()` | Writes kept colliding with another writer after retries. Retried on the next trigger. |
@@ -342,6 +342,8 @@ if (await backup.available()) {
 }
 // On another device, from a click:
 const token = await backup.restore();
+// On would-replace, ask for consent and retry with replace: true.
+// Handle would-orphan separately: discardLocal: true needs consent to drop unsynced writes.
 if (token) await store.link({ token, source: "passkey" });
 ```
 
@@ -382,8 +384,8 @@ For separate recovery and content backends, see
 
 The effective RP ID is `rpId`, or the current hostname (`localhost` outside a page),
 canonicalized by URL hostname parsing to lowercase ASCII/IDNA, with a trailing dot retained.
-Creation, assertions and handle derivation all use that same value. An omitted RP ID and an explicit equivalent hostname agree; subdomains
-using the same explicit parent RP ID also agree. Invalid syntax rejects `prf-unsupported`
+Creation, assertions and handle derivation all use that same value. An omitted RP ID and an
+explicit equivalent hostname agree; subdomains using the same explicit parent RP ID also agree. Invalid syntax rejects with `TypeError`
 before prompting. The browser enforces origin, domain-suffix and public-suffix eligibility.
 
 **Keep the storage token if saving fails, and retry.** Re-saving the same token may replace

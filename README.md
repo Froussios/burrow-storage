@@ -326,7 +326,11 @@ the same token to `link()`; the store does not care how. Burrow supports two way
 | Way | First device | Other device |
 | --- | --- | --- |
 | Storage token | `BurrowArea.exportToken()`, shown to the user | `BurrowArea.link({ token })` with what they type |
-| Passkey backup | `PasskeyBackup.save(token)` | `BurrowArea.link({ token: await PasskeyBackup.restore(), source: "passkey" })` |
+| Passkey backup | `PasskeyBackup.save(token)` | `PasskeyBackup.restore()`, then `BurrowArea.link({ token, source: "passkey" })` if a token is returned |
+
+On a device with existing app data, linking requires consent before retrying `would-replace`
+with `replace: true`. Independently, retry `would-orphan` with `discardLocal: true` only after
+consent to drop unsynced writes.
 
 - **Storage token.** 56 characters, such as
   `07DV-1XKY-2X98-DRCP-DJV6-FC2E-459V-AJTY-26K2-XJFQ-9BXZ-QRNF-X0F5-Z1XS` (made up; it fails its

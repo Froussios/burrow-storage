@@ -34,9 +34,10 @@ The **Storage token** panel is always visible. It shows:
   Each source also shows when this device obtained the token. The page reads the source from
   `BurrowArea.token` (`{ source, remembered, since }`) and updates it on `BurrowArea.onToken`.
 - the recorded passkey backup status: *Yes, in a passkey.* after a successful save, *Not
-  confirmed. Keep the storage token or try saving again.* while a save is pending or after it
-  fails, or *None yet. Create one below, or keep the token yourself.* before either. This record travels with the
-  data; it cannot verify that a previously saved passkey is still available.
+  confirmed. Keep the storage token or try saving again.* while re-saving an earlier backup or
+  after that re-save fails, or *None yet. Create one below, or keep the token yourself.* when no
+  successful save was recorded. This record travels with the data; it cannot verify that a
+  previously saved passkey is still available.
 
 ## Summary
 
@@ -70,11 +71,12 @@ device linked to the token shows the recorded status.
 
 **Notes:**
 - Re-saving the same token may replace its credential before PRF evaluation or writing the
-  new keyslot. A failure afterward can leave no usable passkey backup. Before starting a save,
-  the demo persists `backup: "unknown"` and shows *Not confirmed. Keep the storage token or try
-  saving again.* This survives closing the page during a save. Success records `"passkey"`
-  only if the current token still matches the saved token. The user can retry or copy the token
-  they still have on this device.
+  new keyslot. A failure afterward can leave no usable passkey backup. If an earlier backup
+  record exists, the demo persists `backup: "unknown"` before re-saving and shows *Not confirmed.
+  Keep the storage token or try saving again.* This survives closing the page during a re-save.
+  A failed or cancelled first save creates no backup record, so an otherwise empty device
+  remains empty. Success records `"passkey"` only if the current token still matches the saved
+  token. The user can retry or copy the token they still have on this device.
 - Data syncs within seconds of being written, before any passkey exists. The passkey is what
   makes the token recoverable after the browser forgets it.
 - Where the browser or authenticator lacks the PRF extension (support varies), the page says the
