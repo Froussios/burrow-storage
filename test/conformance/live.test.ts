@@ -117,29 +117,16 @@ describe("Burrow over the live store", () => {
   it("two devices sync with no account", async () => {
     const world = new World();
     try {
-      const a = await world.device().open({ app: "gate2", backend: make() });
+      const a = await world.device().core({ app: "gate2", backend: make() });
       const b = await world.device().open({ app: "gate2", backend: make() });
       await a.set({ theme: "dark", draft: "hello from gate 2" });
-      await a.syncNow();
       const statuses: string[] = [];
       b.onStatus.addListener((s) =>
         statuses.push(
           `${s.status}${s.error ? `:${s.error.code}:${String((s.error.cause as Error)?.message ?? "")}` : ""}`,
         ),
       );
-      await b.link({ token: await a.exportToken() });
       const data = await b.get();
-      if (!Object.keys(data).length)
-        throw new Error(
-          "EMPTY statuses=" +
-            JSON.stringify(statuses) +
-            " b=" +
-            JSON.stringify(b.inspect()) +
-            " a=" +
-            JSON.stringify(a.inspect()) +
-            " aGet=" +
-            JSON.stringify(await a.get()),
-        );
       expect({ data, statuses }).toMatchObject({
         data: { theme: "dark", draft: "hello from gate 2" },
       });

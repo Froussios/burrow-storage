@@ -1,7 +1,7 @@
 import type { BurrowError } from "./errors.js";
 import type { BurrowEvent } from "./events.js";
 
-/** Every stored document — manifest, item, keyslot — has this shape (§7). */
+/** Every stored document — manifest or item — has this shape (§7). */
 export interface Envelope {
   v: 1;
   /** 12 bytes, base64url (16 chars), fresh per write. */
@@ -72,8 +72,8 @@ export interface BackendCapabilities {
    */
   writeAuth: boolean;
   /**
-   * The backend implements `subscribe()`; otherwise Burrow relies on polling
-   * alone.
+   * The backend implements `subscribe()`; otherwise the offline wrapper learns
+   * of remote changes only when it reads or syncs.
    */
   subscribe: boolean;
 }
@@ -81,15 +81,13 @@ export interface BackendCapabilities {
 /**
  * Where encrypted documents live: the one swappable seam (§9). A backend stores
  * opaque envelopes or owner-created expiry stubs at opaque 43-character ids and
- * knows nothing about users, apps, keys or encryption; manifests, items and
- * keyslots look identical to it. Every failure must reject with a
+ * knows nothing about users, apps, keys or encryption; manifests and items
+ * look identical to it. Every failure must reject with a
  * `BackendError`. The conformance suite in `test/conformance/suite.ts` checks
  * an implementation. Guide: docs/extending.md.
  */
 export interface Backend {
-  /**
-   * Short name shown by `inspect().backend` and in warnings, e.g. "firestore".
-   */
+  /** Short name shown in warnings, e.g. "firestore". */
   readonly id: string;
   /** What this backend can do; see `BackendCapabilities`. */
   readonly capabilities: BackendCapabilities;
@@ -124,8 +122,8 @@ export interface Backend {
   /**
    * Optional push notifications for one document. Call `onChange` with each new
    * live envelope or expired stub stored at `id` (even at the same revision),
-   * and return a function that stops them. Burrow subscribes to the user's
-   * manifest only.
+   * and return a function that stops them. The offline wrapper subscribes to
+   * the user's manifest only.
    */
   subscribe?(id: string, onChange: (env: StoredDocument) => void): () => void;
 }
@@ -141,69 +139,26 @@ export type BackendFactory = (
   config: BackendConfig,
 ) => Backend | Promise<Backend>;
 
-/** Options for `burrow()`. Only `app` is required. */
+/**
+ * Options for `burrow()`. All three are required: Burrow never picks a backend
+ * or creates an identity on its own (D-57).
+ */
 export interface BurrowConfig {
   /**
-   * Names the app's namespace in the cache and in key derivation. Each app has
-   * its own storage token on the device; pages that pass the same `app` share
-   * it and its data. Must match /^[a-z0-9-]{1,64}$/.
+   * Names the app in key derivation. The same token gives each app its own
+   * documents. Must match /^[a-z0-9-]{1,64}$/.
    */
   app: string;
   /**
-   * Where to sync: an adapter instance or config for a registered adapter.
-   * Default: the page's config, or local-only if there is none.
+   * Where the encrypted documents live: an adapter instance, or config for a
+   * registered adapter type (for example `{ type: "firestore", ... }`).
    */
-  backend?: Backend | BackendConfig;
-  /** Firestore shorthand; ignored when backend is supplied. */
-  firestore?: import("./backends/firestore.js").FirestoreConfig;
+  backend: Backend | BackendConfig;
   /**
-   * Local cache. Default `"indexeddb"`, or `"memory"` when `rememberDevice` is
-   * false.
+   * The storage token: from `generateToken()`, from `passkeyToken().get()`,
+   * or kept by the app. Burrow holds only the keys derived from it, in memory.
    */
-  cache?: "indexeddb" | "memory";
-  /**
-   * Remember the token across page loads. Default true; false keeps it in
-   * memory only, for shared computers.
-   */
-  rememberDevice?: boolean;
-  /**
-   * Polling interval while the page is visible, in ms. Default 30 000; 0
-   * disables polling.
-   */
-  syncIntervalMs?: number;
-  /**
-   * How long local writes are coalesced before a push, in ms. Default 1 500.
-   */
-  debounceMs?: number;
-  /**
-   * Size limit per item, in bytes of JSON. Default 200 000; clamped to 749 000.
-   */
-  maxItemBytes?: number;
-  /**
-   * Log one console.debug line per sync event. Never logs ids, tokens, keys or
-   * values.
-   */
-  debug?: boolean;
-}
-
-export type Status = "idle" | "syncing" | "offline" | "error";
-
-/**
- * How this device got the app's storage token (the root secret): "generated"
- * here on first use (KP-1), "token" when passed to `link()` without a `source`,
- * or the site's own label when passed with one (e.g. "passkey").
- */
-export type TokenSource = "generated" | "token" | (string & {});
-
-export interface TokenInfo {
-  source: TokenSource;
-  /**
-   * True when the token was loaded from this browser's storage rather than
-   * obtained this page load.
-   */
-  remembered: boolean;
-  /** When this device obtained the token (ms). */
-  since: number;
+  token: string;
 }
 
 export type StorageChanges = Record<
@@ -212,43 +167,31 @@ export type StorageChanges = Record<
 >;
 export interface ChangedEvent {
   changes: StorageChanges;
+  /**
+   * `"local"` for writes on this device (any tab), `"remote"` for changes
+   * learned from the store.
+   */
   source: "local" | "remote";
-}
-export interface StatusEvent {
-  status: Status;
-  error?: BurrowError;
-}
-
-export interface Inspection {
-  status: Status;
-  manifestRev: number | null;
-  dirtyKeys: number;
-  lastSyncAt: number | null;
-  backend: string;
 }
 
 export type GetKeys =
   null | undefined | string | string[] | Record<string, unknown>;
 
 /**
- * The store for one app, returned by `burrow()`. Shaped like chrome.storage's
- * StorageArea (§5). Reference: docs/api.md.
+ * The async storage interface that `burrow()` and `offline()` both return, so
+ * either can be used where the other is expected. The argument shapes are
+ * those of chrome.storage's StorageArea (D-57). Reference: docs/api.md.
  */
-export interface BurrowArea {
+export interface BurrowStorage {
   /**
-   * Read from the local cache: all keys (no argument or null), one key, a list
-   * of keys, or an object whose values are defaults for missing keys.
-   * `{ fresh: true }` fetches from the store first.
+   * Read all keys (no argument or null), one key, a list of keys, or an object
+   * whose values are defaults for missing keys. Returns copies.
    */
-  get(
-    keys?: GetKeys,
-    opts?: { fresh?: boolean },
-  ): Promise<Record<string, unknown>>;
+  get(keys?: GetKeys): Promise<Record<string, unknown>>;
   /**
    * Write JSON values. Validates every key first, so an invalid batch writes
    * nothing: non-JSON values reject with TypeError, oversized items with
-   * `item-too-large`. Resolves once stored locally; never rejects because the
-   * store is unreachable.
+   * `item-too-large`.
    */
   set(items: Record<string, unknown>): Promise<void>;
   /**
@@ -259,81 +202,46 @@ export interface BurrowArea {
   /** Delete every key. */
   clear(): Promise<void>;
   /**
-   * UTF-8 length of each key plus its JSON value, as chrome.storage counts it.
+   * Drop the keys held in memory and stop all work. Later calls reject
+   * `closed`. Nothing on disk changes.
    */
-  getBytesInUse(keys?: null | string | string[]): Promise<number>;
+  close(): void;
+}
+
+export type Status = "idle" | "syncing" | "offline" | "error";
+
+export interface StatusEvent {
+  status: Status;
+  error?: BurrowError;
+}
+
+/**
+ * The store returned by `offline()` from `burrow-storage/offline`: the same
+ * interface, backed by a plaintext copy on this device (D-57). Reads and writes
+ * go to the store when it answers and to the local copy when it does not;
+ * they never reject for remote reasons (API-3, API-6).
+ */
+export interface OfflineStorage extends BurrowStorage {
   /**
-   * Fires after local writes (`source: "local"`, any tab of this device) and
-   * after pulls from the store (`"remote"`).
+   * Fires after writes on this device (`source: "local"`, any tab) and when
+   * changes from the store reach the local copy (`"remote"`).
    */
   readonly onChanged: BurrowEvent<ChangedEvent>;
-
   /**
    * "idle", "syncing", "offline" (network or quota) or "error" (decrypt-failed,
-   * conflict, item-too-large).
+   * expired, conflict, item-too-large).
    */
   readonly status: Status;
-  /**
-   * Where the token in use came from. Changes on link(); onToken fires then.
-   */
-  readonly token: TokenInfo;
-  /**
-   * Fires when the app's token on this device changes: after `link()` in this
-   * tab or another tab of the app.
-   */
-  readonly onToken: BurrowEvent<TokenInfo>;
   /** Fires on every change of status or error. */
   readonly onStatus: BurrowEvent<StatusEvent>;
   /**
-   * Adopt an existing storage token on this device: one the user typed or
-   * pasted, or one a backup returned (e.g. `passkeyBackup().restore()`).
-   * Replaces this app's token only; other apps keep theirs. `source` labels it
-   * in `token.source` (default "token"). Rejects `bad-token` before any network
-   * call. Rejects `would-orphan` if this app has writes that cannot be synced,
-   * unless `discardLocal` is true. Independently rejects `would-replace` when
-   * the current app has live cached data, unless `replace` is true. Linking
-   * the same decoded token bypasses both guards and keeps its source.
-   */
-  link(options: {
-    token: string;
-    source?: string;
-    discardLocal?: boolean;
-    replace?: boolean;
-  }): Promise<void>;
-  /**
-   * Forget the app's token on this device, like logging out, and close this
-   * instance. Other apps keep theirs.
-   * Same independent `would-orphan` and `would-replace` guards as `link()`.
-   */
-  unlink(options?: {
-    discardLocal?: boolean;
-    replace?: boolean;
-  }): Promise<void>;
-  /**
-   * Flush pending writes and run one sync pass. Rejects with the error if the
-   * pass fails.
+   * Push unsynced writes and refresh the local copy. Rejects with the error if
+   * the store cannot be reached.
    */
   syncNow(): Promise<void>;
   /**
-   * The storage token: 56 Crockford base32 characters in 14 groups of four.
-   * Show it to the user, or hand it to a backup such as `passkeyBackup()`.
+   * Delete this token's local copy on this device and close. Rejects
+   * `would-orphan` while writes are unsynced, unless `discardLocal` is true.
    */
-  exportToken(): Promise<string>;
-  /**
-   * Plaintext export of this app's data:
-   * `{ burrow: 1, app, exportedAt, items }`.
-   */
-  exportJSON(): Promise<string>;
-  /**
-   * Write the items of an `exportJSON()` export with `set()`. Rejects TypeError
-   * for anything else.
-   */
-  importJSON(json: string): Promise<void>;
-  /** A plain snapshot of the sync state, for a debug panel. */
-  inspect(): Inspection;
-  /**
-   * A synchronous DOM `Storage` over the same keys, for replacing
-   * `localStorage`.
-   */
-  readonly storage: Storage;
+  forget(options?: { discardLocal?: boolean }): Promise<void>;
 }

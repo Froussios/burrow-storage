@@ -311,7 +311,7 @@ describe("D-48 owner reaper", () => {
     const help = spawnSync(bin, ["--help"], { encoding: "utf8", env });
     expect(help.status).toBe(0);
     expect(help.stdout).toContain("burrow-reaper --project");
-    expect(help.stdout).toContain("default deployment shares a collection");
+    expect(help.stdout).toContain("anything but Burrow content");
     expect(help.stdout).toContain("--reset-cursor");
     const mixed = spawnSync(bin, ["--mixed"], { encoding: "utf8", env });
     expect(mixed.status).toBe(1);

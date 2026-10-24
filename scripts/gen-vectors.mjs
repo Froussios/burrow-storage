@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Regenerates test/vectors.json from an independent implementation
 // (node:crypto, not WebCrypto), so the committed vectors cross-check
-// src/codec/derive.ts. Output must never change for v1 (ENC-2). New vectors may
-// be added; they are inserted so that no existing line of the JSON changes.
+// src/codec/derive.ts. A change to the output is a change to the cryptographic
+// contract: update SECURITY.md and docs/decisions.md with it (ENC-2, D-55).
 import { createCipheriv, createHash, createHmac, hkdfSync } from "node:crypto";
 import { writeFileSync } from "node:fs";
 
@@ -22,10 +22,11 @@ const docId = (k) => id(hmac(pathKey, "item" + k));
 const tok = (key, i, n) => b64url(hmac(key, i + String(n)));
 const next = (key, i, n) => sha(tok(key, i, n + 1)).toString("hex");
 
+// D-58: a passkey's PRF output (input "burrow/prf-token/v1") becomes an app's
+// root secret through HKDF.
 const prf = Buffer.alloc(32, 0xa5);
-const kek = expand(prf, "burrow/slot/v1", "kek");
-const slotMac = expand(prf, "burrow/slot/v1", "auth");
-const slotId = id(sha(expand(prf, "burrow/slot/v1", "slot")));
+const passkeySecret = (prfOutput, app) =>
+  expand(prfOutput, "burrow/passkey-token/v1", app);
 
 // Sync code: version || secret || sha256(version || secret)[0:2], Crockford
 // base32, groups of 4.
@@ -103,14 +104,6 @@ const v = {
     theme7: tok(macKey, itemId, 7),
   },
   next: { base0: next(macKey, base, 0), theme7: next(macKey, itemId, 7) },
-  slot: {
-    prfHex: prf.toString("hex"),
-    slotId,
-    tok0: tok(slotMac, slotId, 0),
-    // kek is exercised indirectly: AES-GCM(kek) round trips; record its
-    // fingerprint only.
-    kekSha256: sha(kek).toString("hex"),
-  },
   syncCode: syncCode(rootSecret),
   unicodeKey: UNICODE_KEY,
   // Write tokens for the manifest (id = base) of the first root secret.
@@ -144,23 +137,16 @@ const v = {
     app: "other",
     base: id(sha(expand(rootSecret, "burrow/v1", "pathother"))),
   },
-  passkeyUser: [
-    [rootSecret, "example.com"],
-    [rootSecret, "notes.example.com"],
-    [rootSecret, "xn--bcher-kva.example"],
-    [root2, "example.com"],
-  ].map(([secret, rpId]) => ({
-    rootSecretHex: secret.toString("hex"),
-    rpId,
-    handleHex: Buffer.from(
-      hkdfSync(
-        "sha256",
-        secret,
-        "burrow/v1",
-        "burrow/passkey-user/v1\0" + rpId,
-        16,
-      ),
-    ).toString("hex"),
+  passkeyToken: [
+    [prf, "notes"],
+    [prf, "test-app"],
+    [prf, "x"],
+    [sha(Buffer.from("burrow test vector prf 2")), "notes"],
+  ].map(([prfOutput, app]) => ({
+    prfHex: prfOutput.toString("hex"),
+    app,
+    secretHex: passkeySecret(prfOutput, app).toString("hex"),
+    token: syncCode(passkeySecret(prfOutput, app)),
   })),
 };
 writeFileSync(

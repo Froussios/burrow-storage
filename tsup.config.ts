@@ -21,6 +21,7 @@ export default defineConfig([
   {
     entry: {
       index: "src/index.ts",
+      offline: "src/offline.ts",
       passkey: "src/passkey.ts",
       firestore: "src/backends/firestore.ts",
       "setup-check": "src/setup/check.ts",

@@ -1,13 +1,14 @@
 <!--
-  Three ways to give a page its Firestore config. Burrow reads the <meta> tag first, then
-  window.BURROW; bundler users can pass a backend explicitly. Create your own project
-  (see docs/firestore-setup.md) and paste its three values below.
+  Three ways to give a page its Firestore config. Pass Burrow.readBackendConfig() to burrow()
+  to use the <meta> tag (read first) or window.BURROW; bundler users can pass a backend
+  explicitly. burrow() never reads the page by itself, and always needs a token too. Create
+  your own project (see docs/firestore-setup.md) and paste its three values below.
   Do not reuse the values in demo/index.html: they belong to the maintainer's demo project.
   The apiKey is an identifier, not a secret; restrict it in the Google Cloud console to the
   Cloud Firestore API and to the domains you deploy to.
 -->
 
-<!-- Option A: meta tag, no JS needed -->
+<!-- Option A: meta tag -->
 <meta
   name="burrow-firestore"
   content='{"apiKey":"YOUR_API_KEY","projectId":"your-project-id","appId":"YOUR_APP_ID"}'
@@ -35,5 +36,6 @@
       projectId: "your-project-id",
       appId: "YOUR_APP_ID",
     }),
+    token, // from generateToken(), a passkey, or the user
   });
 </script>

@@ -19,12 +19,9 @@ export const HARD_MAX_PLAINTEXT = 749_000;
 export interface DocCipher {
   /** AES-GCM key for ct. */
   readonly key: CryptoKey;
-  /** HMAC key for the write-token chain (macKey, or slotMac for a keyslot). */
+  /** HMAC key for the write-token chain (macKey). */
   readonly mac: CryptoKey;
-  /**
-   * The AAD prefix: id || app for manifests and items, slotId || "slot" for a
-   * keyslot (ENC-5).
-   */
+  /** The AAD prefix: id || app for manifests and items (ENC-5). */
   readonly aad: string;
 }
 

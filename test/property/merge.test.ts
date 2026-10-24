@@ -2,7 +2,6 @@
 // random op sequences.
 import fc from "fast-check";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Core } from "../../src/core.js";
 import { deriveAppKeys } from "../../src/codec/derive.js";
 import { open } from "../../src/codec/envelope.js";
 import { decodeToken } from "../../src/codec/token.js";
@@ -13,6 +12,7 @@ import {
   mergeDirectories,
   nextTs,
 } from "../../src/sync/merge.js";
+import type { OfflineStorage } from "../../src/types.js";
 import { World } from "../support/devices.js";
 
 afterEach(() => vi.restoreAllMocks());
@@ -148,17 +148,26 @@ const op = (devices: number): fc.Arbitrary<Op> =>
     },
   );
 
-async function runScenario(ops: Op[], skews: number[]) {
+/**
+ * Run `ops` over offline-wrapped devices sharing one token. `"queued"`: each
+ * browser reports itself offline, so writes stay local until a sync op pushes
+ * them. `"network"`: writes go to the store first (D-57) and queue only while
+ * the store fails.
+ */
+async function runScenario(
+  ops: Op[],
+  skews: number[],
+  mode: "queued" | "network" = "queued",
+) {
   const world = new World();
   let clock = 1_700_000_000_000;
   let skew = 0;
   vi.spyOn(Date, "now").mockImplementation(() => clock + skew);
   try {
     const devs = skews.map(() => world.device({ cache: "memory" }));
-    const areas: Core[] = [];
-    for (const d of devs) areas.push(await d.open({ debounceMs: 1e9 }));
-    const code = await areas[0]!.exportToken();
-    for (const a of areas.slice(1)) await a.link({ token: code });
+    for (const d of devs) d.online = mode === "network";
+    const areas: OfflineStorage[] = [];
+    for (const d of devs) areas.push(await d.open());
     const lastOp = new Map<
       string,
       { t: "set"; value: number } | { t: "remove" }
@@ -199,7 +208,7 @@ async function runScenario(ops: Op[], skews: number[]) {
     return {
       states,
       lastOp,
-      dirty: areas.map((a) => a.inspect().dirtyKeys),
+      dirty: await Promise.all(devs.map((d) => d.dirty())),
       elapsed: clock - 1_700_000_000_000,
     };
   } finally {
@@ -253,13 +262,12 @@ describe("multi-device convergence (MemoryBackend)", () => {
         );
         // Drive the same publication race explicitly, without subscription
         // timing.
-        for (const d of devs) d.backend.capabilities.subscribe = false;
-        const [a, b, c] = await Promise.all(
-          devs.map((d) => d.open({ debounceMs: 1e9 })),
-        );
-        const token = await a!.exportToken();
-        await b!.link({ token });
-        await c!.link({ token });
+        for (const d of devs) {
+          d.backend.capabilities.subscribe = false;
+          d.online = false; // writes stay local until syncNow()
+        }
+        const [a, b, c] = await Promise.all(devs.map((d) => d.open()));
+        const token = await world.token();
         const keys = await deriveAppKeys(await decodeToken(token), "test");
         const { base } = keys;
         const readManifest = async () =>
@@ -362,7 +370,7 @@ describe("multi-device convergence (MemoryBackend)", () => {
             // Check immediately after one sync, before C publishes or another
             // pass could repair a wrongly pruned cache entry.
             expect(await b!.get()).toEqual(expected);
-            expect(b!.inspect().dirtyKeys).toBe(0);
+            expect(await devs[1]!.dirty()).toBe(0);
             expect((await readManifest()).items).toHaveProperty("k3");
             // C still cannot publish: the next pass must retain k3 using the
             // manifest B published, without any other dirty item forcing it.
@@ -375,9 +383,9 @@ describe("multi-device convergence (MemoryBackend)", () => {
         await livePush;
         for (let round = 0; round < 2; round++)
           for (const area of [a!, b!, c!]) await area.syncNow();
-        for (const area of [a!, b!, c!]) {
+        for (const [i, area] of [a!, b!, c!].entries()) {
           expect(await area.get()).toEqual(expected);
-          expect(area.inspect().dirtyKeys).toBe(0);
+          expect(await devs[i]!.dirty()).toBe(0);
         }
         const manifest = await readManifest();
         if (scenario !== "newer" && !unlistedLive)
@@ -394,6 +402,27 @@ describe("multi-device convergence (MemoryBackend)", () => {
         fc.array(op(3), { minLength: 1, maxLength: 25 }),
         async (ops) => {
           const { states, lastOp, dirty } = await runScenario(ops, [0, 0, 0]);
+          expect(dirty).toEqual([0, 0, 0]);
+          for (const s of states) expect(s).toEqual(states[0]);
+          const expected: Record<string, number> = {};
+          for (const [k, o] of lastOp) if (o.t === "set") expected[k] = o.value;
+          expect(states[0]).toEqual(expected);
+        },
+      ),
+      { numRuns: Number(process.env.FC_RUNS ?? 40) },
+    );
+  }, 300_000);
+
+  it("D-57 network first: with synchronised clocks every device converges on the last write per key", async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.array(op(3), { minLength: 1, maxLength: 25 }),
+        async (ops) => {
+          const { states, lastOp, dirty } = await runScenario(
+            ops,
+            [0, 0, 0],
+            "network",
+          );
           expect(dirty).toEqual([0, 0, 0]);
           for (const s of states) expect(s).toEqual(states[0]);
           const expected: Record<string, number> = {};
