@@ -5,10 +5,10 @@ one caller-owned **Spark** project with the **default, Standard, Native-mode** d
 the shipped `burrow` collection rules. Before the first npm release, use a repository clone
 and replace `npx burrow-setup` with `node scripts/burrow-setup.mjs` after `npm run build`.
 
-The project may hold content, passkey keyslots, or both; see
-[independent configuration](https://github.com/Froussios/burrow-storage/blob/main/docs/extending.md#independent-token-and-content-storage).
-For separate projects, run this guide in separate working directories to keep configs/state
-separate, and deploy the shipped rules unmodified in both projects.
+The project holds Burrow content only; Burrow stores no token record (see
+[token custody](https://github.com/Froussios/burrow-storage/blob/main/docs/extending.md#token-custody-stays-outside-the-store)).
+For several projects, run this guide in separate working directories to keep configs/state
+separate, and deploy the shipped rules unmodified in each.
 
 **Validation status:** these instructions have not been run end to end against a fresh project
 or rerun by an agent. Emulator coverage does not establish that provisioning works. Record any

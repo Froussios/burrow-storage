@@ -29,5 +29,5 @@ needs them, and Spark's hard quotas are what make abuse a nuisance rather than a
 Optional [content retention](../docs/retention.md) uses `burrow-reaper` outside CI with explicit
 owner credentials and a dedicated content-only target. It leaves permanent `{ x, rev, next }`
 stubs using trusted server write time/preconditions and a private daily budget/cache. Do not
-run it on token-access or mixed collections; keyslots retain their complete payload. TTL and
-billing are not enabled. Updated clients are required for the ordinary-write expiry gate.
+run it on a collection that holds anything but Burrow content. TTL and billing are not
+enabled. Updated clients are required for the ordinary-write expiry gate.

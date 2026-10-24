@@ -1,211 +1,211 @@
-# Storage tokens, passkey backups and sync
+# Storage tokens, passkeys and sync
 
-How a user's data gets from one device to another, what the library does in the background, and
-what a site should show. Signatures are in [api.md](api.md).
+Where the user's token comes from, who keeps it, how the offline wrapper syncs, and what a site
+should show. Signatures are in [api.md](api.md); the design is D-57 to D-59 in
+[decisions.md](decisions.md).
 
 ## Terms
 
 | Term | Meaning |
 | --- | --- |
-| **Storage token** (or just **token**) | The 32-byte secret that owns a user's data. Whoever holds it can read and write that data from any device. Shown to people as 56 characters in groups of four, `07DV-1XKY-…`, which is also the form the API takes and returns: `exportToken()`, `link({ token })`. |
-| **Passkey backup** | The token stored in a *keyslot* document in the utility's configured backend, wrapped under a key that only the passkey's PRF output can derive. One passkey, one keyslot. Optional, from `burrow-storage/passkey`; its backend can differ from the content backend. |
-| **Linking** | Making this device use an existing token instead of the one it generated. |
+| **Storage token** (or just **token**) | The 32-byte secret that owns a user's data. Whoever holds it can read and write that data from any device. Shown to people as 56 characters in groups of four, `07DV-1XKY-…`, which is also the form the API takes: `burrow({ token })`. |
+| **Passkey token** | A token derived from a passkey's WebAuthn PRF output by `passkeyToken()` from `burrow-storage/passkey`. The same passkey gives an app the same token wherever the passkey is available. Nothing is stored. |
+| **Core** | `burrow()`: remote storage only. It holds the token's keys in memory and nothing on disk. |
+| **Offline wrapper** | `offline(store)` from `burrow-storage/offline`: the same interface over an unencrypted local copy. |
 
-The store only ever deals in the token. Getting it from one device to the next is the site's
-choice: the user types or pastes it, a password manager fills it, a passkey backup returns it, or
-the site's own mechanism does. Each one ends in `link({ token })`.
+The store only ever deals in the token string. Burrow never generates one by itself, never
+recovers one, and never remembers one between page loads. Getting the token, and keeping it, is
+the site's choice: the user types or pastes it, a password manager fills it, a passkey gives it,
+or the site keeps it.
 
-For independent token recovery and content storage, see
-[configuration examples](extending.md#independent-token-and-content-storage).
+## Getting a token
 
-## First device: nothing to do
-
-`burrow()` generates a token the first time an app runs on a device and remembers it in IndexedDB,
-wrapped under a non-extractable key, the way a browser remembers a login. The user sees no prompt.
-Data written from then on syncs under that token within seconds, so the store already holds
-everything; what the token provides is the *address and the key* to it.
-
-Remembering is only as durable as the browser's storage. Safari deletes a site's IndexedDB after
-seven days of Safari use without the user interacting with the site, and other browsers may evict
-storage when the disk runs low. The device then starts over with a new, empty token, while the
-data can still be addressed with the old one, subject to the operator's [content retention policy](retention.md). That is why a kept token or a passkey backup matters even
-to users with a single device.
-
-Each app has its own token: the `app` passed to `burrow()` names an identity, not just a
-namespace. Pages that pass the same `app` share its token and data; other apps on the same origin,
-including unrelated sites that happen to share it (every GitHub Pages project of an account lives
-on `https://<user>.github.io`), have their own. Linking or unlinking one app leaves the others as
-they were. A site whose apps should share one identity uses one `app` name.
-
-## Second device, option 1: the storage token
+### A new identity
 
 ```js
-// first device
-tokenEl.textContent = await store.exportToken();
+const token = await generateToken();
+tokenEl.textContent = token; // ask the user to keep it
+const store = await burrow({ app: "notes", backend, token });
+```
 
-// second device
+A new token has no data. Burrow keeps no copy of it, so if the user does not keep it and no
+passkey gives it, the data is unreachable once the page lets go of it.
+
+### The storage token, typed or pasted
+
+```js
 try {
-  await store.link({ token: input.value });
+  const store = await burrow({ app: "notes", backend, token: input.value });
 } catch (e) {
   if (e.code === "bad-token") say("That token is not right. Check it and try again.");
-  else throw e; // For an existing device, handle the replacement guards described below.
+  else throw e;
 }
 ```
 
 - Decoding is forgiving: case, spaces and hyphens are ignored, `O` reads as `0`, `I` and `L` as
   `1`. The alphabet has no `I`, `L`, `O` or `U`.
-- A 16-bit checksum catches typos: a wrong token rejects with `bad-token` before any network call
-  and nothing changes. A random well-formed string passes the checksum about once in 65 536
-  attempts and is then adopted as a new, empty token. The demo therefore always shows the token
-  in use, so the user can compare it with the one they meant to enter.
-- It needs no WebAuthn, so it works in every supported browser, including those whose passkeys
-  lack the PRF extension.
-- A password manager is the natural place to keep it: the user saves it once on the first device
-  and fills it in on the next.
+- A 16-bit checksum catches typos: a wrong token rejects with `bad-token` before any network call.
+  A random well-formed string passes the checksum about once in 65 536 attempts and is then
+  opened as a new, empty identity. Show the token in use, so the user can compare it with the
+  one they meant to enter.
+- It needs no WebAuthn, so it works in every supported browser.
+- A password manager is the natural place to keep it.
 
-## Second device, option 2: a passkey backup
+### Passkeys
 
 ```js
-import { passkeyBackup } from "burrow-storage/passkey";
-const backup = passkeyBackup({ userName: "notes" });
+import { burrow } from "burrow-storage";
+import { passkeyToken } from "burrow-storage/passkey";
+const passkey = passkeyToken({ app: "notes" });
 
-// first device, from a click
-if (await backup.available()) {
-  try {
-    await backup.save(await store.exportToken());
-    say("Saved in a passkey.");
-  } catch (e) {
-    say("Passkey backup may be unavailable. Keep your storage token and try again.");
-  }
+// first time, from a click: a new passkey and a new identity
+const created = await passkey.create();
+
+// any later visit, on any device with that passkey, from a click: one prompt
+try {
+  const token = await passkey.get();
+  const store = await burrow({ app: "notes", backend, token });
+} catch (e) {
+  if (e.code === "cancelled") say("No passkey was used.");
+  else if (e.code === "prf-unsupported") say("Use your storage token instead.");
+  else throw e;
 }
-
-// second device, from a click: one passkey prompt
-const token = await backup.restore();      // null if declined or no backup
-// On would-replace, ask for consent and retry with replace: true.
-// Handle would-orphan separately: discardLocal: true needs consent to drop unsynced writes.
-if (token) await store.link({ token, source: "passkey" });
 ```
 
-`save(token)` creates a discoverable passkey (user verification required, no attestation) and
-evaluates the WebAuthn PRF extension with a fixed salt. From the PRF output it derives a wrapping
-key, a write-token key and a document id, and writes the token, encrypted, at that id in the
-utility's configured backend. The passkey itself never becomes the secret, so several passkeys
-(one per platform) can each hold a keyslot for the same token.
+`create()` makes a discoverable passkey (user verification required, no attestation, a random
+user handle) and evaluates the WebAuthn PRF extension with a fixed input; `get()` asks the user to
+pick an existing passkey and evaluates it the same way. The PRF output, run through HKDF with the
+app id, is the token: deterministic for that passkey and app, unrelated between apps, and stored
+nowhere.
 
-The decoded token and canonical effective RP ID determine the passkey's handle. Different
-tokens can coexist with the same visible labels, including different apps on one site.
-`userName` defaults to the page's host and `displayName` defaults to `userName`; both are public
-presentation only. Changing labels does not create another backup of the same token on one RP.
-An explicit parent `rpId` lets eligible subdomains share that passkey identity; see
-[RP normalization and replacement limits](api.md#passkey-backup).
+What this does and does not give:
 
-Re-saving the same token on one RP may replace its earlier credential before PRF evaluation
-and the keyslot write. A failure after creation can leave no usable passkey backup. Keep the
-token and retry if saving fails; an earlier successful save does not establish current
-recoverability. Show success only after `save()` resolves. Before re-saving a recorded backup,
-mark its status uncertain and retain that uncertainty on failure. A failed first save needs
-no backup record. The replacement tests use only Chromium's virtual authenticator; iCloud
-Keychain, Google Password Manager, Windows Hello, 1Password and Bitwarden have not been
-validated on real devices.
+- **The passkey is not a vault.** WebAuthn does not let a page store a chosen value in a passkey
+  and read it back (the `largeBlob` extension can, but whether it works is up to the browser and
+  the passkey provider, and Burrow does not use it:
+  [WebKit added it in Safari 17](https://origin-devforums.apple.com/forums/thread/730133) while
+  platform authenticators lagged, and a
+  [2026 survey of credential managers](https://www.corbado.com/blog/webauthn-l3-credential-manager-support)
+  lists it as provider-dependent). So the token is *derived*: `create()` makes a
+  new identity, and there is no way to put an existing token into a passkey. A user who started
+  with a pasted or generated token keeps that token as a string.
+- **The token outlives nothing but its copies.** It can be recovered only while the passkey is
+  available and supports PRF, or from a copy of the string. Deleting the passkey, or losing every
+  device and account that holds it, loses that route; a new passkey is a new token. Show the token
+  so the user can keep it too.
+- **Each `create()` adds a passkey.** It never replaces one, so earlier identities stay
+  reachable, but the user then picks from several passkeys at `get()`. Use a distinct
+  `userName` if your app creates more than one on purpose.
+- **Other devices depend on the provider.** A passkey synced by iCloud Keychain or Google
+  Password Manager can give the same token on the user's other devices, if PRF works there.
+  Cross-ecosystem use (a phone's passkey on a desktop through a QR code) goes through the
+  browser's hybrid flow, which Burrow has not tested.
+- **Cancel is a rejection.** WebAuthn reports a dismissed prompt, a timeout and "no matching
+  passkey" as the same error, so all three reject `cancelled`; there is no empty token.
 
-`restore()` evaluates the PRF again, derives the same id, reads and unwraps the keyslot, and
-returns the token. If the chosen passkey has no keyslot, or the user cancels, it returns `null`
-and nothing changes. Because the token comes back as a value, a `would-replace` or
-`would-orphan` retry of `link()` reuses it without a second passkey prompt. `source: "passkey"`
-labels it in `store.token.source`, so the UI can say where it came from.
+**Support** varies with the browser, the operating system, the authenticator and the passkey
+provider, and both the browser and the authenticator must support PRF. `available()` checks what
+the browser can tell without prompting; the authenticator the user picks may still lack PRF, and
+`create()` then rejects `prf-unsupported` (and, where the browser allows, tells the provider the
+useless passkey can be removed). Burrow's own tests run only against Chromium's virtual
+authenticator. Third-party reports as of 2026, not verified by Burrow:
 
-PRF support varies by browser, operating system and authenticator, and not every security key
-offers it. `backup.available()` checks without prompting. Cross-ecosystem use (an Apple passkey on
-Windows) goes through the browser's QR/hybrid flow. **The storage token is the path that always
-works**; offer it alongside the passkey.
+- Apple platforms: iCloud Keychain passkeys support PRF from macOS 15 and Safari 18; Chrome on
+  macOS from about version 132.
+  ([Yubico](https://developers.yubico.com/WebAuthn/Concepts/PRF_Extension/Developers_Guide_to_PRF.html),
+  [compatibility matrix](https://github.com/kummahiih/private-circle/blob/main/docs/WEBAUTHN_PRF_SUPPORT.md))
+- Android: Google Password Manager passkeys include PRF in Chrome, Edge and Samsung Internet.
+  ([Corbado](https://www.corbado.com/blog/passkeys-prf-webauthn))
+- Windows Hello: hmac-secret, which PRF needs, reportedly arrived with the February 2026 Windows 11
+  updates, without Microsoft documentation.
+  ([Corbado](https://www.corbado.com/blog/webauthn-l3-credential-manager-support))
+- Security keys: support differs between browsers; reports on Safari conflict.
+- Firefox: PRF on by default from about version 135; reported unreliable on Android.
+
+**The storage token is the path that always works**; offer it alongside the passkey.
+
+## Keeping the token: login often or login once
+
+The core keeps the token's keys in memory until `close()` or the end of the page. What happens at
+the next page load is up to the site:
+
+| | Login often | Login once |
+| --- | --- | --- |
+| Token | In the page's memory only | Kept by the page (the demo uses `localStorage`) |
+| Store | The core | The offline wrapper over the core |
+| Next visit | Ask again: a passkey prompt, or the token pasted | Opens at once, with no prompt |
+| Offline | Nothing works | Reads and writes use the local copy |
+| On the device | Nothing | The token, as the page stores it, and an unencrypted copy of the data |
+| Copied browser profile | Gets nothing | Gets the data and the token: lasting read-write access, since tokens cannot be revoked |
+
+Burrow never persists the token for you, under any option. If a site stores it, the site owns
+that choice and should say plainly what it means. A passkey makes "login often" cheap: one prompt
+per visit, nothing on the device. The demo implements both columns with honest explanations
+([user-journeys.md](user-journeys.md)).
 
 ## What to show
 
 The demo (`demo/`, [user-journeys.md](user-journeys.md)) is the reference UI. Its rules:
 
-1. **Always show the token in use** and where it came from (`BurrowArea.token`): generated here,
-   pasted, restored from a passkey, remembered from an earlier visit.
-2. **Nudge once.** A token whose `source` is `"generated"` was made on this device and, as far
-   as Burrow knows, exists nowhere else. Once there is something worth keeping, show a low-key
-   banner, not a modal on first load. Burrow cannot know whether the user kept the token, so
-   remember a confirmed backup yourself. The demo stores it in the area, where it syncs with the
-   data:
+1. **Never make up a token silently.** Offer "use my passkey", "create a passkey", "start with a
+   new token" and "enter a token".
+2. **Show the token in use** and where it came from, so a mistyped token is visible.
+3. **Say where it is kept**: "in this page's memory only" or "kept by this page in this browser,
+   unencrypted".
+4. **Say it plainly:** "Burrow cannot reset your data. Keep your storage token, or your passkey if
+   it gave you the token."
+5. **Before signing out with unsynced writes, ask.** The offline wrapper's `forget()` rejects
+   `would-orphan` while writes are unsynced; retry with `discardLocal: true` only after the user
+   agrees to lose them.
+6. On `decrypt-failed`, tell the user the token cannot read the stored data; on `expired`, that
+   synced content expired and the local copy is kept.
 
-   ```js
-   let nudged = false;
-   store.onChanged.addListener(({ source }) => {
-     if (nudged || source !== "local" || store.token.source !== "generated") return;
-     if (store.storage.getItem("backup")) return; // the site's own record
-     nudged = true;
-     showBanner("Keep your storage token, or create a passkey backup, to get this back elsewhere.");
-   });
-   ```
-3. **Confirm when leaving data.** `link()` and `unlink()` reject with `would-replace` when the
-   current app has live cached data. Ask whether the token is kept, then retry with
-   `replace: true`. Empty stores need no replacement confirmation, and linking the token
-   already in use bypasses both guards. Unsynced writes have an independent `would-orphan`
-   guard: confirm discarding them before retrying with `discardLocal: true`. If both guards
-   apply, both overrides are required. Cached data does not reveal remote-only data, and
-   token provenance does not prove that a backup exists.
-4. **Say it plainly:** "Burrow cannot reset your data. Keep your storage token."
-5. On `decrypt-failed` (status `"error"`), tell the user to link the device again.
+## How the offline wrapper syncs
 
-Shared computers: `burrow({ app, rememberDevice: false })` keeps the token in memory only and the
-cache in memory too. Each session starts with a fresh token until the user links.
-
-Logging out: `unlink({ replace: true })`, after confirming when data is present, forgets the
-token on the device. The remote documents stay; the next `burrow()` generates a new token and
-clears the old token's cached items before use, so the next user of the device never sees the
-previous one's data in the site. Until then the old items remain
-in IndexedDB in plaintext; on a shared computer, `rememberDevice: false` keeps them off the disk
-altogether.
-
-## How sync works
-
-- **Per item.** Each key is its own encrypted document; an encrypted **manifest** per app and user
-  lists the keys with their timestamps. A push writes only the changed items, then the manifest.
-  A pull reads the manifest and fetches only items that are newer than the cached copy. A pull
-  with nothing new is one read.
-- **Last writer wins, per key.** Each write carries the device's clock, bumped so it is never
-  behind the latest timestamp the device has seen from the store (clock skew cannot make a new
-  write lose to an old one). Equal timestamps are broken by a hash of the value, and a delete
-  beats a value, so all replicas converge to the same answer.
+- **Per item.** Each key is its own encrypted document; an encrypted **manifest** per app and
+  token lists the keys with their timestamps. A push writes only the changed items, then the
+  manifest. A full refresh reads the manifest and fetches only items newer than the local copy.
+- **Network first.** `get()` asks the store and merges the answer into the copy; `set()` and
+  `remove()` store the write in the copy, then push it. Each waits for the store up to 3 seconds,
+  then answers from the copy and lets the remote work finish in the background.
+- **Offline.** After a failure, or while the browser says it is offline, calls use the copy at
+  once. Retries back off exponentially from 2 s to 5 minutes; the network coming back and
+  `syncNow()` retry at once. Unsynced writes are never dropped.
+- **Last writer wins, per key.** A write made while the store answers is stamped above whatever
+  the store holds, so it wins as the latest. A write made offline keeps its own time (bumped
+  above every timestamp the device has seen, so clock skew cannot make it lose to something it
+  already saw); when it is replayed, a newer write made elsewhere wins and the copy takes that
+  value. Equal timestamps are broken by a hash of the value, and a delete beats a value, so all
+  replicas converge.
 - **Deletes are tombstones.** A removed key stays in the manifest as deleted for 30 days, so a
   device that was offline does not resurrect it. The item document is overwritten with a deleted
-  marker and is never removed from the store.
-- **Triggers.** Page load. Local writes, debounced 1.5 s. Page becomes visible. Every
-  `syncIntervalMs` (30 s) while visible. A change notification from the Firestore listener on the
-  manifest. `link()` and `syncNow()`. Page hidden or unloaded: pending writes are flushed to the
-  cache and a push starts; if the page closes before it finishes, the writes go out on the next
-  visit.
+  marker and is never removed from the store. Deleting a key the copy does not show is ignored
+  offline and reaches the store online.
+- **Remote changes.** The wrapper subscribes to the manifest where the backend can notify
+  (Firestore does), refreshes when the page becomes visible or the network returns, and reports
+  what changed on `onChanged` with `source: "remote"`. It does not poll.
 - **Conflicts.** A write that collides with another device is retried up to three times with
   jittered backoff (200 ms, 800 ms, 3 s) after re-reading the document; the manifest is where two
   devices usually collide, and merging it is a union of the two key directories.
-- **Failures.** Network and quota errors set `status` to `"offline"` and back off exponentially
-  from 2 s, capped at the larger of `syncIntervalMs` and 5 minutes. Unsynced writes are never
-  dropped. A document that does not decrypt sets `"error"` and pauses sync until the device links
-  again; the cache is left as it was.
-- **Pull availability during failed writes.** A sync pass stages remote changes and pruning
-  until all required item writes and manifest publication succeed, or until a pass needs no
-  writes. If a dirty item, full manifest or due renewal cannot be written, that pass does not
-  apply its staged remote changes even when reads succeed. Other devices' changes can therefore
-  be delayed while write quota is exhausted or a write remains oversized. Cached reads and local
-  writes keep working; retry after quota resets or resolve the size issue. Best-effort fresh
-  single-key reads are a separate path and still report expiry while preserving local data.
-- **Tabs.** Tabs of one app share the cache and tell each other about writes through a
-  `BroadcastChannel`; each sync pass takes a `navigator.locks` lock so two tabs never push at once.
-  Linking or unlinking in one tab switches or closes the other tabs of the same app.
+- **Failures.** Network and quota errors set `status` to `"offline"`. A document that does not
+  decrypt, or an expiry stub, sets `"error"` and stops remote work for that instance; the local
+  copy and unsynced writes stay and keep working.
+- **One copy per token.** The copy is named by a fingerprint of the token, so a device that opens
+  the app with another token sees that token's data, and the first token's copy, unsynced writes
+  included, is there again when it returns. `forget()` deletes the current one.
+- **Tabs.** Tabs of one app and token share the copy and tell each other about writes through a
+  `BroadcastChannel`; replays and renewals take a `navigator.locks` lock so two tabs never push
+  the same write at once. `forget()` in one tab closes the others.
 
-The data model and algorithms in detail: [architecture.md](architecture.md).
-
+The core alone has none of this: each call goes to the store and rejects if it cannot. The data
+model and algorithms in detail: [architecture.md](architecture.md).
 
 ## Inactive content and expiry
 
-Client use renews listed content about every 30 days, independently of token access. An operator
-may run optional content-only cleanup after 395 days since a document's server write time.
-A permanent expiry stub pauses sync with `expired`; local values and unsynced writes remain.
-Passkey token payloads are excluded and `restore()` remains read-only. Before explicitly
-choosing a fresh token with dirty local data, export/save `exportJSON()` first, then use the
-existing `discardLocal: true` choice if appropriate and manually import saved values. This is
-an app/user choice, not backend migration or automatic republication. Full policy and limits:
-[retention.md](retention.md).
+The offline wrapper renews listed content about every 30 days per device; the core alone renews
+only what it writes. An operator may run optional content-only cleanup after 395 days since a
+document's server write time. A permanent expiry stub makes the core reject `expired`, and makes
+the offline wrapper pause remote work while keeping its copy and unsynced writes. Before choosing
+a fresh token with unsynced local data, read the data with `get()` and save it; then use the
+fresh token and write it again. This is an app/user choice, not backend migration or automatic
+republication. Full policy and limits: [retention.md](retention.md).

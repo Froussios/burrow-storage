@@ -1,75 +1,31 @@
-# Extending Burrow: backends and token carriers
+# Extending Burrow: backends and token custody
 
 Two things are yours to choose: the **backend**, where encrypted documents live, is a plain
-interface from `burrow-storage` that nothing in the core special-cases; and **how a token reaches
-another device**, which needs no interface at all, because the store only takes and gives a
+interface from `burrow-storage` that nothing in the core special-cases; and **how the user's token
+is kept and brought back**, which needs no interface at all, because the store only takes a
 string.
 
-## Independent token and content storage
+## Token custody stays outside the store
 
-Keep token recovery independent of content storage. This is a design requirement for extensions
-and new backends: the storage implementation takes a token string, while the site chooses how
-to keep or recover it. Neither side should require access to the other's state or service.
-This lets a site choose availability, ownership, cost and retention separately for recovery
-and content. The decision is recorded in D-50 in [decisions.md](decisions.md).
+The core takes the token as a string at `burrow({ token })` and keeps only the keys derived from
+it, in memory (D-57). The offline wrapper never sees more than the core does. Neither persists
+the token, and neither depends on how it was obtained, so a site can combine any of these:
 
-The token-access API is independent of content I/O: `exportToken()` and `link({ token })`
-exchange a string, and the optional `PasskeyBackup.save()` / `restore()` utility accesses its
-own selected backend. Retrieving a stored token with an available credential, including
-`PasskeyBackup.restore()`, is supported token access. Recovery after losing authenticating
-credentials is outside the project's scope. Reusing the envelope `Backend` protocol does not
-require sharing a configured instance or service.
+- the passkey utility, `passkeyToken()` from `burrow-storage/passkey`, which derives the token
+  from a passkey and stores nothing (D-58);
+- the user's password manager, or any place the user keeps a 56-character string;
+- the site's own storage, which then carries the site's own security story.
 
-The passkey utility implements `PasskeyBackup`, created by `passkeyBackup()` from
-`burrow-storage/passkey`. It reuses the same `Backend` interface as the storage implementation,
-but its backend instance is independently selectable. All three arrangements are supported:
-
-- Encrypted token keyslots in a different Firebase project from the content.
-- Encrypted token keyslots in another database through an adapter implementing `Backend`.
-- The token kept directly in a password manager or another token carrier, with no keyslot
-  backend and no passkey utility involved.
-
-For example, two separately configured Firestore instances. Deploy the shipped
-`firebase/firestore.rules` unmodified in both projects: content and keyslots use the same
-`burrow` collection and write-token rules. See [Firestore setup](firestore-setup.md).
-
-```js
-import { burrow } from "burrow-storage";
-import { FirestoreBackend } from "burrow-storage/firestore";
-import { passkeyBackup } from "burrow-storage/passkey";
-
-const contentBackend = new FirestoreBackend({
-  apiKey: "content-project-browser-key",
-  projectId: "content-project",
-});
-const tokenBackend = new FirestoreBackend({
-  apiKey: "recovery-project-browser-key",
-  projectId: "recovery-project",
-});
-const store = await burrow({ app: "my-app", backend: contentBackend });
-const backup = passkeyBackup({ backend: tokenBackend });
-
-// First device, from a click; keep the token and retry if saving fails:
-await backup.save(await store.exportToken());
-// Later, on another device configured for these same stores, from a click:
-const token = await backup.restore();
-// On would-replace, ask for consent and retry with replace: true.
-// Handle would-orphan separately: discardLocal: true needs consent to drop unsynced writes.
-if (token) await store.link({ token, source: "passkey" });
-```
-
-Either backend can instead be another `Backend` implementation. Omitting the passkey utility's
-backend resolves the page's configuration; it does not inherit a backend supplied only to
-`burrow()`. Sharing one backend is a convenience, not a requirement. The site must configure the
-appropriate stores on each device: neither the token nor the passkey contains backend config.
-Each remote store must enforce its own envelope/write rules. Core sync must not assume it can
-renew or enumerate keyslots, and a token carrier need not implement `Backend` at all.
+There is no online token store: no keyslot, recovery document or backup service is part of
+Burrow (D-58 supersedes D-50's independent recovery backend). Extensions must keep it that way:
+the store takes a token string and never asks a token carrier for anything, and a token carrier
+needs no access to the store's state or backend.
 
 ## A backend for another store
 
 A backend stores opaque envelopes at opaque ids and enforces one rule: a write must present the
-expected revision. It knows nothing about users, apps, keys or encryption; a manifest, an item
-and a keyslot look identical to it.
+expected revision. It knows nothing about users, apps, keys or encryption; a manifest and an
+item look identical to it.
 
 The interface is `Backend`, defined with a comment on every member in
 [`src/types.ts`](../src/types.ts) and exported as a type from `burrow-storage`:
@@ -81,15 +37,15 @@ import { BackendError } from "burrow-storage";   // what every failure must reje
 
 Its members are `id`, `capabilities`, `get(id)`, `put(id, env, expectedRev, opts?)`, and the
 optional `getMany(ids)` and `subscribe(id, onChange)`. Client use drives content renewal; backend
-adapters do not schedule it. See [retention.md](retention.md) for owner-only cleanup, dedicated
-content-target selection, and why full independent token-access payloads remain excluded.
+adapters do not schedule it. See [retention.md](retention.md) for owner-only cleanup and
+dedicated content-target selection.
 
 ### Contract
 
 - `put(id, env, null)` creates; it must reject with `BackendError("conflict")` if a document
   exists. `put(id, env, n)` must reject with `conflict` unless the stored revision is exactly `n`.
   Two concurrent writers at the same `expectedRev` must see exactly one success. This is the
-  optimistic-concurrency check the sync engine relies on.
+  optimistic-concurrency check every write relies on.
 - `get`/`getMany`/`subscribe` return `StoredDocument` (an `Envelope` or `{ x: true, rev, next }`
   owner stub). Preserve the flag and notify even at an unchanged revision. Ordinary `put` must
   atomically reject `BackendError("expired")` on a stub; explicit `PutOptions.replaceExpired`
@@ -107,9 +63,9 @@ content-target selection, and why full independent token-access payloads remain 
 - Map every failure to a `BackendError` with one of `conflict`, `unauthorized`, `too-large`,
   `quota`, `network`. Unknown errors are `network` and are retried with backoff.
 - Never log, index or retain ids beyond what the store itself needs. Ids are capabilities.
-- `subscribe(id, onChange)` is called with the user's manifest id only; call `onChange` with the
-  new envelope when it changes and return an unsubscribe function. Burrow falls back to polling
-  when it is absent.
+- `subscribe(id, onChange)` is called by the offline wrapper with the user's manifest id only;
+  call `onChange` with the new envelope when it changes and return an unsubscribe function.
+  Without it, the wrapper learns of remote changes only when it reads or syncs.
 
 ### Verifying it
 
@@ -137,31 +93,30 @@ HTTP is only a transport: define and verify its chain/CAS, access and error prot
 chosen backend's issue before implementing a generic client. No HTTP endpoint or candidate
 deployment is supplied by the core.
 
-## Another way to carry the token
+## Another way to keep the token
 
 There is no plug-in interface for this. The store deals only in the storage token, a 56-character
-string: `exportToken()` hands it out and `link({ token, source })` takes it in. Anything that can
-keep a string for the user and give it back can carry it: a password manager, a QR code shown on
-one device and scanned on another, a file the user saves, your own service.
+string: `generateToken()` makes one, and `burrow({ token })` takes it. Anything that can keep a
+string for the user and give it back can carry it: a password manager, a QR code shown on one
+device and scanned on another, a file the user saves, your own service.
 
 ```js
 // Keep it somewhere, from a click.
-await myVault.put(await store.exportToken());
+await myVault.put(token);
 
 // Later, on another device, from a click.
-const token = await myVault.get();
-if (token) await store.link({ token, source: "vault" });
+const kept = await myVault.get();
+if (kept) await burrow({ app: "my-app", backend, token: kept });
 ```
-
-`source` is a label that Burrow records with the token and reports in `store.token.source`, so
-the page can say where the token came from. It has no other effect.
 
 Treat the token like a password. Whoever obtains it can read and overwrite the user's data, from
 anywhere, for good: Burrow cannot revoke it. So do not put it in a URL, a log, analytics or an
-error report, and encrypt it at rest under something only the user has, as the passkey backup does.
+error report, and if you keep it at rest, protect it under something only the user has. Storing
+it in plain `localStorage`, as the demo's "stay signed in" does, makes it readable to anyone with
+the browser profile and to every script on the origin; say so to your users.
 
-The passkey backup, [`src/passkey.ts`](../src/passkey.ts), is the reference: it is built only on
-`exportToken()` and `link()` plus a backend for its keyslot, with no access to the store's state.
+The passkey utility, [`src/passkey.ts`](../src/passkey.ts), is the reference: it uses no store
+API at all, only WebAuthn and the token encoding.
 
 ## Page configuration
 
@@ -173,25 +128,24 @@ import { burrow } from "burrow-storage";
 const store = await burrow({
   app: "my-app",
   backend: { type: "firestore", apiKey: "…", projectId: "your-project" },
+  token,
 });
 ```
 
-`firestore: { apiKey, projectId }` is shorthand; `appId` is optional. An explicit backend
-instance still works. Caller `backend` takes precedence over `firestore`, which takes
-precedence over page config. The first call for an app fixes its configuration for the page.
-
-Without either caller option, discovery checks, in order:
+`appId` is optional. An explicit backend instance works too. `burrow()` never looks at the page:
+to keep the config in the page, read it with `readBackendConfig()` and pass it on. That checks,
+in order:
 
 1. `<meta name="burrow-backend" content='{"type":"firestore","apiKey":"…","projectId":"your-project"}'>`;
 2. `window.BURROW.backend`, using the same config object;
-3. legacy `<meta name="burrow-firestore">` and then `window.BURROW.firestore`.
+3. `<meta name="burrow-firestore">` and then `window.BURROW.firestore`, returned as
+   `{ type: "firestore", … }`.
 
-Malformed or incomplete config and an unregistered type produce a usable local store with
-`status: "error"`; `syncNow()` rejects `BurrowError("backend")`. Local writes stay dirty in
-the cache. Burrow never silently selects a different project after a config error. Correct
-configuration and reload the page to enable sync. No config gives the ordinary `idle`
-local-only store. `readFirestoreConfig()` reads only the legacy Firestore config and throws
-on malformed JSON; it does not interpret generic config.
+It returns `null` when the page has none, and throws `TypeError` for malformed JSON or a value
+that is not an object, without echoing the value. `burrow()` rejects with `TypeError` for a
+missing backend, an unregistered type or a malformed instance, and with
+`BurrowError("backend", "backend configuration failed")` when a factory throws. It never falls
+back to another project. `readFirestoreConfig()` reads only the Firestore shorthand.
 
 Register your adapter factory before opening a store. Config is publishable data; keep admin
 credentials on the server. A factory may use a dynamic import for its own adapter subpath.
@@ -201,7 +155,7 @@ Here is a small test-store example using an existing adapter:
 import { burrow, registerBackend, MemoryBackend } from "burrow-storage";
 
 registerBackend("test-store", async () => new MemoryBackend());
-const store = await burrow({ app: "my-app", backend: { type: "test-store" } });
+const store = await burrow({ app: "my-app", backend: { type: "test-store" }, token });
 ```
 
 `registerBackend(type, factory)` accepts a lowercase letters/digits/hyphens type of 1–64
@@ -212,15 +166,15 @@ only selecting its type does. Page JSON never supplies a module URL or executabl
 
 Factories create or load an adapter and must settle promptly. Keep remote connectivity
 checks and document requests in the backend's I/O methods (`get`, `put`, `getMany`,
-`subscribe`), so initialization can open local storage while the remote service is
-unavailable. Initialization awaits the factory: one that never settles prevents local
-storage from opening.
+`subscribe`), so `burrow()` resolves, and the offline wrapper opens, while the remote service is
+unavailable. `burrow()` awaits the factory: one that never settles keeps the store from opening.
 
 The ESM Firestore adapter remains in `burrow-storage/firestore`; the script-tag build exposes
 `Burrow.FirestoreBackend` and loads its SDK from the same-origin `burrow-firestore.js` file.
 New adapters should use their own subpath and a separate measured budget. `npm run size`
 enforces 2 KiB min+gzip for the Firestore adapter excluding its SDK, and 150 KiB for that
-lazy SDK. Core + memory remains 12 KiB and passkey backup adds at most 2 KiB.
+lazy SDK. Core + memory and core + offline wrapper + memory each stay within 12 KiB, and the
+passkey token utility adds at most 2 KiB.
 
 See the [backend support overview](backend-candidates.md#support-status) for implemented
 adapters, candidates, rejected direct variants and backend-scoped follow-up issues. A registered
