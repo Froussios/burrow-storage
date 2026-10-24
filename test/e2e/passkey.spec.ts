@@ -228,6 +228,14 @@ test("journeys 1 and 2 in the demo: create a backup with a passkey, wipe the sit
   });
   await page.locator("#passkey").click();
   await expect(page.locator("#token-backup")).toHaveText("Yes, in a passkey.");
+  // The badge may still say "synced" while new writes await their debounce.
+  // Sync both the draft and backup record before wiping all local data.
+  await page.evaluate(async () => {
+    const { Burrow } = window as unknown as {
+      Burrow: typeof import("../../src/index.js");
+    };
+    await (await Burrow.burrow({ app: "burrow-demo" })).syncNow();
+  });
 
   expect(dialogs).toEqual([]);
   await cdp.send("Storage.clearDataForOrigin", {
