@@ -1,17 +1,16 @@
 # Decisions
 
-The judgement calls behind the code, in two parts. **Part A** (D-1 … D-55, with a hyphen) is the
+The judgement calls behind the code, in two parts. **Part A** (D-1 … D-56, with a hyphen) is the
 log kept while implementing; each entry names the requirement it touches in
 [history/requirements.md](history/requirements.md) ("the brief") and the choice made where the
 brief was silent or self-contradictory. **Part B** (D1 … D20, no hyphen) is the earlier planning
 log, kept so its numbering stays meaningful, with the status of each item against the code.
 
 Where a planning decision and an implementation decision disagree, the implementation decision is
-the one in force. The frozen public contract in SECURITY.md (formats, derivation salts and
-labels, storage-token encoding, and the token/RP-bound passkey handle) normally changes only
-with a major release and migration. D-54 and D-55 record owner-authorized clean breaks while
-the demo is the only client; no major release, migration or compatibility machinery is
-required for those changes.
+the one in force. D-55 supersedes earlier compatibility requirements: Burrow has no clients, so
+anything marked *public contract* describes the current implementation without requiring
+backward compatibility, migration paths or major releases solely for compatibility until
+clients arrive. Historical requirements and decisions remain recorded below.
 
 ## Part A: implementation decisions
 
@@ -70,7 +69,7 @@ providers may ignore both; the built-ins get no special treatment.
 
 ### D-8 The cache belongs to one token; `unlink()` guards against orphaning (API-8, API-7)
 
-*Amended by D-55: leaving live cached data also requires `replace: true`; the unsynced-write
+*Amended by D-56: leaving live cached data also requires `replace: true`; the unsynced-write
 check and `discardLocal` override remain independent.*
 
 The local cache is stamped with a fingerprint of the token that owns it (a hash of the manifest
@@ -85,7 +84,7 @@ D-54 is all that a switch can drop.
 ### D-9 The token is per origin; per-app state is per app (KP-4, SYNC-1, SYNC-3)
 
 *The token is per app since D-54; the per-app state below is unchanged. Keyslots remain
-independent of apps. Since D-55, passkey identity derives from the token and RP ID; labels are
+independent of apps. Since D-56, passkey identity derives from the token and RP ID; labels are
 presentation only.*
 
 The wrapped token, the protection state and provider data live in an origin-wide `_device` object
@@ -567,7 +566,7 @@ this implementation alone does not close #36 or establish its complete acceptanc
 
 ### D-47 Deterministic passkey user handle; replacement is the app's to warn about (#21)
 
-*Superseded by D-55. This entry records the label-based behavior shipped in 0.1.1.*
+*Superseded by D-56. This entry records the label-based behavior shipped in 0.1.1.*
 
 Owner scope at the time: [app/user responsibility and overwrite by default](https://github.com/Froussios/burrow-storage/issues/21#issuecomment-6073994356),
 then [label-varying derivation and WebAuthn-style names](https://github.com/Froussios/burrow-storage/issues/21#issuecomment-6074104571).
@@ -580,9 +579,8 @@ presentation only, and the RP ID scoped credential use without entering the deri
 Replacement happened inside `credentials.create()`, before PRF evaluation and the keyslot
 write. A failed save could therefore lose the earlier recovery route. The demo warned before
 every save and used a historical backup badge. The original decision froze this label-based
-derivation and asked for a migration if it changed. D-55 explicitly replaces that requirement
-under the owner's direction: only the demo is a client, and the code should target the final
-contract without migration or compatibility code.
+derivation and asked for a migration if it changed. D-55 supersedes that compatibility
+requirement while there are no clients; D-56 replaces the label-based algorithm.
 
 ### D-50 Token recovery and content storage remain independent
 
@@ -691,7 +689,7 @@ storage and ongoing junk/squatting remain limitations.
 
 D-50's independently chosen token-access/content boundary remains: full encrypted token
 payloads are excluded, restore remains read-only, and passkey saves can replace credentials
-(D-55). Opaque mixed collections cannot be classified, so reaping them is refused. No core
+(D-56). Opaque mixed collections cannot be classified, so reaping them is refused. No core
 keyslot service coupling, backend-owned renewal scheduler or lost-credential recovery is added.
 See [retention.md](retention.md) for the public contract, operator steps and evidence limits.
 
@@ -720,22 +718,39 @@ does. Each app now has its own token on the device:
   the owner directed none, as the demo is the only client. A browser that ran 0.1.1 starts each
   app with a new token and clears the app's cache on first load, unsynced writes included. This is
   a deliberate exception to SYNC-9 for 0.1.1 data; linking the old token restores the synced
-  data. D-55 removes the temporary demo cleanup for the old `_device` store: the owner
-  reaffirmed that there are no clients beyond the demo and requested a clean codebase without
-  migrations.
+  data. D-56 removes the temporary demo cleanup for the old `_device` store, consistent
+  with D-55's no-clients policy.
 
-The token format, derivation, envelope and keyslot are unchanged. D-55 also separates passkey
+The token format, derivation, envelope and keyslot are unchanged. D-56 also separates passkey
 identities by token, removing the need for a distinct `userName` per app.
 
 This separates identities, not code. Any script on the origin can still read every app's cache
 and use its token, as SECURITY.md already assumes.
 
-### D-55 Token-derived passkey identity and explicit local replacement (#75; supersedes D-47)
+### D-55 No backward-compatibility obligation until clients arrive
 
-The owner requested the fix with no clients beyond the demo: avoid migrations and aim directly
-for a clean codebase. This explicitly supersedes D-47's label-derived handle and its migration
-requirement. The passkey keyslot and PRF format stay unchanged; there is no legacy-handle
-branch, credential registry, migration utility or temporary demo cleanup.
+The owner confirms that Burrow has no clients. Design proposals and reviews must therefore
+prefer the simplest correct design for current needs. Breaking changes to APIs, local storage,
+remote formats, tokens, passkeys and cryptographic derivation are allowed without compatibility
+shims, legacy readers, migration paths, deprecation periods or major-version bumps solely for
+compatibility. The demo, test fixtures and published npm versions do not create a compatibility
+obligation.
+
+This supersedes the compatibility freeze in ENC-2 and the versioning section of the historical
+requirements, planning D18, D-47 and any other earlier frozen/stable public-contract wording.
+Those documents still describe the current design and its security and correctness requirements.
+Changes must update code, tests, reference vectors and affected documentation together; record
+design changes here. This policy does not itself change any runtime behaviour or format.
+
+When the first clients arrive, document the supported contract and compatibility and migration
+expectations before further breaking changes. Until then, hypothetical future clients are not a
+reason to preserve an obsolete design.
+
+### D-56 Token-derived passkey identity and explicit local replacement (#75; supersedes D-47)
+
+`save()` identifies a backup by its decoded storage token and effective RP ID rather than
+its visible label. This supersedes D-47's label-derived handle. The passkey keyslot and PRF
+formats stay unchanged.
 
 `user.id` is 16 bytes from HKDF-SHA256 over the decoded 32-byte token secret, using UTF-8 salt
 `"burrow/v1"` and UTF-8 info `"burrow/passkey-user/v1\0" + effectiveRpId`. The zero byte frames
@@ -797,6 +812,6 @@ confirmation. The implementation then went its own way on several. Status agains
 | D15 | Facade `getItem` stringifies non-string values | **Adopted** (D-11). |
 | D16 | Keepalive flush for envelopes ≤ 32 KB | **Dropped** (D-31). The option stays in the `Backend` interface; no shipped backend honours it. |
 | D17 | One raw copy of the token in a closure | **Superseded.** The token is held wrapped and unwrapped per use (`SecretHolder.use`). |
-| D18 | Format, salts and token version are public contract; major version to change | **Adopted.** |
+| D18 | Format, salts and token version are public contract; major version to change | **Superseded while there are no clients** (D-55). Current formats remain documented; compatibility is not required until clients arrive. |
 | D19 | Classify REST errors per WP-00's measured shapes (`PATCH` on a missing document is `403`; losers of a race get `403` or `409 ABORTED`) | **Moot.** The SDK adapter maps SDK error codes instead (architecture §10); the measurements are in [history/platform-notes.md](history/platform-notes.md). |
 | D20 | `passkey().available()` requires a hostname, because on `file://` Chromium reports PRF support yet `create()` throws | **Not implemented.** Listed in architecture §13; from `file://` `protect()` rejects `prf-unsupported` instead of falling through. |

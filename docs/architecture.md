@@ -344,7 +344,7 @@ For separate backend configuration and token carriers, see
   options or the page's host, `user.displayName` from its option or effective `userName`, and
   the canonical effective RP ID for both creation and assertions. `user.id` is 16 bytes from
   HKDF-SHA256 over the decoded token secret, with salt `burrow/v1` and UTF-8 info
-  `"burrow/passkey-user/v1\0" + effectiveRpId` (D-55). The RP is the explicit `rpId` or current
+  `"burrow/passkey-user/v1\0" + effectiveRpId` (D-56). The RP is the explicit `rpId` or current
   hostname (`localhost` outside a page), canonicalized to lowercase ASCII/IDNA; invalid syntax
   rejects with `TypeError` before prompting. Labels do not enter the derivation. A dismissed
   prompt is `cancelled`; other credential errors are `prf-unsupported`. If the authenticator did

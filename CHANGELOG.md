@@ -2,11 +2,10 @@
 
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
-[Semantic Versioning](https://semver.org/). The envelope format, v1 derivation salts and labels,
-storage-token encoding, and token/RP-bound passkey user handle are frozen public contract:
-future changes require a major release with a migration path. D-55 records the owner-authorized
-clean break from the earlier label-derived handle; the demo is the only client, so this change
-needs no major release or migration.
+[Semantic Versioning](https://semver.org/). Burrow currently has no clients: breaking changes,
+including changes to cryptographic formats, do not require backward compatibility, a migration
+path or a major release solely for compatibility. This policy lasts until clients arrive
+([D-55](docs/decisions.md#d-55-no-backward-compatibility-obligation-until-clients-arrive)).
 
 ## [Unreleased]
 
@@ -20,18 +19,22 @@ needs no major release or migration.
 
 ### Changed
 
+- Clarify the no-clients compatibility policy in contributor and review instructions and current
+  documentation: prefer the simplest correct design, with no compatibility shims, migrations,
+  deprecation periods or major-version bumps required solely for compatibility until clients
+  arrive (D-55). Security, correctness and documentation requirements still apply.
 - Each app has its own storage token on the device instead of one per origin (#76, D-54). `link()`
   and `unlink()` affect only the calling app, so another app's token, data and unsynced writes
   are never touched, and unrelated sites sharing an origin no longer share a token. Pages that
   pass the same `app` still share one. Token format, derivation, envelope and keyslots are
   unchanged.
 - Passkey handles derive from the decoded token and canonical effective RP ID using a separate
-  HKDF domain (#75, D-55). Different tokens coexist even with identical visible labels;
+  HKDF domain (#75, D-56). Different tokens coexist even with identical visible labels;
   `userName` and `displayName` affect presentation only. The demo saves without a preliminary
   confirmation, reports success only after the keyslot write, and marks backup status uncertain
   after a failed re-save. Keep the token and retry if saving fails.
 - `link()` and `unlink()` reject `would-replace` when leaving live cached data, unless
-  `replace: true` explicitly confirms the change (#75, D-55). Empty stores and same-token links
+  `replace: true` explicitly confirms the change (#75, D-56). Empty stores and same-token links
   need no replacement confirmation. The independent `would-orphan`/`discardLocal` guard still
   protects unsynced writes.
 - Tokens are stored per app in `_token`. No origin-wide token migration or temporary demo
@@ -113,7 +116,7 @@ so `0.1.0` was never published.
 - Passkey handles derive from the effective `userName`: repeated saves with the same RP and
   label replace the earlier credential on conforming discoverable authenticators (#21, D-47).
   That release used the first 16 bytes of SHA-256 over UTF-8 `"burrow/user/v1" + userName`.
-  This label-based identity is superseded by D-55 in the unreleased version.
+  This label-based identity is superseded by D-56 in the unreleased version.
   Apps choose distinguishing labels for separate backups. The demo uses `burrow-demo` and
   warns before creation: replacement precedes the PRF/keyslot write and can lose the earlier
   recovery route even if saving fails. Existing random-handle duplicates remain; replacement

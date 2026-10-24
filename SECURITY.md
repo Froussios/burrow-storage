@@ -3,11 +3,13 @@
 Burrow keeps per-user data in a store that anyone may read by id, yet neither the store's operator
 nor the site's developer can read it, and nothing in it names a user. This document is the
 normative description of how, and the plain list of what it does not protect. Everything under
-*Derivation* and *Formats*, including the token/RP-bound passkey handle, is frozen public
-contract for v1: future changes require a major release with a migration path. D-55 explicitly
-supersedes the earlier label-derived handle under the owner's direction. The demo is the only
-client, so this change is a clean break with no migration or compatibility layer and does not
-require a major release.
+*Derivation* and *Formats*, including the token/RP-bound passkey handle under
+`burrow/passkey-user/v1`, specifies the current cryptographic contract. Burrow has no clients,
+so this contract may change without backward compatibility, a migration path or a major release
+required solely for compatibility
+([D-55](docs/decisions.md#d-55-no-backward-compatibility-obligation-until-clients-arrive)).
+Code, tests, reference vectors and this document must agree after any change. D-56 records the
+current passkey identity and replacement behavior.
 
 **In brief.** Burrow aims to guarantee that:
 
@@ -74,7 +76,7 @@ kek      = HKDF-Expand(sprk, "kek", 32)               AES-256-GCM, wraps the roo
 slotMac  = HKDF-Expand(sprk, "auth", 32)              HMAC-SHA-256, write tokens for the keyslot
 slotId   = base64url(SHA-256(HKDF-Expand(sprk, "slot", 32)))[0:43]
 
-Passkey user handle (public identity, not a key; D-55):
+Passkey user handle (public identity, not a key; D-56):
 user.id  = HKDF-Expand(prk, "burrow/passkey-user/v1" || 0x00 || effectiveRpId, 16)
 ```
 
@@ -201,7 +203,7 @@ preserving cached and dirty data. Independent item writes already committed befo
 expiry cannot be rolled back. It never automatically republishes an expired identity. Older
 clients may decrypt-fail or authentically rewrite a stub. Token-access payloads are fully
 excluded; empty keyslot ciphertext would destroy token access with a working authenticator.
-`restore()` remains read-only and repeated passkey `save()` is not safe renewal (D-55).
+`restore()` remains read-only and repeated passkey `save()` is not safe renewal (D-56).
 
 Only a dedicated content target is eligible for this reaper: encrypted mixed collections cannot
 be classified. The operator explicitly acknowledges this boundary. The locked, private daily

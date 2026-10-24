@@ -448,6 +448,19 @@ protect against: copied browser profiles, junk filling the store, and timing met
 
 ## Development
 
+### Backward compatibility
+
+Burrow currently has no clients. Until clients arrive, backward compatibility is not a design
+constraint: APIs, storage, tokens, passkeys and cryptographic formats may change without
+compatibility shims, migration paths, deprecation periods or major-version bumps solely for
+compatibility. The demo, test fixtures and published npm versions do not create such an
+obligation. Prefer the simplest correct design for current needs, and update code, tests and
+documentation together. When the first clients arrive, document the supported contract and
+compatibility and migration expectations before further breaking changes. See
+[D-55](docs/decisions.md#d-55-no-backward-compatibility-obligation-until-clients-arrive).
+
+### Commands
+
 ```sh
 npm ci
 npm test               # unit, property and backend-conformance tests (Node, fake IndexedDB)

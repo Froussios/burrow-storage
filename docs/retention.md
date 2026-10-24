@@ -91,7 +91,7 @@ credentials.
 Passkey keyslots contain the encrypted storage token. Keeping only `rev`/`next` would destroy
 access to that token even with a working authenticator. Keep the **full token-access payload**
 outside cleanup. `passkeyBackup().restore()` remains read-only; repeated `save()` creates a new
-credential and slot and can replace the same token's previous credential on that RP (D-55).
+credential and slot and can replace the same token's previous credential on that RP (D-56).
 Neither is an existing-slot renewal. Core does not contact, enumerate or manage the independently selected token backend.
 
 An opaque mixed collection cannot identify content versus keyslots. Choose a dedicated content
