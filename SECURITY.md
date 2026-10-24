@@ -3,10 +3,13 @@
 Burrow keeps per-user data in a store that anyone may read by id, yet neither the store's operator
 nor the site's developer can read it, and nothing in it names a user. This document is the
 normative description of how, and the plain list of what it does not protect. Everything under
-*Derivation* and *Formats* is frozen public contract for v1, including the passkey user-handle
-derivation and its `burrow/user/v1` prefix: changing any of it is a major release with a migration
-path. Changing a passkey handle without migration stops replacement of earlier credentials and
-allows duplicate labels again.
+*Derivation* and *Formats*, including the passkey user-handle derivation and its `burrow/user/v1`
+prefix, specifies the current cryptographic contract. Burrow has no clients, so this contract
+may change without backward compatibility, a migration path or a major release required solely
+for compatibility ([D-55](docs/decisions.md#d-55-no-backward-compatibility-obligation-until-clients-arrive)).
+Code, tests, reference vectors and this document must agree after any change. Changing a passkey
+handle without migration stops replacement of earlier credentials and allows duplicate labels
+again; this consequence does not create a compatibility obligation while there are no clients.
 
 **In brief.** Burrow aims to guarantee that:
 
@@ -88,7 +91,7 @@ two sites gives the same handle. This is a hash of the label, not a secret or an
 identifier; anyone who knows the label can compute it. Apps should choose non-sensitive public
 labels and can use site-specific labels to avoid matching handles across sites. `displayName`
 does not enter the derivation. The prefix, UTF-8 input, SHA-256 and first-16-byte truncation are
-stable v1 public contract (D-47).
+the current v1 contract (D-47), subject to the no-clients policy in D-55.
 
 A token derived from something the user types (a passphrase) would have to pass through
 PBKDF2-SHA-256 with at least 600 000 iterations first. v1 has no such path and accepts only random

@@ -33,15 +33,22 @@ You can't build, run tests or run the project's scripts. Don't try to work aroun
 - A broken hard rule from `CLAUDE.md`: a runtime dependency in the core, non-WebCrypto crypto, a
   secret or user value that is sent, logged or persisted, `eval` or inline scripts, a size budget
   that is clearly exceeded.
-- A public contract change (the `Envelope` format, salts, info labels, AAD, token formats) that
-  is not a major version change, or that lacks its `SECURITY.md` update and `docs/decisions.md`
-  entry.
+- A cryptographic contract change (the `Envelope` format, salts, info labels, AAD, token formats
+  or passkey handle derivation) that lacks its `SECURITY.md` update and `docs/decisions.md` entry,
+  or leaves code, tests or reference vectors inconsistent with the documented design.
 - Behaviour that departs from `SECURITY.md` or `docs/architecture.md` without updating it in the
   same PR and adding a `D-n` decision.
 - Docs, README or `docs/api.md` snippets that no longer match `src/types.ts` or the code.
 - Changed behaviour with no test, or tests that no longer test what their requirement-id name
   says.
 - A renumbered requirement id or decision.
+
+Burrow currently has no clients (D-55 in `docs/decisions.md`). Until clients arrive, do not raise
+backward compatibility as a blocking issue or observation, or request compatibility shims,
+legacy readers, migration paths, deprecation periods or major-version bumps solely for
+compatibility. The demo, test fixtures and published npm versions do not create such an
+obligation. Prefer the simplest correct design for current needs. Security and correctness
+remain review requirements.
 
 Everything else is non-blocking: naming, structure, small simplifications, wording, a missing
 test for an edge case that the PR didn't touch. Don't flag pre-existing problems unless the PR

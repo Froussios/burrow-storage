@@ -7,8 +7,10 @@ brief was silent or self-contradictory. **Part B** (D1 … D20, no hyphen) is th
 log, kept so its numbering stays meaningful, with the status of each item against the code.
 
 Where a planning decision and an implementation decision disagree, the implementation decision is
-the one in force. Changing anything marked *public contract* (envelope format, derivation salts
-and labels, the storage-token encoding) is a major release with a migration.
+the one in force. D-55 supersedes earlier compatibility requirements: Burrow has no clients, so
+anything marked *public contract* describes the current implementation without requiring
+backward compatibility, migration paths or major releases solely for compatibility until
+clients arrive. Historical requirements and decisions remain recorded below.
 
 ## Part A: implementation decisions
 
@@ -569,9 +571,11 @@ where `userName` is the effective label (host by default). The rp ID scopes it t
 a different label gives a different handle. CTAP2 authenticators replace a discoverable
 credential with the same rp ID and user handle, so a repeat save leaves one entry. Only that
 the handle varies with the label was required by the owner when choosing the initial algorithm.
-The chosen derivation is now stable v1 public contract: the `burrow/user/v1` prefix, UTF-8 input,
-SHA-256 and first-16-byte truncation may not change without a major release and migration path,
-since a new handle would stop replacement of earlier credentials and allow duplicate labels.
+The chosen derivation was declared stable v1 public contract: the `burrow/user/v1` prefix,
+UTF-8 input, SHA-256 and first-16-byte truncation required a major release and migration path
+to change, since a new handle would stop replacement of earlier credentials and allow duplicate
+labels. D-55 supersedes that compatibility requirement while there are no clients; the algorithm
+and its consequences described here remain current.
 `displayName` is a separate option (default `userName`) and does not enter the handle, so an
 app can change the new credential's presentation without changing its identity. Renaming an
 existing passkey remains out of scope. The RP ID scopes credential use but is not hashed into
@@ -748,6 +752,25 @@ token-derived handle that would make this automatic.
 This separates identities, not code. Any script on the origin can still read every app's cache
 and use its token, as SECURITY.md already assumes.
 
+### D-55 No backward-compatibility obligation until clients arrive
+
+The owner confirms that Burrow has no clients. Design proposals and reviews must therefore
+prefer the simplest correct design for current needs. Breaking changes to APIs, local storage,
+remote formats, tokens, passkeys and cryptographic derivation are allowed without compatibility
+shims, legacy readers, migration paths, deprecation periods or major-version bumps solely for
+compatibility. The demo, test fixtures and published npm versions do not create a compatibility
+obligation.
+
+This supersedes the compatibility freeze in ENC-2 and the versioning section of the historical
+requirements, planning D18, D-47 and any other earlier frozen/stable public-contract wording.
+Those documents still describe the current design and its security and correctness requirements.
+Changes must update code, tests, reference vectors and affected documentation together; record
+design changes here. This policy does not itself change any runtime behaviour or format.
+
+When the first clients arrive, document the supported contract and compatibility and migration
+expectations before further breaking changes. Until then, hypothetical future clients are not a
+reason to preserve an obsolete design.
+
 ## Part B: planning decisions and their status
 
 These were proposed in the pre-implementation design review
@@ -773,6 +796,6 @@ confirmation. The implementation then went its own way on several. Status agains
 | D15 | Facade `getItem` stringifies non-string values | **Adopted** (D-11). |
 | D16 | Keepalive flush for envelopes ≤ 32 KB | **Dropped** (D-31). The option stays in the `Backend` interface; no shipped backend honours it. |
 | D17 | One raw copy of the token in a closure | **Superseded.** The token is held wrapped and unwrapped per use (`SecretHolder.use`). |
-| D18 | Format, salts and token version are public contract; major version to change | **Adopted.** |
+| D18 | Format, salts and token version are public contract; major version to change | **Superseded while there are no clients** (D-55). Current formats remain documented; compatibility is not required until clients arrive. |
 | D19 | Classify REST errors per WP-00's measured shapes (`PATCH` on a missing document is `403`; losers of a race get `403` or `409 ABORTED`) | **Moot.** The SDK adapter maps SDK error codes instead (architecture §10); the measurements are in [history/platform-notes.md](history/platform-notes.md). |
 | D20 | `passkey().available()` requires a hostname, because on `file://` Chromium reports PRF support yet `create()` throws | **Not implemented.** Listed in architecture §13; from `file://` `protect()` rejects `prf-unsupported` instead of falling through. |

@@ -2,10 +2,10 @@
 
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
-[Semantic Versioning](https://semver.org/). The envelope format, the v1 derivation salts and
-labels, the storage-token encoding, and the passkey user-handle derivation with its
-`burrow/user/v1` prefix are public contract: changing them is a major release with a migration
-path.
+[Semantic Versioning](https://semver.org/). Burrow currently has no clients: breaking changes,
+including changes to cryptographic formats, do not require backward compatibility, a migration
+path or a major release solely for compatibility. This policy lasts until clients arrive
+([D-55](docs/decisions.md#d-55-no-backward-compatibility-obligation-until-clients-arrive)).
 
 ## [Unreleased]
 
@@ -19,6 +19,10 @@ path.
 
 ### Changed
 
+- Clarify the no-clients compatibility policy in contributor and review instructions and current
+  documentation: prefer the simplest correct design, with no compatibility shims, migrations,
+  deprecation periods or major-version bumps required solely for compatibility until clients
+  arrive (D-55). Security, correctness and documentation requirements still apply.
 - Each app has its own storage token on the device instead of one per origin (#76, D-54). `link()`
   and `unlink()` affect only the calling app, so another app's token, data and unsynced writes
   are never touched, and unrelated sites sharing an origin no longer share a token. Pages that
