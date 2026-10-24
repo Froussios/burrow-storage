@@ -25,6 +25,21 @@ claimed the name). The repository is public. The documentation set is current wi
 GitHub issues #1–#18 and PR #19 are from the planning phase and do not reflect the code; treat
 them as history unless the owner says otherwise.
 
+## Backward compatibility: no clients yet
+
+Burrow currently has no clients. The demo, test fixtures and published npm versions do not
+create a backward-compatibility obligation. Until clients arrive, design proposals and reviews
+must favour the simplest correct design for current needs. Breaking changes to APIs, storage,
+tokens, passkeys and cryptographic formats are allowed; do not require compatibility shims,
+legacy readers, migration paths, deprecation periods or major-version bumps solely to preserve
+earlier behaviour (D-55).
+
+Security and correctness rules still apply. Update the implementation, tests, reference vectors
+and affected documentation together, and record design changes in `docs/decisions.md`. Existing
+references to a frozen or stable public contract describe the current implementation; they do
+not override this policy. When the first clients arrive, document the supported contract and
+compatibility and migration expectations before further breaking changes.
+
 ## Hard rules (from the requirements; not negotiable without the owner)
 
 - **No runtime dependencies** in the core. The Firestore adapter uses the Firebase modular SDK as
@@ -49,11 +64,12 @@ them as history unless the owner says otherwise.
   (`FIRESTORE_EMULATOR_HOST` or `127.0.0.1:8080`) by default. Set `BURROW_FIRESTORE` to an
   explicit project config to use your own live or pre-production store; invalid config or
   simultaneous live and emulator settings stop the server (D-44).
-- **Public contract**, major version to change: the `Envelope` format, HKDF salts `burrow/v1`,
+- **Current cryptographic contract:** the `Envelope` format, HKDF salts `burrow/v1`,
   `burrow/slot/v1`, PRF salt `burrow/prf/v1`, the info labels, the AAD and token formats, the
   storage-token encoding, and the passkey user-handle derivation with its `burrow/user/v1`
-  prefix (`SECURITY.md`, D-47). Changing the handle derivation requires a migration path to
-  preserve replacement of earlier credentials.
+  prefix (`SECURITY.md`, D-47). Changes must keep code, tests, reference vectors and security
+  documentation consistent. Compatibility and migration follow the no-clients policy above
+  (D-55).
 - Size budgets (min+gzip, `npm run size`): core + memory backend ≤ 12 KB; the passkey backup
   (`burrow-storage/passkey`) ≤ 2 KB on top.
 - Terminology: the **storage token** (`exportToken()`, `link({ token })`, `bad-token`) and the
@@ -104,7 +120,7 @@ npm run test:smoke     # demo smoke test: BURROW_DEMO_URL=<deployed demo>, or si
                        #   node scripts/emulator.mjs "npm run test:smoke"
 npm run sri            # SRI hashes for the bundles → dist/sri.json
 npm run release:approve  # owner, after a v* release run: approve on npm (2FA), publish the draft release
-node scripts/gen-vectors.mjs   # regenerate test/vectors.json (output must not change within v1)
+node scripts/gen-vectors.mjs   # regenerate test/vectors.json; changes must match the documented design
 ```
 
 `node scripts/emulator.mjs "npm run serve"` starts the emulator and local demo together.
