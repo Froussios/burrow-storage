@@ -17,7 +17,7 @@ const HEX = hex(randomBytes(32)); // a commitment (next) shape
 const ID_RE = /[A-Za-z0-9_-]{40,}/;
 
 const BURROW_CODES: BurrowErrorCode[] = [
-  "unlinked",
+  "closed",
   "cancelled",
   "prf-unsupported",
   "bad-token",
@@ -28,7 +28,6 @@ const BURROW_CODES: BurrowErrorCode[] = [
   "quota",
   "decrypt-failed",
   "would-orphan",
-  "would-replace",
 ];
 const BACKEND_CODES: BackendErrorCode[] = [
   "conflict",

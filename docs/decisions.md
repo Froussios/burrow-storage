@@ -1,6 +1,6 @@
 # Decisions
 
-The judgement calls behind the code, in two parts. **Part A** (D-1 … D-56, with a hyphen) is the
+The judgement calls behind the code, in two parts. **Part A** (D-1 … D-59, with a hyphen) is the
 log kept while implementing; each entry names the requirement it touches in
 [history/requirements.md](history/requirements.md) ("the brief") and the choice made where the
 brief was silent or self-contradictory. **Part B** (D1 … D20, no hyphen) is the earlier planning
@@ -69,6 +69,9 @@ providers may ignore both; the built-ins get no special treatment.
 
 ### D-8 The cache belongs to one token; `unlink()` guards against orphaning (API-8, API-7)
 
+*Superseded by D-57/D-59: each token has its own local copy in the offline wrapper; `unlink()` is
+gone and `forget()` keeps the `would-orphan` guard.*
+
 *Amended by D-56: leaving live cached data also requires `replace: true`; the unsynced-write
 check and `discardLocal` override remain independent.*
 
@@ -104,6 +107,8 @@ transaction that reads the document, so on that backend every put also costs a r
 
 ### D-11 Storage facade details (API-9..12)
 
+*Superseded by D-57: the synchronous facade is removed.*
+
 `getItem` of a value written through the async API returns its JSON text (Storage holds strings);
 facade writes store strings, as `localStorage` does. The facade is a `Proxy`, so `s.theme`,
 `s["theme"] = …`, `"theme" in s`, `delete s.theme` and `Object.keys(s)` behave as on
@@ -131,11 +136,15 @@ Originally: calling `exportCode()` counted as enrolling the sync-code method and
 
 ### D-15 `rememberDevice: false` also defaults the cache to memory (KP-8, ENC-10)
 
+*Superseded by D-57: the core persists nothing, and there is no `rememberDevice` or `cache` option.*
+
 Keeping the token out of storage while leaving the items in IndexedDB in plaintext would defeat the
 purpose. With `rememberDevice: false` the cache defaults to `memory`; an explicit
 `cache: "indexeddb"` still wins.
 
 ### D-16 No backend configured means local-only, not an error
+
+*Superseded by D-57: `burrow()` requires a backend and a token.*
 
 If no `backend` is passed and no `<meta name="burrow-firestore">` or `window.BURROW.firestore`
 exists, `burrow()` still resolves and works locally, warns once in the console, and
@@ -161,6 +170,8 @@ pins TypeScript 5.9.
 
 ### D-19 IndexedDB unavailable → memory cache with status `"offline"` (SYNC-4)
 
+*Applies to the offline wrapper since D-57.*
+
 `status` returns to `"idle"` after a successful sync pass, because "offline" otherwise means "the
 remote is unreachable". The token cannot be remembered in that mode.
 
@@ -181,6 +192,8 @@ straight to the backend at the same cost of one read. The conformance suite chec
 sees a committed `put` at once while subscribed.
 
 ### D-22 `link()` waits for any running sync pass (API-7)
+
+*Superseded by D-57: there is no `link()`.*
 
 A pass started under the old token must not finish after the identity changes. `link()` drains the
 running pass and swaps the token inside the sync lock; passes read their keys once, inside that
@@ -216,6 +229,9 @@ that re-sets unchanged values causes one write per debounce window.
 
 ### D-27 `store.token` reports where the token came from; `exportCode()` does not protect (supersedes D-14)
 
+*Superseded by D-57: the app supplies the token and knows where it came from; `store.token` is
+gone.*
+
 *Amended by D-42: `source` is now the label passed to `link()`, and `protection` is gone.*
 
 The demo always shows the storage token in use and where it came from
@@ -238,6 +254,8 @@ repository went public; a rename of the API would be a breaking change for no fu
 
 ### D-29 Polling is a fixed interval (SYNC-6)
 
+*Superseded by D-59: the offline wrapper does not poll.*
+
 SYNC-6 asks for a pull every `syncIntervalMs` while the page is visible, and on focus, visibility
 and `syncNow()`. The plan (WP-07) added adaptive polling, doubling the interval up to 300 s while
 nothing changes. It was not built: a fixed interval keeps the cost predictable (one read per
@@ -254,6 +272,9 @@ not update each other's mirror until they reload or pull, and sync passes are st
 `navigator.locks`.
 
 ### D-31 The unload push is best-effort; no keepalive flush (D16)
+
+*Amended by D-59: offline-wrapper writes are durable locally before the push starts, so nothing is
+flushed on unload.*
 
 The plan's keepalive flush (D16: on `pagehide`, write envelopes up to 32 KB with
 `fetch(..., { keepalive: true })`) is dropped, not deferred. The Firestore adapter writes through
@@ -289,6 +310,8 @@ HTTP statuses. Acceptance criterion 8 (the conformance suite passes unchanged fo
 Memory and a Worker-style backend) runs as `test/conformance/{firestore,memory,worker}.test.ts`.
 
 ### D-35 A second `burrow()` for the same app ignores its config silently (API-2)
+
+*Superseded by D-57: each `burrow()` returns its own instance.*
 
 API-2 requires the same instance for the same `app` on one page. The plan added a warning when the
 second call's config differs; it is not implemented, because configs carry objects (a backend,
@@ -381,6 +404,9 @@ implemented.
 on top of `link({ code })`.
 
 ### D-42 Only the token crosses the API; the passkey backup is a separate utility (#28)
+
+*Amended by D-57 and D-58: the token is passed to `burrow()`, and the passkey utility derives the
+token instead of backing it up. The token-string boundary below still holds.*
 
 The `KeyProvider` interface let the store call unlock methods: `protect()` enrolled one,
 `link({ provider })` recovered the token through one, and the store recorded which in
@@ -584,6 +610,9 @@ requirement while there are no clients; D-56 replaces the label-based algorithm.
 
 ### D-50 Token recovery and content storage remain independent
 
+*Superseded by D-58: there is no online token record. The utility stays independent of the core and
+the offline wrapper (D-57).*
+
 Preserve D-42's token-string boundary when extending Burrow. The core and `PasskeyBackup`
 reuse the `Backend` interface, but their instances, Firebase projects or database providers
 are independently selectable. Shared page config is a convenience; the passkey utility does
@@ -695,6 +724,9 @@ See [retention.md](retention.md) for the public contract, operator steps and evi
 
 ### D-54 Each app has its own token (supersedes KP-4; amends D-8, D-9; #76)
 
+*Amended by D-57: the app supplies the token; per-app derivation is unchanged, and the offline
+wrapper keeps one copy per app and token.*
+
 KP-4 made the token one value for every app on the origin, and D-9 stored it once, in an
 origin-wide `_device` store. The app name fed only the key derivation, so apps had separate data
 but one identity. `link()` in one app switched every app on the origin, and `unlink()` forgot the
@@ -748,6 +780,9 @@ reason to preserve an obsolete design.
 
 ### D-56 Token-derived passkey identity and explicit local replacement (#75; supersedes D-47)
 
+*Superseded by D-58: credentials have random user handles, and `link()`/`unlink()` and their guards
+are gone.*
+
 `save()` identifies a backup by its decoded storage token and effective RP ID rather than
 its visible label. This supersedes D-47's label-derived handle. The passkey keyslot and PRF
 formats stay unchanged.
@@ -786,6 +821,170 @@ under the old token, then reject `would-orphan` if dirty entries remain unless
 replacement. The two overrides are independent, so callers may need both. The cached-data
 check cannot discover remote-only data, and token provenance does not establish whether a
 usable backup exists.
+
+### D-57 Remote-only core, optional plaintext offline wrapper, independent token utility (#82)
+
+Owner scope: [#82](https://github.com/Froussios/burrow-storage/issues/82), from the owner's
+[three-part split](https://github.com/Froussios/burrow-storage/issues/78#issuecomment-6378125451)
+and [decisions](https://github.com/Froussios/burrow-storage/issues/78#issuecomment-6378501480) in
+#78, and the owner's answers on #82 (trim the interface; `push`/`pull` stay internal; a dismissed
+passkey prompt is a rejection; the wrapper does not use the backend directly). Before this
+change one `burrow()` did three jobs: remote storage, a local cache with a sync engine, and token
+custody (a token generated on first use and remembered in IndexedDB, wrapped by a key stored
+beside it). That custody gave a copied browser profile a usable, non-revocable token, and the
+`cache` × `rememberDevice` matrix hid it behind options. The three jobs are now separate:
+
+- **Core (`burrow-storage`)**: `burrow({ app, backend, token })`. All three are required; there
+  is no page-config fallback (the app may pass `readBackendConfig()`), no generated identity
+  (`generateToken()` is an explicit export) and no remembered one. It validates the token,
+  derives the keys non-extractable, zeroises the decoded bytes and resolves with no network
+  call. Every `get`, `set`, `remove` and `clear` goes to the store; a remote failure rejects the
+  call and nothing is queued. It writes nothing to disk. It may keep what it read in memory and
+  drops it, with the keys, on `close()`.
+- **Offline wrapper (`burrow-storage/offline`)**: `offline(store)` takes a store from `burrow()`,
+  so it starts only with a token, yet needs no network to start. It keeps a **plaintext** copy in
+  IndexedDB and never writes the token or a key; the copy relies on the device for protection
+  and encrypting it is deferred, not solved. Its semantics are D-59.
+- **Token utility (`burrow-storage/passkey`)**: `passkeyToken({ app })` derives a token from a
+  passkey and stores nothing (D-58). Neither layer imports it; the token string is the only link
+  (D-42). App-managed persistence of the token is the app's own decision and responsibility.
+
+**Shared interface.** Both layers return `BurrowStorage`: `get(keys?)`, `set(items)`,
+`remove(keys)`, `clear()` and `close()`, with the argument shapes of chrome.storage's
+`StorageArea`. Existing async get/set interfaces were checked: `StorageArea` is the closest fit
+(batched `get` with defaults, batched `set`, multi-key `remove`, change records with
+`oldValue`/`newValue`), and Burrow already followed it. The KV Storage proposal was abandoned,
+and library interfaces such as localForage or idb-keyval are single-key and tied to their
+packages. So Burrow keeps its own small interface in that shape, without claiming conformance:
+`getBytesInUse`, `setAccessLevel` and `getKeys` are not offered. The wrapper extends it as
+`OfflineStorage` with `onChanged`, `status`, `onStatus`, `syncNow()` and `forget()`. Adapters to
+other interfaces, a synchronous Web Storage facade among them, can return later as optional
+utilities.
+
+**Internal seam.** The wrapper needs per-key versions, revisions and last-writer-wins pushes,
+which `get`/`set` do not carry, and it must not talk to the backend itself. The core therefore
+keeps an internal seam (`pull`, `push`, `renew`, `watch`, and the non-secret `identity`
+fingerprint), reachable only through a module-private `WeakMap` (`remoteOf()` in `src/core.ts`),
+not through the store object or the public types. It is not API and may change freely.
+
+**Removed** (D-55): `BurrowArea`, `storage` (the synchronous facade, API-9..12), `link()`,
+`unlink()`, `token`, `onToken`, `TokenSource`, `TokenInfo`, `exportToken()`, `exportJSON()`,
+`importJSON()`, `getBytesInUse()`, `inspect()` (ERR-4), `get(keys, { fresh })`, and the options
+`cache`, `rememberDevice`, `syncIntervalMs`, `debounceMs`, `maxItemBytes` (now a fixed 200 000
+bytes), `debug` (ERR-3: Burrow logs nothing) and `firestore`. The error codes `unlinked` and
+`would-replace` are gone; `closed` names a call after `close()`. `SecretHolder` and its AES-KW
+wrapping are deleted, with the `_token`, `_meta` and per-app stores of the shared `burrow`
+database. The new code neither reads nor deletes that database; a browser that ran an earlier
+build keeps it until its site data is cleared.
+
+**Requirement ownership** (the brief is not edited):
+
+| Requirement | After D-57 |
+| --- | --- |
+| API-1 | Core: resolves without interaction and without network, given a backend and a token. Generating or remembering a secret is no longer part of it. |
+| API-2 | Dropped: each `burrow()` is its own instance; `offline()` refuses to wrap one store twice. |
+| API-3, API-4, API-13 | Both layers, for the argument shapes, JSON values and `BurrowError` codes. "Never rejects for remote reasons" belongs to the wrapper only. |
+| API-5, ERR-2 | Wrapper (`onChanged`, `onStatus`). The core has no events. |
+| API-6 | Wrapper: `set()` resolves once durable locally. The core's `set()` resolves once the store has the write and rejects otherwise. |
+| API-7, API-8, KP-2, KP-3 | Replaced: the token is given at initialisation, and the app keeps or forgets it. API-8's guard lives on in the wrapper's `forget()` (`would-orphan`). |
+| API-9..12, ERR-3, ERR-4 | Dropped. |
+| KP-1 | `generateToken()`, called by the app. |
+| KP-4, D-54 | Unchanged in effect: one token gives each app its own keys and data. |
+| KP-5..8, ENC-11, SEC-7 | The passkey token utility (D-58). Keyslots are gone. |
+| KP-11, KP-12, ENC-1..9, SEC-1, SEC-2, SEC-8 | Core. |
+| ENC-10, SYNC-1..4, SYNC-13, SYNC-14 | Wrapper: one plaintext copy per app and token; tabs share it. |
+| SYNC-5, SYNC-6, SYNC-9, SYNC-10..12 | Wrapper (replay, triggers, durable unsynced writes) over the core's internal last-writer-wins push and pull (SYNC-8). Details in D-59. |
+| SYNC-7 | Both: named reads fetch the item documents directly. |
+| D-48 | Expiry: the core rejects `expired`; the wrapper pauses and keeps its copy. Renewal: the wrapper only (D-59). |
+| D-50 | Superseded: there is no online token record left to keep independent; the utility's independence from both layers remains. |
+
+The cryptographic contract for content (salts `burrow/v1`, info labels, AAD, envelope,
+write tokens, token encoding) is unchanged. SECURITY.md, docs/architecture.md, docs/api.md,
+README.md and the guides describe the new design.
+
+### D-58 The passkey derives the token; no online token storage (#82)
+
+The keyslot backup is removed: `passkeyBackup()`, `save()`, `restore()`, the slot keys
+(`burrow/slot/v1`), the keyslot document, the PRF salt `burrow/prf/v1`, the token-bound user handle
+(`burrow/passkey-user/v1`, D-56) and the backend option of the utility. No online keyslot remains,
+not even as a fallback.
+
+`passkeyToken({ app, rpId?, rpName?, userName?, displayName?, timeoutMs? })` returns
+`available()`, `create()` and `get()`. `create()` makes a discoverable, user-verified credential
+with the PRF extension and a random user handle; `get()` asks for any existing one. Both evaluate
+PRF with the fixed input `burrow/prf-token/v1` and return
+`encode(HKDF-SHA256(prf, salt "burrow/passkey-token/v1", info app))`. Neither stores anything.
+
+What was checked, and how:
+
+- **A passkey is not a value store.** WebAuthn gives a page no way to put a chosen secret into a
+  credential and read it back, except the `largeBlob` extension, whose availability is decided by
+  the browser and the passkey provider and varies between them (a 2026 survey of credential
+  managers lists it as provider-dependent; WebKit added it in Safari 17 while some platform
+  authenticators still report it unsupported). So the token cannot be "stored in the passkey";
+  it is derived from the PRF output, which is deterministic per credential and input. This
+  confirms the owner's expectation that the utility must generate the token.
+- **Deterministic and per app.** The same credential gives an app the same token wherever the
+  credential is available (unit tests with a scripted authenticator; Chromium's virtual
+  authenticator in `test/e2e/passkey.spec.ts`, including a full site-data wipe). One credential
+  gives each app an unrelated token through the HKDF info, so per-app separation (D-54) needs no
+  per-app credential, and a credential picked in the wrong app opens only that app's own, empty
+  identity.
+- **Supported, unsupported, cancelled.** PRF results at creation are used directly; otherwise
+  one assertion follows (a second prompt). No PRF rejects `prf-unsupported`, and the useless
+  new credential is reported with `PublicKeyCredential.signalUnknownCredential()` where the
+  browser has it. `NotAllowedError` (dismissed, timed out, or no matching credential, which
+  WebAuthn deliberately does not distinguish) and `AbortError` reject `cancelled`. Nothing
+  resolves to `null`. All three paths are tested against the scripted authenticator and, on
+  Chromium, the virtual authenticator.
+- **Provider support** is reported, not measured: PRF on Apple platforms (iCloud Keychain, Safari
+  18 and later), Google Password Manager on Android and Chrome, and Windows Hello only from early
+  2026 updates; Firefox and Safari support for external security keys is uneven. Burrow tests
+  only Chromium's virtual authenticator; real-device and cross-ecosystem (hybrid/QR) behaviour
+  is unverified. [sync-and-tokens.md](sync-and-tokens.md#passkeys) lists the sources.
+
+Limits, documented in SECURITY.md and the guides: the token is recoverable only while a passkey
+that produced it is available and supports PRF, or from a copy of the string; deleting or
+losing the passkey loses that route; a new passkey is a new token; the credential cannot be
+recreated from the token; a random handle means each `create()` adds a credential that the user
+must tell apart by its label. Cross-device availability depends on the provider syncing the
+passkey. These replace D-56's credential-replacement behaviour, which no longer exists.
+
+### D-59 The offline wrapper: network first, a copy per token, wrapper-owned renewal (#82)
+
+The owner chose these between alternatives on #82:
+
+- **Network first.** `get()` asks the store and merges the answer into the copy; `set()` and
+  `remove()` first write the copy (dirty), then push. When the store does not answer within
+  `waitMs` (3 s), the call returns from the copy and the remote work finishes in the background.
+  After a remote failure, or while the browser reports no network, calls use the copy without
+  trying, until a retry (exponential backoff, capped at five minutes), the `online` event or
+  `syncNow()` succeeds. Reads therefore cost a request each, and writes are not debounced
+  (SYNC-5 no longer applies).
+- **Online writes are fresh.** A write made while the store answers is stamped above the version
+  the store holds, so it wins as the latest write even against a device whose clock runs ahead,
+  like the core's own `set()`. A write queued while offline keeps the timestamp it was made with
+  and competes by last-writer-wins when it is replayed (SYNC-10, SYNC-11): a newer write made
+  elsewhere in the meantime wins. A pull never replaces a fresh write that is still on its way.
+  Deleting a key the copy does not show is a no-op offline, as in chrome.storage, and reaches the
+  store online; a queued delete of a key the copy does show is always recorded, so an older
+  queued write elsewhere cannot bring the key back.
+- **A copy per token.** Each app and token has its own database, named by a non-secret
+  fingerprint. Opening the wrapper with another token never shows or drops another identity's
+  data; returning to a token finds its copy and unsynced writes. `forget()` deletes the current
+  copy, refusing `would-orphan` while writes are unsynced unless `discardLocal` is passed.
+- **Renewal stays with the wrapper.** D-48's per-device deadline is kept in the copy's metadata
+  and coalesced between tabs. The core has nowhere to keep a deadline, so a core-only app renews
+  only what it writes; with an operator who runs `burrow-reaper`, content that is only read can
+  expire (docs/retention.md).
+- **Remote updates and tabs.** The wrapper subscribes to the manifest through the core's seam
+  where the backend can notify (FS-9), refreshes when the page becomes visible or the network
+  returns, and drops the subscription after five hidden minutes. There is no polling and no
+  focus trigger. Tabs share the IndexedDB copy, serialise replay and renewal with a Web Lock, and
+  forward `onChanged` over `BroadcastChannel`.
+
+The local-first alternative (answer from the copy, push in the background) and a single copy per
+app (rejecting `would-orphan` on a token switch) were offered and not chosen.
 
 ## Part B: planning decisions and their status
 

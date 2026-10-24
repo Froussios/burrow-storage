@@ -29,12 +29,13 @@ You can't build, run tests or run the project's scripts. Don't try to work aroun
 `CLAUDE.md` is the standard. An issue **blocks** merging when it is one of these:
 
 - A bug: wrong results, a crash, a broken error path, a race, lost data. Unsynced writes are never
-  dropped (SYNC-9), and local reads and writes never reject for remote reasons (API-3, API-6).
+  dropped by the offline wrapper (SYNC-9), and its local reads and writes never reject for remote
+  reasons (API-3, API-6); the remote-only core rejects instead and persists nothing (D-57).
 - A broken hard rule from `CLAUDE.md`: a runtime dependency in the core, non-WebCrypto crypto, a
   secret or user value that is sent, logged or persisted, `eval` or inline scripts, a size budget
   that is clearly exceeded.
 - A cryptographic contract change (the `Envelope` format, salts, info labels, AAD, token formats
-  or passkey handle derivation) that lacks its `SECURITY.md` update and `docs/decisions.md` entry,
+  or the passkey token derivation) that lacks its `SECURITY.md` update and `docs/decisions.md` entry,
   or leaves code, tests or reference vectors inconsistent with the documented design.
 - Behaviour that departs from `SECURITY.md` or `docs/architecture.md` without updating it in the
   same PR and adding a `D-n` decision.

@@ -134,6 +134,32 @@ code {
 .facts dd {
   margin: 0;
 }
+.modes {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  margin: 0.75rem 0;
+  padding: 0.5rem 0.9rem 0.25rem;
+}
+.modes legend {
+  color: var(--muted);
+  font-size: 0.9rem;
+  padding: 0 0.3rem;
+}
+.modes label {
+  display: block;
+  color: var(--fg);
+  font-size: 1rem;
+  margin-top: 0.4rem;
+}
+.modes input {
+  width: auto;
+  margin: 0 0.4rem 0 0;
+}
+.hint {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 0.1rem 0 0.5rem 1.6rem;
+}
 .warn {
   color: var(--warn);
   font-weight: 600;

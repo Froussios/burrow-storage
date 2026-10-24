@@ -1,5 +1,6 @@
-// Backend discovery shared by burrow() and passkeyBackup(). Page data selects
-// a registered factory; it never selects a script URL or executable code.
+// Backend selection for burrow(). The app passes an instance or a config; page
+// config is only data the app may read and pass on (D-57). A config selects a
+// registered factory; it never selects a script URL or executable code.
 import type { FirestoreConfig } from "./backends/firestore.js";
 import type { Backend, BackendConfig, BackendFactory } from "./types.js";
 
@@ -88,19 +89,21 @@ function pageConfig():
   ).BURROW;
 }
 
-/** FS-3: read the legacy Firestore page config. */
+/** FS-3: read the Firestore page config. */
 export function readFirestoreConfig(): FirestoreConfig | null {
   return (metaConfig("burrow-firestore") ??
     pageConfig()?.firestore ??
     null) as FirestoreConfig | null;
 }
 
-/** Generic config first; then the legacy Firestore page config. */
-export async function defaultBackend(): Promise<Backend | null> {
+/**
+ * The page's backend config, for the app to pass to `burrow()`: the generic
+ * `<meta name="burrow-backend">` or `window.BURROW.backend` first, then the
+ * Firestore shorthand. Null when the page has none.
+ */
+export function readBackendConfig(): BackendConfig | null {
   const generic = metaConfig("burrow-backend") ?? pageConfig()?.backend;
-  if (generic !== undefined) return configuredBackend(generic as BackendConfig);
+  if (generic !== undefined) return generic as BackendConfig;
   const firestore = readFirestoreConfig();
-  return firestore
-    ? configuredBackend({ ...firestore, type: "firestore" })
-    : null;
+  return firestore ? { ...firestore, type: "firestore" } : null;
 }

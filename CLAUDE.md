@@ -16,9 +16,9 @@ claimed the name). The repository is public. The documentation set is current wi
 | `docs/api.md` | The public contract, member by member; `src/types.ts` is the source of truth |
 | `docs/retention.md`, `docs/sync-and-tokens.md`, `docs/storage-standards.md`, `docs/firestore-setup.md`, `docs/extending.md` | User guides |
 | `SECURITY.md` | The cryptographic design (normative) and threat model |
-| `docs/architecture.md` | How the code is put together, module by module, with the sync algorithm |
+| `docs/architecture.md` | How the code is put together, module by module: the core, the offline wrapper and its sync, the passkey utility |
 | `docs/decisions.md` | Decision log: D-1… (implementation) and D1… (planning, with status) |
-| `docs/user-journeys.md` | The five user journeys the demo and its browser tests implement |
+| `docs/user-journeys.md` | The user journeys the demo and its browser tests implement, in both sign-in modes |
 | `CHANGELOG.md` | Keep-a-Changelog, unreleased section |
 | `docs/history/` | The pre-implementation requirements brief, design review, plan and WP-00 platform notes. The brief's requirement ids (`API-3`, `ENC-7`, …) are cited by tests and code comments. Historical otherwise. |
 
@@ -42,19 +42,26 @@ compatibility and migration expectations before further breaking changes.
 
 ## Hard rules (from the requirements; not negotiable without the owner)
 
+- **Three independent layers** (D-57): the remote-only core (`burrow()`, no disk, async calls
+  that reject on remote failure), the optional plaintext offline wrapper (`offline()`), and the
+  independent passkey token utility (`passkeyToken()`). The wrapper uses the core's internal seam
+  (`remoteOf()`), never the backend directly; the seam is not public API.
 - **No runtime dependencies** in the core. The Firestore adapter uses the Firebase modular SDK as
   an optional peer dependency, loaded lazily (`firebase/app`, `firebase/firestore` only; no auth).
 - **WebCrypto only.** No third-party crypto. Every key derived from the token is imported
-  non-extractable; the only extractable key object is the short-lived HMAC vehicle in
-  `src/secret.ts` that carries the raw token through AES-KW.
-- **Never** send, log, or persist outside the cache: the root secret, `pathKey`, `encKey`,
-  `macKey`, document ids, write tokens, or user values. `debug` logging reports codes, counts,
-  revisions, bytes and durations only. Error `cause`s go through `scrub()` in `src/errors.ts`.
+  non-extractable, and decoded token bytes and PRF outputs are zeroised once used.
+- **Burrow never persists the token** or any key derived from it, under any option, and never
+  generates or recovers one implicitly (D-57). Token custody is the app's.
+- **Never** send or log the root secret, `pathKey`, `encKey`, `macKey`, document ids, write
+  tokens, or user values, and never persist any of them except user values in the offline
+  wrapper's plaintext copy. Burrow logs nothing. Error `cause`s go through `scrub()` in
+  `src/errors.ts`.
 - No `eval`, `new Function`, inline scripts, third-party script hosts, service workers, or global
   patching. The demo runs under `default-src 'none'; script-src 'self'; connect-src 'self'
   https://firestore.googleapis.com`.
-- Local reads and writes never reject for remote reasons (API-3, API-6). Remote failure is status.
-- Unsynced writes are never dropped by the engine (SYNC-9).
+- In the offline wrapper, reads and writes never reject for remote reasons (API-3, API-6); remote
+  failure is status, and unsynced writes are never dropped (SYNC-9). The core instead rejects
+  remote failures and queues nothing.
 - Only the demo may use the owner's Firebase project. CI reaches it only through the deployed
   demo page in `pages.yml`; other tests and scripts use the emulator or a caller-named project
   (D-43, #40). Live setup checks require caller-supplied config (`BURROW_FIRESTORE` for
@@ -64,30 +71,32 @@ compatibility and migration expectations before further breaking changes.
   (`FIRESTORE_EMULATOR_HOST` or `127.0.0.1:8080`) by default. Set `BURROW_FIRESTORE` to an
   explicit project config to use your own live or pre-production store; invalid config or
   simultaneous live and emulator settings stop the server (D-44).
-- **Current cryptographic contract:** the `Envelope` format, HKDF salts `burrow/v1`,
-  `burrow/slot/v1`, PRF salt `burrow/prf/v1`, the info labels, the AAD and token formats, the
-  storage-token encoding, and the token/RP-bound passkey handle under `burrow/passkey-user/v1`
-  (`SECURITY.md`, D-56). Changes must keep code, tests, reference vectors and security
+- **Current cryptographic contract:** the `Envelope` format, HKDF salt `burrow/v1`, the info
+  labels, the AAD and token formats, the storage-token encoding, and the passkey token
+  derivation (PRF input `burrow/prf-token/v1`, HKDF salt `burrow/passkey-token/v1`, info = app)
+  (`SECURITY.md`, D-58). Changes must keep code, tests, reference vectors and security
   documentation consistent. Compatibility and migration follow the no-clients policy above
   (D-55).
-- Size budgets (min+gzip, `npm run size`): core + memory backend ≤ 12 KB; the passkey backup
-  (`burrow-storage/passkey`) ≤ 2 KB on top.
-- Terminology: the **storage token** (`exportToken()`, `link({ token })`, `bad-token`) and the
-  **passkey backup** for a keyslot, in user-facing text and the API alike (D-42). The requirements
-  brief's *sync code* and *root secret* are the same token.
-- The store deals only in the token string. Ways to carry it (passkey backup, a site's own) live
-  outside the core and call `exportToken()` / `link()`; there is no provider interface (D-42).
-- Preserve expiry pause/cache/dirty data and use-driven renewal (D-48). Optional owner reaping
-  is content-only, server-updateTime conditioned, quota bounded and outside CI; token-access
-  ciphertext must remain complete. See `docs/retention.md`.
-- Preserve independent token recovery and content storage (D-50 in `docs/decisions.md`).
-  Configuration and extension guidance lives in `docs/extending.md`.
+- Size budgets (min+gzip, `npm run size`): core + memory backend ≤ 12 KB; core, offline wrapper
+  and memory backend together ≤ 12 KB; the passkey token utility (`burrow-storage/passkey`)
+  ≤ 2 KB on top of the core.
+- Terminology: the **storage token** (`burrow({ token })`, `generateToken()`, `bad-token`), the
+  **core**, the **offline wrapper** and the **passkey token**, in user-facing text and the API
+  alike. The requirements brief's *sync code* and *root secret* are the same token.
+- The store deals only in the token string. Ways to obtain or keep it (the passkey utility, a
+  site's own) live outside the core and the wrapper; there is no provider interface (D-42), and
+  there is no online token storage or keyslot (D-58).
+- Preserve expiry pause/copy/dirty data in the offline wrapper and its use-driven renewal (D-48,
+  D-59). Optional owner reaping is content-only, server-updateTime conditioned, quota bounded and
+  outside CI. See `docs/retention.md`.
+- The offline wrapper's copy is plaintext and must be documented as such; encrypting it is
+  deferred, not solved (D-57).
 
 ## Toolchain
 
-TypeScript 5.9 `strict`, ES2022, browser `lib`. **Node 22 or newer** for development (`npm test`
-uses Node's `--localstorage-file`); `engines` says `>=20`, which the `burrow-setup check` live rules
-check and the agent setup's Firebase CLI need. npm.
+TypeScript 5.9 `strict`, ES2022, browser `lib`. **Node 22 or newer** for development; `engines`
+says `>=20`, which the `burrow-setup check` live rules check and the agent setup's Firebase CLI
+need. npm.
 Builds with tsup (`tsup.config.ts`). Tests with vitest (unit, property
 via fast-check, backend conformance), Playwright (`test/e2e`, three engines, a CDP virtual
 authenticator for passkeys), `node --test` for the rules under the Firestore emulator
@@ -104,9 +113,9 @@ npm ci
 npm run typecheck      # tsc --noEmit
 npm run format         # prettier --write ., then scripts/wrap-comments.mjs wraps comments at 80
 npm run format:check   # both in check mode (runs in CI)
-npm test               # vitest: test/unit, test/property, test/conformance/memory.test.ts
+npm test               # vitest: test/unit, test/property, test/conformance/{memory,worker}.test.ts
 npm run test:watch
-npm run build          # tsup → dist/index.js, dist/passkey.js, dist/firestore.js, dist/burrow.min.js, dist/burrow-firestore.js
+npm run build          # tsup → dist/index.js, dist/offline.js, dist/passkey.js, dist/firestore.js, dist/burrow.min.js, dist/burrow-firestore.js
 npm run size           # scripts/size.mjs budgets
 npm run docs:check     # typecheck every README/guide code block against dist/*.d.ts (after a build)
 npm run check          # typecheck + test + build + size + docs:check
@@ -139,31 +148,30 @@ skip the emulator suites.
 
 ```
 src/
-  index.ts              public entry: burrow(), re-exports, per-page Env
-  config.ts             default backend discovery (page config), shared with passkey.ts
-  passkey.ts            burrow-storage/passkey: passkeyBackup() (save/restore the token)
+  index.ts              public entry: burrow(), generateToken(), re-exports
+  core.ts               Core: remote-only store, keys in memory, push/publish, internal seam
+  offline.ts            burrow-storage/offline: offline(), the plaintext copy, replay, tabs, renewal
+  passkey.ts            burrow-storage/passkey: passkeyToken() (a token derived from a passkey)
+  config.ts             backend selection: registerBackend, readBackendConfig (page config)
   iife.ts               script-tag entry (global Burrow) and the burrow-firestore.js loader
   types.ts              every public interface (single source of truth)
   errors.ts  events.ts  BurrowError/BackendError/scrub(); BurrowEvent
-  core.ts               Core: mirror, cache, local writes, sync engine, tabs, link/unlink
-  facade.ts             synchronous Storage facade (Proxy)
-  secret.ts             SecretHolder: AES-KW wrapped token
   bytes.ts              utf8/base64url/hex/sha256/random/zeroise
-  codec/                derive.ts (HKDF, ids, tokens), envelope.ts (seal/open), token.ts
-  cache/                types.ts, indexeddb.ts, memory.ts
+  codec/                derive.ts (HKDF, ids, tokens, passkey token), envelope.ts (seal/open), token.ts
+  cache/                the offline wrapper's copy: types.ts, indexeddb.ts, memory.ts
   sync/merge.ts         pure LWW merge
   backends/             memory.ts, firestore.ts, firestore-sdk.ts
-test/                   unit/, property/, conformance/, e2e/, smoke/, sample-app/, support/, vectors.json, setup.ts
+test/                   unit/, property/, conformance/, e2e/, smoke/, support/, vectors.json, setup.ts
 firebase/               SETUP-AGENT.md, firestore.rules, firebase.json, README.md, tests/ (rules tests, own package.json)
-scripts/                burrow-setup.mjs (bin), emulator.mjs, serve.mjs, build-demo.mjs, size.mjs, sri.mjs, gen-vectors.mjs
+scripts/                burrow-setup.mjs, burrow-reaper.mjs (bins), emulator.mjs, serve.mjs, build-demo.mjs, size.mjs, sri.mjs, gen-vectors.mjs, check-docs.mjs
 demo/                   index.html, demo.js, demo.css, favicon.svg, burrow.config.example.html
 docs/                   guides, api, architecture, decisions, user-journeys, history/
 ```
 
 ## Conventions
 
-- Name tests after the requirement ids they verify:
-  `it("API-7 link rejects would-orphan when dirty items exist")`.
+- Name tests after the requirement or decision ids they verify:
+  `it("API-8 forget() refuses to orphan unsynced writes, then deletes the copy")`.
 - Pure logic (merge, derivation, codecs) stays in modules with no I/O so it can be property-tested
   and checked against vectors.
 - `src/types.ts` is the single public surface; README and `docs/api.md` snippets must compile

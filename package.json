@@ -18,6 +18,10 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./offline": {
+      "types": "./dist/offline.d.ts",
+      "import": "./dist/offline.js"
+    },
     "./passkey": {
       "types": "./dist/passkey.d.ts",
       "import": "./dist/passkey.js"

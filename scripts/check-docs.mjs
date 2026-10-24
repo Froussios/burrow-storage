@@ -6,8 +6,8 @@
 // Each ```ts / ```js block in the files below is classified:
 //   - usage example            → compiled as a module (js blocks with JS-level
 //     strictness)
-//   - member signature listing → must match the same members of BurrowArea
-//     exactly
+//   - member signature listing → must match the same members of
+//     OfflineStorage (which extends BurrowStorage) exactly
 //   - interface/type/class listing → each declared name must match the exported
 //     type of that name (a `declare class` listing only has to be a subset of
 //     the real class)
@@ -54,14 +54,12 @@ const EXPORTED = [
   "BackendFactory",
   "BurrowConfig",
   "Status",
-  "TokenSource",
-  "TokenInfo",
   "StorageChanges",
   "ChangedEvent",
   "StatusEvent",
-  "Inspection",
   "GetKeys",
-  "BurrowArea",
+  "BurrowStorage",
+  "OfflineStorage",
   "BurrowError",
   "BackendError",
   "BurrowErrorCode",
@@ -72,7 +70,7 @@ const EXPORTED = [
 const GENERIC = { BurrowEvent: "T" };
 // Type names exported by burrow-storage/firestore and burrow-storage/passkey.
 const FIRESTORE = ["FirestoreConfig"];
-const PASSKEY = ["PasskeyBackupOptions", "PasskeyBackup"];
+const PASSKEY = ["PasskeyTokenOptions", "PasskeyToken"];
 
 // Free names the usage examples treat as page context.
 const CONTEXT = `
@@ -96,26 +94,31 @@ function usage(body) {
   let pre = "";
   if (!/^\s*import /m.test(body)) {
     pre +=
-      'import { burrow, MemoryBackend, BurrowError } from "burrow-storage";\n';
+      'import { burrow, generateToken, readBackendConfig, MemoryBackend, BurrowError } from "burrow-storage";\n';
     pre += 'import { FirestoreBackend } from "burrow-storage/firestore";\n';
-    pre += 'import { passkeyBackup } from "burrow-storage/passkey";\n';
+    pre += 'import { offline } from "burrow-storage/offline";\n';
+    pre += 'import { passkeyToken } from "burrow-storage/passkey";\n';
   }
   if (!/\b(const|let)\s+store\b/.test(body))
-    pre += 'declare const store: import("burrow-storage").BurrowArea;\n';
-  if (!/\b(const|let)\s+storage\b/.test(body))
-    pre += "declare const storage: Storage;\n";
+    pre += 'declare const store: import("burrow-storage").BurrowStorage;\n';
+  if (!/\b(const|let)\s+local\b/.test(body))
+    pre += 'declare const local: import("burrow-storage").OfflineStorage;\n';
+  if (!/\b(const|let)\s+token\b/.test(body))
+    pre += "declare const token: string;\n";
+  if (!/\b(const|let)\s+backend\b/.test(body))
+    pre += 'declare const backend: import("burrow-storage").BackendConfig;\n';
   return `${pre}${CONTEXT}\nexport {};\n${body}`;
 }
 
 function members(body) {
-  return `import type { BurrowArea, GetKeys, TokenInfo, Inspection } from "burrow-storage";
+  return `import type { OfflineStorage, GetKeys } from "burrow-storage";
 interface Doc {
 ${body}}
-type Missing = Exclude<keyof Doc, keyof BurrowArea>;
+type Missing = Exclude<keyof Doc, keyof OfflineStorage>;
 const none: Missing[] = [];
-type K = keyof Doc & keyof BurrowArea;
-const a: Pick<BurrowArea, K> = null! as Doc;
-const b: Doc = null! as Pick<BurrowArea, K>;
+type K = keyof Doc & keyof OfflineStorage;
+const a: Pick<OfflineStorage, K> = null! as Doc;
+const b: Doc = null! as Pick<OfflineStorage, K>;
 export { none, a, b };
 `;
 }
@@ -220,6 +223,7 @@ for (const file of DOCS) {
 const paths = {
   "burrow-storage": [join(root, "dist/index.d.ts")],
   "burrow-storage/firestore": [join(root, "dist/firestore.d.ts")],
+  "burrow-storage/offline": [join(root, "dist/offline.d.ts")],
   "burrow-storage/passkey": [join(root, "dist/passkey.d.ts")],
 };
 const base = {

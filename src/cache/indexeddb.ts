@@ -1,13 +1,12 @@
-// SYNC-1: one IndexedDB database per origin named "burrow", one object store
-// per app, so clearing one app never touches another. "_meta" holds per-app
-// sync state, "_token" each app's wrapped token (D-54); both are keyed by the
-// app's store name.
-import type { AppMeta, Cache, CachedItem, StoredToken } from "./types.js";
+// SYNC-1: one IndexedDB database per app and token, named
+// "burrow:<app>:<identity>", so each identity's local copy is separate and can
+// be deleted whole (D-57). "items" holds the plaintext items by key, "meta" the
+// sync state. Nothing token-derived is stored except the identity in the name,
+// a 64-bit fingerprint that cannot open or write anything (D-8).
+import type { AppMeta, Cache, CachedItem, Updated } from "./types.js";
 
-const DB = "burrow";
-const META = "_meta";
-const TOKEN = "_token";
-const storeFor = (app: string) => "app:" + app;
+const ITEMS = "items";
+const META = "meta";
 
 const req = <T>(r: IDBRequest<T>) =>
   new Promise<T>((res, rej) => {
@@ -15,87 +14,54 @@ const req = <T>(r: IDBRequest<T>) =>
     r.onerror = () => rej(r.error);
   });
 
-function openDb(
-  idb: IDBFactory,
-  version?: number,
-  stores: string[] = [],
-): Promise<IDBDatabase> {
-  return new Promise((res, rej) => {
-    const r = version ? idb.open(DB, version) : idb.open(DB);
-    r.onupgradeneeded = () => {
-      for (const s of [META, TOKEN, ...stores])
-        if (!r.result.objectStoreNames.contains(s))
-          r.result.createObjectStore(s);
-    };
-    r.onsuccess = () => res(r.result);
-    r.onerror = () => rej(r.error);
-    // Another tab still holds the old version open; it closes on versionchange
-    // and we proceed.
-    r.onblocked = () => {};
-  });
-}
+export const dbName = (app: string, identity: string): string =>
+  `burrow:${app}:${identity}`;
 
 export class IdbCache implements Cache {
   readonly kind = "indexeddb" as const;
   readonly #idb: IDBFactory;
-  readonly #store: string;
+  readonly #name: string;
   #db: Promise<IDBDatabase> | null = null;
 
-  private constructor(idb: IDBFactory, app: string) {
+  private constructor(idb: IDBFactory, name: string) {
     this.#idb = idb;
-    this.#store = storeFor(app);
+    this.#name = name;
   }
 
   /**
-   * Opens (creating the app's store if needed). Rejects if IndexedDB is
-   * unusable (SYNC-4).
+   * Opens (creating it if needed). Rejects if IndexedDB is unusable (SYNC-4).
    */
   static async open(
     app: string,
+    identity: string,
     idb: IDBFactory | null = globalThis.indexedDB ?? null,
   ): Promise<IdbCache> {
     if (!idb) throw new Error("IndexedDB unavailable");
-    const c = new IdbCache(idb, app);
+    const c = new IdbCache(idb, dbName(app, identity));
     await c.#conn();
     return c;
   }
 
   #conn(): Promise<IDBDatabase> {
-    return (this.#db ??= this.#connect().catch((e) => {
+    return (this.#db ??= new Promise<IDBDatabase>((res, rej) => {
+      const r = this.#idb.open(this.#name, 1);
+      r.onupgradeneeded = () => {
+        r.result.createObjectStore(ITEMS);
+        r.result.createObjectStore(META);
+      };
+      r.onsuccess = () => {
+        // Another tab deleting this copy (forget()) must not be blocked by us.
+        r.result.onversionchange = () => {
+          r.result.close();
+          this.#db = null;
+        };
+        res(r.result);
+      };
+      r.onerror = () => rej(r.error);
+    }).catch((e) => {
       this.#db = null;
       throw e;
     }));
-  }
-
-  async #connect(): Promise<IDBDatabase> {
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const db = await openDb(this.#idb);
-      const need = [META, TOKEN, this.#store].some(
-        (s) => !db.objectStoreNames.contains(s),
-      );
-      if (!need) return this.#watch(db);
-      const v = db.version + 1;
-      db.close();
-      try {
-        const up = await openDb(this.#idb, v, [this.#store]);
-        if (up.objectStoreNames.contains(this.#store)) return this.#watch(up);
-        up.close();
-      } catch (e) {
-        // VersionError: another tab upgraded first. Retry from the new version.
-        if ((e as DOMException)?.name !== "VersionError") throw e;
-      }
-    }
-    throw new Error("could not create the IndexedDB object store");
-  }
-
-  #watch(db: IDBDatabase): IDBDatabase {
-    // Another tab adding an app's store bumps the version: let it, and
-    // reconnect lazily.
-    db.onversionchange = () => {
-      db.close();
-      this.#db = null;
-    };
-    return db;
   }
 
   async #tx<T>(
@@ -129,8 +95,8 @@ export class IdbCache implements Cache {
   }
 
   loadItems(): Promise<Map<string, CachedItem>> {
-    return this.#tx([this.#store], "readonly", async (t) => {
-      const s = t.objectStore(this.#store);
+    return this.#tx([ITEMS], "readonly", async (t) => {
+      const s = t.objectStore(ITEMS);
       const [keys, vals] = await Promise.all([
         req(s.getAllKeys()),
         req(s.getAll()),
@@ -139,12 +105,15 @@ export class IdbCache implements Cache {
     });
   }
 
-  putItems(entries: Iterable<[string, CachedItem | null]>): Promise<void> {
-    const list = [...entries];
-    if (!list.length) return Promise.resolve();
-    return this.#tx([this.#store], "readwrite", (t) => {
-      const s = t.objectStore(this.#store);
-      for (const [k, v] of list) v ? s.put(v, k) : s.delete(k);
+  getItems(keys: string[]): Promise<Map<string, CachedItem>> {
+    return this.#tx([ITEMS], "readonly", async (t) => {
+      const s = t.objectStore(ITEMS);
+      const vals = await Promise.all(
+        keys.map((k) => req(s.get(k)) as Promise<CachedItem | undefined>),
+      );
+      const out = new Map<string, CachedItem>();
+      keys.forEach((k, i) => vals[i] && out.set(k, vals[i]!));
+      return out;
     });
   }
 
@@ -154,11 +123,11 @@ export class IdbCache implements Cache {
       key: string,
       cur: CachedItem | undefined,
     ) => CachedItem | null | undefined,
-  ): Promise<Map<string, CachedItem | null>> {
-    const out = new Map<string, CachedItem | null>();
+  ): Promise<Updated> {
+    const out: Updated = new Map();
     if (!keys.length) return Promise.resolve(out);
-    return this.#tx([this.#store], "readwrite", async (t) => {
-      const s = t.objectStore(this.#store);
+    return this.#tx([ITEMS], "readwrite", async (t) => {
+      const s = t.objectStore(ITEMS);
       const curs = await Promise.all(
         keys.map((k) => req(s.get(k)) as Promise<CachedItem | undefined>),
       );
@@ -166,15 +135,9 @@ export class IdbCache implements Cache {
         const next = fn(k, curs[i]);
         if (next === undefined) return;
         next ? s.put(next, k) : s.delete(k);
-        out.set(k, next);
+        out.set(k, [curs[i], next]);
       });
       return out;
-    });
-  }
-
-  clearItems(): Promise<void> {
-    return this.#tx([this.#store], "readwrite", (t) => {
-      t.objectStore(this.#store).clear();
     });
   }
 
@@ -182,29 +145,21 @@ export class IdbCache implements Cache {
     return this.#tx(
       [META],
       "readonly",
-      async (t) => (await req(t.objectStore(META).get(this.#store))) ?? {},
+      async (t) => (await req(t.objectStore(META).get(META))) ?? {},
     );
   }
 
   setMeta(patch: Partial<AppMeta>): Promise<void> {
     return this.#tx([META], "readwrite", async (t) => {
       const s = t.objectStore(META);
-      const cur = ((await req(s.get(this.#store))) ?? {}) as AppMeta;
-      s.put({ ...cur, ...patch }, this.#store);
+      const cur = ((await req(s.get(META))) ?? {}) as AppMeta;
+      s.put({ ...cur, ...patch }, META);
     });
   }
 
-  getToken(): Promise<StoredToken | undefined> {
-    return this.#tx([TOKEN], "readonly", (t) =>
-      req(t.objectStore(TOKEN).get(this.#store)),
-    );
-  }
-
-  setToken(token: StoredToken | null): Promise<void> {
-    return this.#tx([TOKEN], "readwrite", (t) => {
-      const s = t.objectStore(TOKEN);
-      token ? s.put(token, this.#store) : s.delete(this.#store);
-    });
+  async destroy(): Promise<void> {
+    this.close();
+    await req(this.#idb.deleteDatabase(this.#name));
   }
 
   close(): void {
