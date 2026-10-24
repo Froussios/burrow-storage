@@ -27,11 +27,18 @@ path or a major release solely for compatibility. This policy lasts until client
   and `unlink()` affect only the calling app, so another app's token, data and unsynced writes
   are never touched, and unrelated sites sharing an origin no longer share a token. Pages that
   pass the same `app` still share one. Token format, derivation, envelope and keyslots are
-  unchanged. Sites with several apps should give each app's passkey backup its own `userName`.
-- Tokens are stored per app in a new `_token` object store; the origin-wide `_device` store is no
-  longer read or cleared (the demo deletes it from its visitors' browsers until 2026-11-18). A browser that ran 0.1.1 starts each app with a new token and clears that app's
-  cache on first load, unsynced writes included; `link()` with the old token restores its
-  synced data.
+  unchanged.
+- Passkey handles derive from the decoded token and canonical effective RP ID using a separate
+  HKDF domain (#75, D-56). Different tokens coexist even with identical visible labels;
+  `userName` and `displayName` affect presentation only. The demo saves without a preliminary
+  confirmation, reports success only after the keyslot write, and marks backup status uncertain
+  after a failed re-save. Keep the token and retry if saving fails.
+- `link()` and `unlink()` reject `would-replace` when leaving live cached data, unless
+  `replace: true` explicitly confirms the change (#75, D-56). Empty stores and same-token links
+  need no replacement confirmation. The independent `would-orphan`/`discardLocal` guard still
+  protects unsynced writes.
+- Tokens are stored per app in `_token`. No origin-wide token migration or temporary demo
+  cleanup is provided: the demo is the only client, and this change targets a clean codebase.
 - `TokenInfo.since` is always a number, and `TokenSource` no longer includes `"unknown"`: every
   remembered token records its source and time.
 - Backend reads/watches return `StoredDocument` (live envelope or distinct expiry stub).
@@ -108,8 +115,8 @@ so `0.1.0` was never published.
   backend configuration and regression coverage for a recovery-service outage.
 - Passkey handles derive from the effective `userName`: repeated saves with the same RP and
   label replace the earlier credential on conforming discoverable authenticators (#21, D-47).
-  The first 16 bytes of SHA-256 over UTF-8 `"burrow/user/v1" + userName` are stable v1 public
-  contract; changing the derivation would stop replacement of existing credentials.
+  That release used the first 16 bytes of SHA-256 over UTF-8 `"burrow/user/v1" + userName`.
+  This label-based identity is superseded by D-56 in the unreleased version.
   Apps choose distinguishing labels for separate backups. The demo uses `burrow-demo` and
   warns before creation: replacement precedes the PRF/keyslot write and can lose the earlier
   recovery route even if saving fails. Existing random-handle duplicates remain; replacement

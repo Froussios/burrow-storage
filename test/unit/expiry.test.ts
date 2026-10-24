@@ -621,7 +621,7 @@ describe("D-48 content expiry and use-driven renewal", () => {
     await other.set({ new: 1 });
     await other.syncNow();
     vi.spyOn(Date, "now").mockReturnValue(old! + DAY);
-    await area.link({ token: await other.exportToken() });
+    await area.link({ token: await other.exportToken(), replace: true });
     expect((await cache.getMeta()).renewAt).toBeGreaterThan(old! + DAY);
     expect(await area.get()).toEqual({ new: 1 });
     expect(device.mem.apps.size).toBe(1);

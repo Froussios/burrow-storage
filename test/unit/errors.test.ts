@@ -28,6 +28,7 @@ const BURROW_CODES: BurrowErrorCode[] = [
   "quota",
   "decrypt-failed",
   "would-orphan",
+  "would-replace",
 ];
 const BACKEND_CODES: BackendErrorCode[] = [
   "conflict",

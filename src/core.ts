@@ -1339,6 +1339,7 @@ export class Core implements BurrowArea {
     token: string;
     source?: string;
     discardLocal?: boolean;
+    replace?: boolean;
   }): Promise<void> {
     this.#alive();
     const source = options?.source ?? "token";
@@ -1347,7 +1348,7 @@ export class Core implements BurrowArea {
     // KP-12: bad-token before any network call
     const secret = await decodeToken(options?.token);
     try {
-      await this.#switchTo(secret, source, !!options.discardLocal);
+      await this.#switchTo(secret, source, options);
     } finally {
       secret.fill(0);
     }
@@ -1357,7 +1358,7 @@ export class Core implements BurrowArea {
   async #switchTo(
     secret: Uint8Array,
     source: string,
-    discardLocal: boolean,
+    options: { discardLocal?: boolean; replace?: boolean },
   ): Promise<void> {
     const same =
       (await deriveAppKeys(secret, this.app)).base === this.#keys!.base;
@@ -1367,19 +1368,18 @@ export class Core implements BurrowArea {
       await this.#sync();
       return;
     }
-    await this.#flush();
-    if (!discardLocal && [...this.#mirror.values()].some((e) => e.dirty)) {
-      await this.#sync(); // push it under the old secret first, if we can
-      if ([...this.#mirror.values()].some((e) => e.dirty))
-        throw new BurrowError("would-orphan");
-    }
-    const before = new Map(this.#mirror);
-    const holder = await SecretHolder.wrap(secret);
+    await this.#prepareTokenChange(options);
     // A pass that started under the old secret must finish before the identity
     // changes, and no pass may start until it has: passes read the keys once,
     // inside the sync lock.
     await this.#drain();
-    await this.#lock("sync", async () => {
+    const before = await this.#lock("sync", async () => {
+      // A running pass or pending facade write may have changed the mirror
+      // since the first check. Guard again before replacing the identity.
+      await this.#flush();
+      this.#checkTokenChange(options);
+      const before = new Map(this.#mirror);
+      const holder = await SecretHolder.wrap(secret);
       const token = { source, remembered: false, since: Date.now() };
       await this.#lock("secret", async () => {
         if (this.#remember) await holder.persist(this.#cache, token);
@@ -1391,6 +1391,7 @@ export class Core implements BurrowArea {
       await this.#cache.setMeta({ owner: "" });
       await this.#adoptIdentity();
       this.#paused = false;
+      return before;
     });
     this.#broadcast({ t: "identity" });
     this.onToken.emit({ ...this.#token });
@@ -1414,18 +1415,41 @@ export class Core implements BurrowArea {
     while (this.#running) await this.#running;
   }
 
-  async unlink(options: { discardLocal?: boolean } = {}): Promise<void> {
-    this.#alive();
+  /** Try to preserve unsynced writes before checking the independent guards. */
+  async #prepareTokenChange(options: {
+    discardLocal?: boolean;
+    replace?: boolean;
+  }): Promise<void> {
     await this.#flush();
     if (
       !options.discardLocal &&
       [...this.#mirror.values()].some((e) => e.dirty)
-    ) {
+    )
       await this.#sync();
-      if ([...this.#mirror.values()].some((e) => e.dirty))
-        throw new BurrowError("would-orphan");
-    }
+    this.#checkTokenChange(options);
+  }
+
+  #checkTokenChange(options: {
+    discardLocal?: boolean;
+    replace?: boolean;
+  }): void {
+    if (
+      !options.discardLocal &&
+      [...this.#mirror.values()].some((e) => e.dirty)
+    )
+      throw new BurrowError("would-orphan");
+    if (!options.replace && [...this.#mirror.values()].some(live))
+      throw new BurrowError("would-replace");
+  }
+
+  async unlink(
+    options: { discardLocal?: boolean; replace?: boolean } = {},
+  ): Promise<void> {
+    this.#alive();
+    await this.#prepareTokenChange(options);
     await this.#drain();
+    await this.#flush();
+    this.#checkTokenChange(options);
     // API-8: like clearing a session cookie. The cache and remote documents
     // stay.
     this.#secret?.forget();

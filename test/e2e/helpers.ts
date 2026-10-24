@@ -59,3 +59,25 @@ export function withStore<T, A = undefined>(
     [fn.toString(), arg] as const,
   ) as Promise<T>;
 }
+
+/** The real demo with an injectable backend for deterministic failure cases. */
+export async function openMemoryDemo(page: Page): Promise<void> {
+  await page.route("**/demo/burrow.min.js", async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({
+      response,
+      body:
+        (await response.text()) +
+        `\nwindow.demoBackend = new Burrow.MemoryBackend();
+Burrow.registerBackend("demo-test", () => window.demoBackend);
+window.BURROW = { backend: { type: "demo-test" } };`,
+    });
+  });
+  await page.goto("/demo/index.html");
+  await page.locator('body[data-ready="true"]').waitFor();
+}
+
+export type MemoryDemoWindow = {
+  Burrow: typeof import("../../src/iife.js");
+  demoBackend: import("../../src/backends/memory.js").MemoryBackend;
+};

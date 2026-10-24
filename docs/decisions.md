@@ -1,6 +1,6 @@
 # Decisions
 
-The judgement calls behind the code, in two parts. **Part A** (D-1 … D-43, with a hyphen) is the
+The judgement calls behind the code, in two parts. **Part A** (D-1 … D-56, with a hyphen) is the
 log kept while implementing; each entry names the requirement it touches in
 [history/requirements.md](history/requirements.md) ("the brief") and the choice made where the
 brief was silent or self-contradictory. **Part B** (D1 … D20, no hyphen) is the earlier planning
@@ -69,6 +69,9 @@ providers may ignore both; the built-ins get no special treatment.
 
 ### D-8 The cache belongs to one token; `unlink()` guards against orphaning (API-8, API-7)
 
+*Amended by D-56: leaving live cached data also requires `replace: true`; the unsynced-write
+check and `discardLocal` override remain independent.*
+
 The local cache is stamped with a fingerprint of the token that owns it (a hash of the manifest
 id, never the id itself). `unlink()` leaves the cache and the remote documents intact. The next
 `burrow()` generates a fresh token, sees the cache belongs to another, and clears that app's cache
@@ -80,8 +83,9 @@ D-54 is all that a switch can drop.
 
 ### D-9 The token is per origin; per-app state is per app (KP-4, SYNC-1, SYNC-3)
 
-*The token is per app since D-54; the per-app state below is unchanged. Keyslots stay per origin:
-the PRF salt is fixed, so the passkey's `userName` is what keeps two apps' backups apart.*
+*The token is per app since D-54; the per-app state below is unchanged. Keyslots remain
+independent of apps. Since D-56, passkey identity derives from the token and RP ID; labels are
+presentation only.*
 
 The wrapped token, the protection state and provider data live in an origin-wide `_device` object
 store. Per-app sync state (`manifestRev`, max remote `ts`, last sync, the `onUnprotected` flag)
@@ -562,45 +566,21 @@ this implementation alone does not close #36 or establish its complete acceptanc
 
 ### D-47 Deterministic passkey user handle; replacement is the app's to warn about (#21)
 
-Owner scope: [app/user responsibility and overwrite by default](https://github.com/Froussios/burrow-storage/issues/21#issuecomment-6073994356),
+*Superseded by D-56. This entry records the label-based behavior shipped in 0.1.1.*
+
+Owner scope at the time: [app/user responsibility and overwrite by default](https://github.com/Froussios/burrow-storage/issues/21#issuecomment-6073994356),
 then [label-varying derivation and WebAuthn-style names](https://github.com/Froussios/burrow-storage/issues/21#issuecomment-6074104571).
-These decisions accept a scoped behavior rather than a universal manager guarantee.
 
-`save()` derives `user.id` as the first 16 bytes of SHA-256(`"burrow/user/v1"` ‖ `userName`),
-where `userName` is the effective label (host by default). The rp ID scopes it to the site;
-a different label gives a different handle. CTAP2 authenticators replace a discoverable
-credential with the same rp ID and user handle, so a repeat save leaves one entry. Only that
-the handle varies with the label was required by the owner when choosing the initial algorithm.
-The chosen derivation was declared stable v1 public contract: the `burrow/user/v1` prefix,
-UTF-8 input, SHA-256 and first-16-byte truncation required a major release and migration path
-to change, since a new handle would stop replacement of earlier credentials and allow duplicate
-labels. D-55 supersedes that compatibility requirement while there are no clients; the algorithm
-and its consequences described here remain current.
-`displayName` is a separate option (default `userName`) and does not enter the handle, so an
-app can change the new credential's presentation without changing its identity. Renaming an
-existing passkey remains out of scope. The RP ID scopes credential use but is not hashed into
-the handle; matching explicit public labels have matching handles across sites. This adds no
-independent user identifier beyond that label. The default host label differs per site, and
-apps can choose site-specific, non-sensitive labels. Keyslot format and crypto are unchanged.
+`save()` derived `user.id` as the first 16 bytes of SHA-256(`"burrow/user/v1"` ‖ `userName`),
+where `userName` was the effective label (host by default). Different labels allowed separate
+credentials; different tokens under one label could replace one another. `displayName` changed
+presentation only, and the RP ID scoped credential use without entering the derivation.
 
-Replacement happens inside `credentials.create()`, before the PRF output and the keyslot write.
-If the follow-up fails, neither passkey may hold a usable backup, and a different token saved
-under the same label loses its passkey route. Responsibility is passed to the app and user:
-sites must warn before every `save()` and ask users to keep the current and earlier tokens,
-or use a distinct `userName` (device name, date, user-chosen) per token. Not adopted: a random
-suffix by default (defeats the goal),
-`excludeCredentials` and a `passkey-exists` error (the library has no credential ids to send;
-D-42), a name-to-credential registry. Limits: earlier random-handle duplicates remain, since
-WebAuthn offers no enumeration or deletion; replacement was exercised only with Chromium's
-virtual authenticator, not iCloud Keychain, Google Password Manager, Windows Hello, 1Password
-or Bitwarden.
-
-The demo passes `userName: "burrow-demo"` and asks the user to confirm the replacement/loss
-warning before calling `save()`. Declining it never prompts the authenticator. A failed save
-does not claim that no credential was created or that an earlier credential survived.
-The historical backup marker remains, but its badge says "Previously saved with a passkey.
-Keep the storage token." It does not promise current recoverability or discard the record
-of another backup that might still work.
+Replacement happened inside `credentials.create()`, before PRF evaluation and the keyslot
+write. A failed save could therefore lose the earlier recovery route. The demo warned before
+every save and used a historical backup badge. The original decision froze this label-based
+derivation and asked for a migration if it changed. D-55 supersedes that compatibility
+requirement while there are no clients; D-56 replaces the label-based algorithm.
 
 ### D-50 Token recovery and content storage remain independent
 
@@ -709,7 +689,7 @@ storage and ongoing junk/squatting remain limitations.
 
 D-50's independently chosen token-access/content boundary remains: full encrypted token
 payloads are excluded, restore remains read-only, and passkey saves can replace credentials
-(D-47). Opaque mixed collections cannot be classified, so reaping them is refused. No core
+(D-56). Opaque mixed collections cannot be classified, so reaping them is refused. No core
 keyslot service coupling, backend-owned renewal scheduler or lost-credential recovery is added.
 See [retention.md](retention.md) for the public contract, operator steps and evidence limits.
 
@@ -738,16 +718,11 @@ does. Each app now has its own token on the device:
   the owner directed none, as the demo is the only client. A browser that ran 0.1.1 starts each
   app with a new token and clears the app's cache on first load, unsynced writes included. This is
   a deliberate exception to SYNC-9 for 0.1.1 data; linking the old token restores the synced
-  data. After `unlink()` such a browser would still hold the old wrapped token in `_device`, so the
-  demo deletes that store from its visitors' browsers before opening Burrow. That code is temporary,
-  marked `TODO(2026-11-18)` in `demo/demo.js` and its e2e test, and is removed a month after
-  release.
+  data. D-56 removes the temporary demo cleanup for the old `_device` store, consistent
+  with D-55's no-clients policy.
 
-The token format, derivation, envelope and keyslot are unchanged. The passkey backup takes a token
-string and needs no change, but D-47's label-derived user handle now matters across apps: two apps
-that save under the same `userName` (by default the host) replace each other's passkey, which now
-holds a different token. Sites with several apps pass a distinct label per app; #75 proposes a
-token-derived handle that would make this automatic.
+The token format, derivation, envelope and keyslot are unchanged. D-56 also separates passkey
+identities by token, removing the need for a distinct `userName` per app.
 
 This separates identities, not code. Any script on the origin can still read every app's cache
 and use its token, as SECURITY.md already assumes.
@@ -770,6 +745,47 @@ design changes here. This policy does not itself change any runtime behaviour or
 When the first clients arrive, document the supported contract and compatibility and migration
 expectations before further breaking changes. Until then, hypothetical future clients are not a
 reason to preserve an obsolete design.
+
+### D-56 Token-derived passkey identity and explicit local replacement (#75; supersedes D-47)
+
+`save()` identifies a backup by its decoded storage token and effective RP ID rather than
+its visible label. This supersedes D-47's label-derived handle. The passkey keyslot and PRF
+formats stay unchanged.
+
+`user.id` is 16 bytes from HKDF-SHA256 over the decoded 32-byte token secret, using UTF-8 salt
+`"burrow/v1"` and UTF-8 info `"burrow/passkey-user/v1\0" + effectiveRpId`. The zero byte frames
+this new domain separately from the RP ID. The effective RP is explicit `rpId`, or the current
+hostname (`localhost` outside a page), canonicalized by URL hostname parsing to lowercase
+ASCII/IDNA, with a trailing dot retained. Invalid RP syntax rejects with `TypeError` before
+prompting, and the same canonical RP is supplied to creation and assertions.
+The browser remains responsible for origin, domain-suffix and public-suffix eligibility.
+Equivalent token encodings and equivalent RP spellings agree; different tokens and RPs have
+independent handles.
+
+`userName` and `displayName` are public presentation only. Distinct tokens can coexist under
+the same labels, including tokens from different apps on one origin. Different labels no
+longer create separate backups of one token on one RP. The selected recovery backend also
+does not enter the handle: saving the same token through another backend can replace the
+credential, and restore still requires the matching backend configuration.
+
+The demo calls `save()` without a preliminary confirmation. Credential replacement remains
+possible for a repeated save of the same token and happens before PRF evaluation and the
+keyslot write. If saving fails after creation, the previous passkey route may no longer work;
+keep the token and retry. The demo reports success only after the write succeeds. Before
+re-saving an existing backup record, it persists uncertainty and retains it on failure rather
+than presenting historical success as current recoverability. A failed or cancelled first
+save adds no backup record, so an otherwise empty store remains empty. Password-manager
+replacement evidence remains limited to Chromium's virtual authenticator.
+
+Both `link()` and `unlink()` require `replace: true` when leaving live, non-deleted data cached
+for the current app, including pending facade writes. They reject `would-replace` otherwise.
+Empty stores need no replacement confirmation; linking the token already in use bypasses both
+guards and preserves its source. The existing unsynced-write check runs first: try to sync
+under the old token, then reject `would-orphan` if dirty entries remain unless
+`discardLocal: true` was passed. Dirty tombstones count for orphaning but not live-data
+replacement. The two overrides are independent, so callers may need both. The cached-data
+check cannot discover remote-only data, and token provenance does not establish whether a
+usable backup exists.
 
 ## Part B: planning decisions and their status
 

@@ -37,14 +37,32 @@ async function hkdfBase(ikm: Uint8Array): Promise<CryptoKey> {
 const hkdf = (salt: string, info: Uint8Array<ArrayBuffer>) =>
   ({ name: "HKDF", hash: "SHA-256", salt: utf8(salt), info }) as const;
 
-// HKDF-Extract then HKDF-Expand(prk, info, 32): WebCrypto's HKDF performs both
-// steps.
+// WebCrypto's HKDF performs both HKDF-Extract and HKDF-Expand.
 async function expandBits(
   ikm: CryptoKey,
   salt: string,
   info: Uint8Array<ArrayBuffer>,
+  length = 256,
 ): Promise<Uint8Array<ArrayBuffer>> {
-  return new Uint8Array(await subtle().deriveBits(hkdf(salt, info), ikm, 256));
+  return new Uint8Array(
+    await subtle().deriveBits(hkdf(salt, info), ikm, length),
+  );
+}
+
+/**
+ * Stable 16-byte WebAuthn user handle per decoded token and effective RP ID.
+ * The v1 domain, NUL separator and output length are frozen (ENC-2).
+ */
+export async function derivePasskeyUserHandle(
+  secret: Uint8Array,
+  rpId: string,
+): Promise<Uint8Array<ArrayBuffer>> {
+  return expandBits(
+    await hkdfBase(secret),
+    SALT_V1,
+    utf8("burrow/passkey-user/v1\0" + rpId),
+    128,
+  );
 }
 
 const idOf = (digest: Uint8Array) => b64url(digest).slice(0, ID_LENGTH);

@@ -66,8 +66,8 @@ compatibility and migration expectations before further breaking changes.
   simultaneous live and emulator settings stop the server (D-44).
 - **Current cryptographic contract:** the `Envelope` format, HKDF salts `burrow/v1`,
   `burrow/slot/v1`, PRF salt `burrow/prf/v1`, the info labels, the AAD and token formats, the
-  storage-token encoding, and the passkey user-handle derivation with its `burrow/user/v1`
-  prefix (`SECURITY.md`, D-47). Changes must keep code, tests, reference vectors and security
+  storage-token encoding, and the token/RP-bound passkey handle under `burrow/passkey-user/v1`
+  (`SECURITY.md`, D-56). Changes must keep code, tests, reference vectors and security
   documentation consistent. Compatibility and migration follow the no-clients policy above
   (D-55).
 - Size budgets (min+gzip, `npm run size`): core + memory backend ≤ 12 KB; the passkey backup

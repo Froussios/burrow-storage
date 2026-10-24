@@ -81,8 +81,8 @@ deletion can defeat an older offline write (D-46). Thirty-day pruning alone does
 replacing an expiry stub.
 
 Export local data/JSON and keep the storage token before choosing a fresh identity. Existing
-`link()`/`unlink()` rules still reject orphaning dirty writes unless `discardLocal: true` is
-explicit. Linking the same expired token merely retries and pauses again while a stub remains.
+`link()`/`unlink()` rules require `replace: true` to leave live cached data, and independently
+reject orphaning dirty writes unless `discardLocal: true` is explicit. Linking the same expired token merely retries and pauses again while a stub remains.
 The backend does not migrate identities or recover tokens after loss of authenticating
 credentials.
 
@@ -91,8 +91,8 @@ credentials.
 Passkey keyslots contain the encrypted storage token. Keeping only `rev`/`next` would destroy
 access to that token even with a working authenticator. Keep the **full token-access payload**
 outside cleanup. `passkeyBackup().restore()` remains read-only; repeated `save()` creates a new
-credential and slot and can replace the previous credential (D-47). Neither is an existing-slot
-renewal. Core does not contact, enumerate or manage the independently selected token backend.
+credential and slot and can replace the same token's previous credential on that RP (D-56).
+Neither is an existing-slot renewal. Core does not contact, enumerate or manage the independently selected token backend.
 
 An opaque mixed collection cannot identify content versus keyslots. Choose a dedicated content
 collection/project when configuring content and token access. The reaper requires

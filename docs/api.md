@@ -88,8 +88,8 @@ interface BurrowArea {
 
   // Tokens and devices
   exportToken(): Promise<string>;
-  link(options: { token: string; source?: string; discardLocal?: boolean }): Promise<void>;
-  unlink(options?: { discardLocal?: boolean }): Promise<void>;
+  link(options: { token: string; source?: string; replace?: boolean; discardLocal?: boolean }): Promise<void>;
+  unlink(options?: { replace?: boolean; discardLocal?: boolean }): Promise<void>;
 
   // Sync and backups
   syncNow(): Promise<void>;
@@ -170,8 +170,8 @@ backend id or `"none"`.
 by hyphens, such as `07DV-1XKY-2X98-DRCP-DJV6-FC2E-459V-AJTY-26K2-XJFQ-9BXZ-QRNF-X0F5-Z1XS` (made
 up; it fails its checksum). It encodes a version byte, the 32-byte secret and a 16-bit checksum.
 
-`link({ token, source?, discardLocal? })` adopts an existing token on this device: one the user
-typed or pasted, or one a backup returned, such as `passkeyBackup().restore()`.
+`link({ token, source?, replace?, discardLocal? })` adopts an existing token on this device:
+one the user typed or pasted, or one a backup returned, such as `passkeyBackup().restore()`.
 
 - The token is decoded first. Case, spaces and hyphens do not matter, and O, I and L read as 0, 1
   and 1. A malformed token, a bad checksum or an unknown version rejects with `bad-token` before
@@ -179,17 +179,25 @@ typed or pasted, or one a backup returned, such as `passkeyBackup().restore()`.
 - If it is the token in use, nothing changes but sync resumes. This is how a device recovers from
   `decrypt-failed`.
 - Otherwise this app's unsynced writes are pushed under the old token first; if any remain, it
-  rejects with `would-orphan` unless `discardLocal` is true. The new token then replaces this
-  app's token, `token.source` becomes `source` (default `"token"`), this app's cache is refilled
-  from the store, `onToken` fires, and `onChanged` reports the difference with
-  `source: "remote"`. Open tabs of this app switch at once. Other apps on the origin keep their
+  rejects with `would-orphan` unless `discardLocal` is true. This includes dirty tombstones.
+- If the current app has live (non-deleted) cached data, it rejects with `would-replace` unless
+  `replace` is true. Confirm that the user has kept the current token before retrying. This
+  guard also covers pending facade writes, but cannot detect remote-only data or establish
+  whether a backup exists. Tombstones alone do not require `replace`.
+- The two overrides are independent: `replace: true` never permits dropping unsynced writes,
+  and `discardLocal: true` never permits replacing live data. Empty stores need no replacement
+  confirmation. The new token then replaces this app's token, `token.source` becomes `source`
+  (default `"token"`), this app's cache is refilled from the store, `onToken` fires, and
+  `onChanged` reports the difference with `source: "remote"`. Open tabs of this app switch at
+  once. Other apps on the origin keep their
   own tokens and data.
 - It resolves even when the first sync afterwards fails; `status` reports that.
 
-`unlink(options)` forgets this app's token on this device, with the same `would-orphan` guard.
-Other apps keep theirs, and the remote documents are untouched. The instance closes (every later call throws `BurrowError("unlinked")`),
-other tabs of this app close theirs, and the next `burrow()` on the device generates a fresh token
-and clears the old token's cached items before use.
+`unlink({ replace?, discardLocal? })` forgets this app's token on this device, with the same
+`would-orphan` and `would-replace` guards and independent overrides. Other apps keep theirs,
+and the remote documents are untouched. The instance closes (every later call throws
+`BurrowError("unlinked")`), other tabs of this app close theirs, and the next `burrow()` on the
+device generates a fresh token and clears the old token's cached items before use.
 
 ### Sync and backups
 
@@ -223,7 +231,7 @@ declare class BurrowError extends Error {
   readonly code: BurrowErrorCode;
 }
 type BurrowErrorCode = "unlinked" | "cancelled" | "prf-unsupported" | "bad-token" | "item-too-large"
-  | "backend" | "conflict" | "quota" | "decrypt-failed" | "expired" | "would-orphan";
+  | "backend" | "conflict" | "quota" | "decrypt-failed" | "expired" | "would-replace" | "would-orphan";
 ```
 
 Failures that Burrow detects reject with a `BurrowError` that carries a stable `code`. Argument
@@ -237,10 +245,11 @@ anything that looks like an id or token.
 | --- | --- | --- |
 | `bad-token` | `link()`, `passkeyBackup().save()` | The token is malformed, fails its checksum or has an unknown version. Nothing was changed. |
 | `item-too-large` | `set()`, `setItem()`; `onStatus` | An item exceeds `maxItemBytes`, or the encrypted document or manifest would exceed the store's limit. |
-| `would-orphan` | `link()`, `unlink()` | This app has writes that never synced; pass `discardLocal: true` to drop them. |
+| `would-replace` | `link()`, `unlink()` | The current app has live cached data; confirm that its token is kept, then pass `replace: true` to leave it. |
+| `would-orphan` | `link()`, `unlink()` | This app has writes that never synced; pass `discardLocal: true` to drop them. This override is independent of `replace`. |
 | `unlinked` | any call after `unlink()` | This instance was unlinked; call `burrow()` again. |
 | `cancelled` | `passkeyBackup().save()` | A passkey prompt was dismissed. No new keyslot was written, but an earlier credential may already have been replaced if creation succeeded before the follow-up prompt. |
-| `prf-unsupported` | `passkeyBackup().save()`, `.restore()` | WebAuthn PRF is not available here. Offer the storage token instead. |
+| `prf-unsupported` | `passkeyBackup().save()`, `.restore()` | WebAuthn PRF is unavailable here. Offer the storage token instead. |
 | `decrypt-failed` | `onStatus`, `passkeyBackup().restore()` | A document does not decrypt under this token (corruption or a version mismatch). Sync pauses, the cache is untouched; `link()` resumes it. |
 | `expired` | `onStatus`, `syncNow()` | An operator expired a content document. Sync pauses; local values and unsynced writes stay intact. Export local data before explicitly choosing a fresh identity; linking the same stubbed identity pauses again. See [retention](retention.md). |
 | `conflict` | `onStatus`, `syncNow()`, `passkeyBackup().save()` | Writes kept colliding with another writer after retries. Retried on the next trigger. |
@@ -322,18 +331,19 @@ is separate from the store: it takes a storage token and gives one back, so `sav
 
 ```js
 const backup = passkeyBackup({ userName: "notes" });
-// From a click, after the user kept the current and any earlier storage tokens:
-if (
-  (await backup.available()) &&
-  confirm(
-    "An earlier notes passkey may be replaced, even if this save fails. " +
-      "Have you kept the storage tokens and want to continue?",
-  )
-) {
-  await backup.save(await store.exportToken());
+// From a click. Keep the token if saving fails, then retry:
+if (await backup.available()) {
+  try {
+    await backup.save(await store.exportToken());
+    say("Saved in a passkey.");
+  } catch (e) {
+    say("Passkey backup may be unavailable. Keep your storage token and try again.");
+  }
 }
 // On another device, from a click:
 const token = await backup.restore();
+// On would-replace, ask for consent and retry with replace: true.
+// Handle would-orphan separately: discardLocal: true needs consent to drop unsynced writes.
 if (token) await store.link({ token, source: "passkey" });
 ```
 
@@ -342,7 +352,7 @@ interface PasskeyBackupOptions {
   backend?: Backend;  // default: from the page, as for burrow()
   rpId?: string;      // default: the page's host; the registrable domain shares one passkey across subdomains
   rpName?: string;    // default: the page's host
-  userName?: string;  // default: the page's host; stable identity for replacement on this RP
+  userName?: string;  // default: the page's host; presentation only
   displayName?: string; // default: effective userName; presentation only
   timeoutMs?: number; // default: 120 000
 }
@@ -362,7 +372,7 @@ config is retried on the next call.
 | Member | Behaviour |
 | --- | --- |
 | `available()` | Never prompts. True in a secure context with `PublicKeyCredential`, a user-verifying platform authenticator, and no `getClientCapabilities()` report denying `extension:prf`. |
-| `save(token)` | Creates a discoverable passkey with user verification and no attestation, evaluates its PRF, and writes the token to a keyslot document only that passkey can open. Its deterministic user handle derives from the effective `userName`, so the same RP and label may replace the previous credential. One prompt, sometimes two when the authenticator returns no PRF output at creation. Rejects `bad-token` before prompting, `cancelled` when a prompt is dismissed, `prf-unsupported`, `backend` (missing or invalid backend config, before prompting) or `conflict`; a failing store may surface a raw `BackendError`. |
+| `save(token)` | Creates a discoverable passkey with user verification and no attestation, evaluates its PRF, and writes the token to a keyslot document only that passkey can open. Its deterministic user handle derives from the decoded token and effective RP ID: different tokens coexist, and re-saving the same token on the same RP may replace its previous credential. One prompt, sometimes two when the authenticator returns no PRF output at creation. Rejects `bad-token` before prompting, `cancelled` when a prompt is dismissed, `prf-unsupported`, `backend` (missing or invalid backend config, before prompting) or `conflict`; a failing store may surface a raw `BackendError`. |
 | `restore()` | One prompt; the user picks the passkey. Resolves the token from its keyslot, or `null` when the prompt is dismissed or that passkey has no keyslot. Rejects `prf-unsupported`, `decrypt-failed` (the keyslot was tampered with) or `backend`. |
 
 Call `save()` and `restore()` from a user gesture: browsers allow passkey prompts only then. The
@@ -372,27 +382,31 @@ format and its derivation are in [SECURITY.md](../SECURITY.md#derivation-v1).
 For separate recovery and content backends, see
 [independent configuration](extending.md#independent-token-and-content-storage).
 
-**Warn before every save, and keep the current and any earlier storage tokens.** Replacement
-happens during credential creation, before the PRF output and keyslot write. The new passkey
-normally derives a different PRF output and opens a new keyslot. Saving a different token under
-the same label loses the earlier token's passkey route. Even for the same token, a failed PRF
-evaluation, dismissed follow-up prompt or failed write can leave no usable passkey backup.
-The utility cannot undo credential replacement; the kept storage token or another backup is
-the recovery route.
+The effective RP ID is `rpId`, or the current hostname (`localhost` outside a page),
+canonicalized by URL hostname parsing to lowercase ASCII/IDNA, with a trailing dot retained.
+Creation, assertions and handle derivation all use that same value. An omitted RP ID and an
+explicit equivalent hostname agree; subdomains using the same explicit parent RP ID also agree. Invalid syntax rejects with `TypeError`
+before prompting. The browser enforces origin, domain-suffix and public-suffix eligibility.
 
-Apps choose `userName` semantics: a stable app label opts into replacement, while distinct
-device, session or user-chosen labels let backups coexist. Apps can append their own
-distinguishing suffix; the library adds none. `displayName` sets the new credential's visible
-name without changing its handle; it does not rename a previously stored passkey. Both labels
-are visible to the password manager, so choose personal information only deliberately. The
-host fallback applies to every app that omits `userName`. Each app has its own token, so give each
-app on a site its own label; otherwise one app's save replaces the passkey holding another app's
-token (D-54).
+**Keep the storage token if saving fails, and retry.** Re-saving the same token may replace
+its credential during creation, before the PRF output and keyslot write. The new credential
+normally derives a different PRF output and opens a new slot. A failed PRF evaluation,
+dismissed follow-up prompt or failed write can therefore leave no usable passkey backup.
+The utility cannot undo replacement. An earlier successful save is historical evidence,
+not proof that recovery still works after a failed save. Show success only after `save()`
+resolves, and report uncertainty after a failed attempt.
 
-Repeated saves with the same label leave one credential on a conforming discoverable
-authenticator. Existing credentials created with random handles remain; this utility does not
-enumerate or delete them. Replacement is tested only with Chromium's virtual authenticator,
-not real iCloud Keychain, Google Password Manager, Windows Hello, 1Password or Bitwarden.
+`userName` and `displayName` set the new credential's public presentation only; neither enters
+the handle or renames an existing passkey. Different tokens can use identical labels without
+replacing one another. Different labels do not create separate backups of the same token on
+one RP. Recovery backend selection also does not affect the handle: saving the same token
+through another backend can replace its earlier credential, and restoration still needs the
+appropriate backend configuration. Choose personal information in labels only deliberately.
+
+A conforming discoverable authenticator replaces a credential for the same token and RP.
+The utility does not enumerate or delete credentials. Replacement is tested only with
+Chromium's virtual authenticator, not real iCloud Keychain, Google Password Manager, Windows
+Hello, 1Password or Bitwarden.
 
 ## Types
 

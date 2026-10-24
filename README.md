@@ -303,8 +303,8 @@ Full reference with every signature and error:
 | `status`, `onStatus` | `"idle"`, `"syncing"`, `"offline"` or `"error"`; the event carries the last `BurrowError`. |
 | `token`, `onToken` | Where this device's storage token came from: `{ source, remembered, since }`. |
 | `exportToken()` | The storage token: 56 characters in groups of four. |
-| `link({ token, source? })` | Adopt an existing token on this device: typed in, or returned by a backup such as a passkey. `source` labels it in `token.source`. |
-| `unlink()` | Forget the token on this device, like logging out, and close this instance. The cached data stays, in plaintext, until the next `burrow()` clears it. |
+| `link({ token, source?, replace?, discardLocal? })` | Adopt an existing token on this device: typed in, or returned by a backup such as a passkey. `source` labels it in `token.source`. |
+| `unlink({ replace?, discardLocal? })` | Forget the token on this device, like logging out, and close this instance. The cached data stays, in plaintext, until the next `burrow()` clears it. |
 | `syncNow()` | Run one sync pass now; rejects if it failed. |
 | `exportJSON()`, `importJSON(json)` | A plaintext export of the app's data, and its inverse. |
 | `inspect()` | A plain object for a debug panel. |
@@ -312,7 +312,7 @@ Full reference with every signature and error:
 | `passkeyBackup()` | From `burrow-storage/passkey`, optional: `save(token)` behind a passkey, `restore()` it on another device. |
 
 Failures that Burrow detects reject with a `BurrowError` that carries a stable `code`:
-`bad-token`, `item-too-large`, `would-orphan`, `unlinked`, `cancelled`, `prf-unsupported`,
+`bad-token`, `item-too-large`, `would-replace`, `would-orphan`, `unlinked`, `cancelled`, `prf-unsupported`,
 `decrypt-failed`, `conflict`, `quota` or `backend`. Invalid arguments reject with a `TypeError`, or
 throw one from the synchronous facade. Two calls can also pass on an error from below: `set()` when
 the browser refuses the local write (for example, its storage is full), and
@@ -326,7 +326,11 @@ the same token to `link()`; the store does not care how. Burrow supports two way
 | Way | First device | Other device |
 | --- | --- | --- |
 | Storage token | `BurrowArea.exportToken()`, shown to the user | `BurrowArea.link({ token })` with what they type |
-| Passkey backup | `PasskeyBackup.save(token)` | `BurrowArea.link({ token: await PasskeyBackup.restore(), source: "passkey" })` |
+| Passkey backup | `PasskeyBackup.save(token)` | `PasskeyBackup.restore()`, then `BurrowArea.link({ token, source: "passkey" })` if a token is returned |
+
+On a device with existing app data, linking requires consent before retrying `would-replace`
+with `replace: true`. Independently, retry `would-orphan` with `discardLocal: true` only after
+consent to drop unsynced writes.
 
 - **Storage token.** 56 characters, such as
   `07DV-1XKY-2X98-DRCP-DJV6-FC2E-459V-AJTY-26K2-XJFQ-9BXZ-QRNF-X0F5-Z1XS` (made up; it fails its
@@ -337,9 +341,10 @@ the same token to `link()`; the store does not care how. Burrow supports two way
   *keyslot* document, encrypted under a key that only the passkey can derive (WebAuthn PRF), and
   gives it back on another device with one prompt. Needs HTTPS or `localhost` and PRF support,
   which still varies: `available()` says whether it can work, without prompting.
-  Saving again with the same `userName` on the same site may replace its earlier passkey;
-  pass distinct labels to keep separate backups, and give each app on a site its own. Warn first and keep the current and any
-  earlier storage tokens: a failed save after creation can lose the earlier passkey route.
+  Different tokens have different passkey handles, so apps can use the same visible label.
+  Saving the same token again on the same site may replace its earlier passkey. Keep the token:
+  a failed save after creation can lose that token's earlier passkey route. If saving fails,
+  keep the token and retry; an earlier successful save does not prove the backup still works.
   [Naming and replacement limits](https://github.com/Froussios/burrow-storage/blob/main/docs/api.md#passkey-backup).
 
 Choose token recovery independently of content storage: another Firebase project, another
@@ -353,8 +358,12 @@ user to keep it
 
 Each `app` has its own token; pages that pass the same `app` share it. `link()` with a different
 token replaces this app's token, refills its cache from the store, and fires `onToken` and
-`onChanged`. Writes this app has not synced are pushed first; if any remain, it rejects with
-`would-orphan`, unless called with `discardLocal: true`. Other apps on the origin are not affected.
+`onChanged`. When this app has live cached data, `link()` and `unlink()` reject with
+`would-replace`; confirm that the user has kept the token, then retry with `replace: true`.
+Unsynced writes have a separate guard: they are pushed first, and any that remain cause
+`would-orphan` unless `discardLocal: true` is also passed. Empty stores need no replacement
+confirmation, and linking the token already in use needs neither override. Other apps on the
+origin are not affected. The cache cannot establish whether a token has remote-only data.
 
 `burrow({ app, rememberDevice: false })` keeps the token in memory only, for shared computers.
 Anything written before `link()` belongs to a throwaway token.

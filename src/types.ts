@@ -289,20 +289,26 @@ export interface BurrowArea {
    * pasted, or one a backup returned (e.g. `passkeyBackup().restore()`).
    * Replaces this app's token only; other apps keep theirs. `source` labels it
    * in `token.source` (default "token"). Rejects `bad-token` before any network
-   * call, and `would-orphan` if this app has unsynced writes, unless
-   * `discardLocal` is true.
+   * call. Rejects `would-orphan` if this app has writes that cannot be synced,
+   * unless `discardLocal` is true. Independently rejects `would-replace` when
+   * the current app has live cached data, unless `replace` is true. Linking
+   * the same decoded token bypasses both guards and keeps its source.
    */
   link(options: {
     token: string;
     source?: string;
     discardLocal?: boolean;
+    replace?: boolean;
   }): Promise<void>;
   /**
    * Forget the app's token on this device, like logging out, and close this
    * instance. Other apps keep theirs.
-   * Same `would-orphan` guard as `link()`.
+   * Same independent `would-orphan` and `would-replace` guards as `link()`.
    */
-  unlink(options?: { discardLocal?: boolean }): Promise<void>;
+  unlink(options?: {
+    discardLocal?: boolean;
+    replace?: boolean;
+  }): Promise<void>;
   /**
    * Flush pending writes and run one sync pass. Rejects with the error if the
    * pass fails.
