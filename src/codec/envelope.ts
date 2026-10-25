@@ -31,8 +31,14 @@ async function pipe(
   data: Uint8Array<ArrayBuffer>,
   stream: CompressionStream | DecompressionStream,
 ): Promise<Uint8Array<ArrayBuffer>> {
-  const out = new Response(new Blob([data]).stream().pipeThrough(stream));
-  return new Uint8Array(await out.arrayBuffer());
+  // Written straight into the stream rather than read from a Blob, so no
+  // browser loader is involved: the offline wrapper deflates offline (D-60).
+  const w = stream.writable.getWriter();
+  void w
+    .write(data)
+    .then(() => w.close())
+    .catch(() => {}); // the readable side reports the failure
+  return new Uint8Array(await new Response(stream.readable).arrayBuffer());
 }
 
 const canCompress = () => typeof CompressionStream === "function";
@@ -58,6 +64,7 @@ const ctChars = (n: number) => Math.ceil(((n + 16) * 4) / 3);
 export async function fits(
   plaintext: Uint8Array<ArrayBuffer>,
 ): Promise<boolean> {
+  if (plaintext.length <= HARD_MAX_PLAINTEXT) return true;
   return ctChars((await pack(plaintext)).body.length) <= MAX_CT_CHARS;
 }
 

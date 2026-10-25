@@ -174,7 +174,10 @@ test("D-57 offline start: the wrapper opens with its token while the network is 
     beforeOpen: () => deviceA.setOffline(true),
   });
   expect(await withStore(a, (s) => s.get())).toEqual({ before: "online" });
-  await withStore(a, (s) => s.set({ offlineEdit: 1 }));
+  // D-60: one item past 749 000 bytes is deflated to check that it fits.
+  await withStore(a, (s) =>
+    s.set({ offlineEdit: 1, big: "x".repeat(1_000_000) }),
+  );
   expect(await withStore(a, (s) => s.get("offlineEdit"))).toEqual({
     offlineEdit: 1,
   });
@@ -191,10 +194,16 @@ test("D-57 offline start: the wrapper opens with its token while the network is 
     )
     .toBe("idle");
   const b = await openArea(deviceB, "e2e", undefined, { token });
-  expect(await withStore(b, (s) => s.get())).toEqual({
+  expect(await withStore(b, (s) => s.get(["before", "offlineEdit"]))).toEqual({
     before: "online",
     offlineEdit: 1,
   });
+  expect(
+    await withStore(
+      b,
+      async (s) => ((await s.get("big")).big as string).length,
+    ),
+  ).toBe(1_000_000);
   await deviceA.close();
   await deviceB.close();
 });
