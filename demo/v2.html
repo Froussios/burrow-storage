@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- SEC-5: strict CSP. Scripts and styles come from this origin only; the network is the backend. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://firestore.googleapis.com; base-uri 'none'; form-action 'none'"
+    />
+    <!-- FS-3: the shared Firestore project. The apiKey is an identifier, not a secret (FS-12). -->
+    <meta
+      name="burrow-firestore"
+      content='{"apiKey":"AIzaSyAlBIGo0tVj_68_3JukpW-sQPNhJHhPJJk","projectId":"burrow-storage-shared","appId":"1:126236223407:web:6a19c0b9ddf3d9bbd3f15a"}'
+    />
+    <title>Burrow demo v2</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="v2.css" />
+    <script src="burrow.min.js" defer></script>
+    <script src="v2.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to demo</a>
+    <div class="layout">
+      <aside class="sidebar">
+        <a class="brand" href="v2.html"
+          ><img src="favicon.svg" alt="" width="30" height="30" /> Burrow
+          <span>v2</span></a
+        >
+        <p class="sidebar-intro">One demo.<br />Different ways to Burrow.</p>
+        <nav aria-label="Demo scenarios">
+          <p class="eyebrow">Scenarios</p>
+          <div id="scenarios"></div>
+        </nav>
+        <div class="sidebar-note">
+          <span class="isolation-mark" aria-hidden="true">◎</span>
+          <p>Separate spaces</p>
+          <small
+            >Each scenario has its own token scope and content. Switching leaves
+            the other space intact.</small
+          >
+        </div>
+        <a class="previous" href="index.html">Original demo ↗</a>
+      </aside>
+      <main id="main">
+        <header>
+          <div class="row">
+            <p class="eyebrow">Burrow playground / Demo v2</p>
+            <span id="status" class="badge" data-status="locked" role="status"
+              >starting…</span
+            >
+          </div>
+          <h1 id="scenario-title">Choose a scenario</h1>
+          <p id="scenario-summary" class="lede"></p>
+        </header>
+        <section
+          id="scenario-config"
+          class="scenario-config"
+          aria-label="Scenario setup"
+        >
+          <dl class="scenario-facts">
+            <div>
+              <dt>Content on this device</dt>
+              <dd id="scenario-storage"></dd>
+            </div>
+            <div>
+              <dt>Token storage · demo option</dt>
+              <dd id="scenario-token"></dd>
+            </div>
+            <div>
+              <dt>Without a connection</dt>
+              <dd id="scenario-network"></dd>
+            </div>
+          </dl>
+          <details class="setup">
+            <summary>How this scenario is set up</summary>
+            <p id="scenario-detail"></p>
+            <pre><code id="setup-code"></code></pre>
+            <p class="hint">
+              Both scenarios use the same async storage API and editor. Passkey
+              tokens are derived separately for each scenario's app namespace.
+            </p>
+          </details>
+        </section>
+
+        <section id="signin" aria-labelledby="h-signin" hidden>
+          <p class="eyebrow">Get started</p>
+          <h2 id="h-signin">Open this space</h2>
+          <p id="signin-hint" class="hint"></p>
+          <fieldset class="custody-choice">
+            <legend>Token storage · demo option</legend>
+            <label class="remember-choice">
+              <input
+                id="remember-token"
+                type="checkbox"
+                aria-describedby="remember-hint"
+              />
+              Remember token on this device
+            </label>
+            <p id="remember-hint" class="hint">
+              Off by default. When selected, this demo saves the token
+              unencrypted in this browser's localStorage and reopens it on your
+              next visit. Anyone who can read the browser's files can use it.
+              This is demo code, independent of either library setup.
+            </p>
+          </fieldset>
+          <div class="token-choices">
+            <section class="token-choice" aria-labelledby="h-existing-token">
+              <h3 id="h-existing-token">Use an existing token</h3>
+              <button id="passkey-get" type="button">
+                Get token from passkey
+              </button>
+              <form id="token-form" class="row wrap">
+                <label for="token-input">Or enter a storage token</label>
+                <input
+                  id="token-input"
+                  autocomplete="off"
+                  spellcheck="false"
+                  placeholder="XXXX-XXXX-…"
+                />
+                <button type="submit">Open</button>
+              </form>
+            </section>
+            <section class="token-choice" aria-labelledby="h-new-token">
+              <h3 id="h-new-token">Create a new token</h3>
+              <div class="creation-choice">
+                <button id="passkey-create" type="button">
+                  Create passkey and token
+                </button>
+                <p class="hint">
+                  Create a passkey that can reproduce this scenario's token.
+                </p>
+              </div>
+              <div class="creation-choice">
+                <button
+                  id="new-token"
+                  type="button"
+                  aria-describedby="token-only-hint"
+                >
+                  Create token only
+                </button>
+                <p id="token-only-hint" class="hint"></p>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <div id="app" hidden>
+          <section aria-labelledby="h-draft">
+            <div class="row">
+              <div>
+                <p class="eyebrow">Your workspace</p>
+                <h2 id="h-draft">A little room for ideas</h2>
+              </div>
+              <button id="theme" type="button" aria-pressed="false">
+                Dark theme
+              </button>
+            </div>
+            <textarea
+              id="draft"
+              rows="9"
+              placeholder="An idea, a plan, a note to your future self…"
+              aria-label="Draft"
+            ></textarea>
+          </section>
+
+          <section aria-labelledby="h-token">
+            <h2 id="h-token">Your key to this space</h2>
+            <p class="warn">
+              Burrow cannot reset your data. Keep your storage token, or your
+              passkey if it gave you the token.
+            </p>
+            <code id="code">…</code>
+            <p id="token-reminder" class="hint"></p>
+            <dl class="facts">
+              <dt>From</dt>
+              <dd id="token-source">…</dd>
+              <dt>Token</dt>
+              <dd id="custody">…</dd>
+              <dt>Data</dt>
+              <dd id="data-copy">…</dd>
+            </dl>
+            <div class="row wrap">
+              <button id="copy-token" type="button">Copy token</button>
+              <button id="export" type="button">Export JSON</button>
+              <button id="signout" type="button">Sign out</button>
+            </div>
+          </section>
+        </div>
+
+        <p id="message" role="status"></p>
+
+        <details>
+          <summary>Debug</summary>
+          <pre id="debug"></pre>
+        </details>
+
+        <!-- scripts/build-demo.mjs replaces this with the commit and build time of the deployed demo. -->
+        <footer id="build" class="build">Local build, not deployed</footer>
+      </main>
+    </div>
+  </body>
+</html>

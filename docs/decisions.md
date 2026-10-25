@@ -1036,3 +1036,23 @@ confirmation. The implementation then went its own way on several. Status agains
 | D18 | Format, salts and token version are public contract; major version to change | **Superseded while there are no clients** (D-55). Current formats remain documented; compatibility is not required until clients arrive. |
 | D19 | Classify REST errors per WP-00's measured shapes (`PATCH` on a missing document is `403`; losers of a race get `403` or `409 ABORTED`) | **Moot.** The SDK adapter maps SDK error codes instead (architecture §10); the measurements are in [history/platform-notes.md](history/platform-notes.md). |
 | D20 | `passkey().available()` requires a hostname, because on `file://` Chromium reports PRF support yet `create()` throws | **Not implemented.** Listed in architecture §13; from `file://` `protect()` rejects `prf-unsupported` instead of falling through. |
+
+
+### D-61 Demo scenario selection and token custody are independent
+
+Demo v2 selects the remote-only core or the offline wrapper through `?scenario=`.
+Core is listed first and is the default. Both use the same async editor and
+separate app namespaces for content and passkey token derivation.
+
+An unchecked-by-default **Remember token on this device** checkbox controls a
+separate, demo-owned localStorage token record for either scenario. It is not a
+Burrow configuration flag or a library mode. With remembering off, even an
+offline content copy needs the user to provide its token again after reload.
+With it on, the demo can reopen either setup from its saved token. The page
+states that the saved token is plaintext and anyone who reads the browser files
+can use it. Signing out removes that scenario's record; offline sign-out also
+handles queued edits and clears the wrapper's content copy.
+
+This illustrates the token-custody ownership in D-57 without changing the core,
+the offline wrapper, or passkey derivation. The token-only action tells users to
+write down the token or keep it in a password manager when remembering is off.

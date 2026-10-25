@@ -5,6 +5,63 @@ These journeys define what a person must be able to do on the Burrow demo page
 demo's design and its browser tests. The page shows the two ways an app can hold the storage
 token (D-57): **sign in on every visit** and **stay signed in**.
 
+## Demo v2: selectable scenarios
+
+`demo/v2.html?scenario=core` and `demo/v2.html?scenario=offline` open separate
+scenarios. The sidebar lists **Remote only** (the core) first, followed by
+**Offline wrapper**. An absent scenario selects `core`; an unknown value shows
+the index without opening a store. The original page remains available.
+`demo:build` packages and stamps both pages.
+
+- **Remote only / Core lib, backed by Firebase** uses app `burrow-demo-v2-core`.
+  It keeps no persistent content copy. Remote failures are shown as failed saves,
+  with confirmation before abandoning an unsaved edit.
+- **Offline wrapper** uses app `burrow-demo-v2-offline` and the same async editor
+  over `offline(core)`. It keeps a plaintext content copy in IndexedDB. Reopening
+  that copy still requires its token; caching content does not remember a token.
+
+Token custody is a separate **demo option**, independent of library selection.
+**Remember token on this device** is unchecked by default in both scenarios.
+When unchecked, the token stays in memory for the visit. The user must keep it
+or obtain it again from their passkey to reopen the scenario. **Create token
+only** explicitly tells the user that no passkey is created and the demo will not
+store the token: write it down or save it in a password manager before leaving.
+
+When remembering is selected, the demo saves the token unencrypted in its own
+localStorage record, `${app}:token`, and reopens it next visit. This works with
+either library setup; neither Burrow core nor the offline wrapper persists the
+token. The page describes that anyone who can read the browser's files can use
+the token, and tells the user to keep a separate copy. A failed token save leaves
+it in memory and explicitly tells the user to keep it themselves.
+
+The sign-in panel groups **Get token from passkey** with the token-entry form
+under **Use an existing token**. **Create passkey and token** and **Create token
+only** are grouped under **Create a new token**. All actions have equal button
+styling. The remembering choice applies to either group.
+
+New random tokens and passkey-derived tokens are separate per scenario. Passkey
+creation labels include the scenario; selecting an existing credential still
+derives a different token for each app. A deliberately reused pasted token cannot
+reveal another scenario's content because document derivation includes the app
+namespace. Nothing is shared with the original demo's app.
+
+Switching scenarios waits for pending editor writes to reach the selected store
+(or the offline copy). It does not sign out the other scenario or erase its data.
+Without a remembered token, returning requires a token or passkey again. Signing
+out removes only the selected scenario's demo token record and, for the offline
+wrapper, its local content copy. Remote content remains available with the token.
+Removing a remembered token also signs out other tabs that were using it.
+
+The storage-specific branches are initialization, offline status/change
+subscriptions and offline `forget()` on sign-out. Token remembering is shared
+demo code for both scenarios. Both use the same editor, export and theme code.
+More divergent scenarios should be called out when added.
+
+`test/e2e/demo-v2.spec.ts` covers navigation, reloads, offline replay, remote
+namespace isolation, core failures, passkey separation and independent token
+custody, including storage failure. It uses real crypto and a shared memory
+backend; it never contacts the live project.
+
 ## Terms
 
 - **Storage token** (or just **token**): the secret that owns a user's data. Whoever holds it can
