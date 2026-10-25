@@ -23,10 +23,10 @@
     },
     {
       id: "core",
-      title: "Remote core",
+      title: "Remote only",
       app: "burrow-demo-v2-core",
       mode: "often",
-      summary: "Read and write directly to the encrypted store.",
+      summary: "Core lib, backed by Firebase.",
       detail:
         "The core keeps the token in this page's memory and stores no content on disk. A reload asks you to open it again. Network failures reject reads and writes; there is no durable offline queue.",
       storage: "No persistent content copy",
@@ -53,7 +53,9 @@
     name.textContent = item.title;
     const hint = document.createElement("span");
     hint.textContent =
-      item.mode === "once" ? "Local copy + sync" : "Remote storage only";
+      item.mode === "once"
+        ? "Local copy + sync"
+        : "Core lib, backed by Firebase";
     link.append(name, hint);
     $("scenarios").append(link);
   }
@@ -362,7 +364,7 @@
     if (!(await passkey.available())) return say(NO_PASSKEY);
     if (await signin(() => passkey.create(), "new passkey"))
       say(
-        "Passkey created. On another device with this passkey, choose “Use my passkey”.",
+        "Passkey and token created. On another device with this passkey, choose “Get token from passkey”.",
       );
   });
   $("new-token").addEventListener("click", async () => {

@@ -16,12 +16,13 @@ The original page remains available. `demo:build` packages and stamps both pages
   `offline(core)`, and the page-owned localStorage record
   `burrow-demo-v2-offline:token`. It is the stay-signed-in flow: both the retained
   token and the offline content copy are plaintext.
-- **Remote core** uses app `burrow-demo-v2-core`, with the token in memory for the
+- **Remote only / Core lib, backed by Firebase** uses app `burrow-demo-v2-core`, with the token in memory for the
   visit. Reloading asks for the token or passkey again. Remote failures are shown
   as failed saves, with confirmation before abandoning an unsaved edit.
 
-Both scenarios begin with an explicit token/passkey action. New random tokens and
-passkey-derived tokens are separate per scenario. Passkey creation labels include
+Both scenarios begin with an explicit token/passkey action. The v2 actions distinguish
+**Get token from passkey**, **Create passkey and token**, and **Create token only**.
+New random tokens and passkey-derived tokens are separate per scenario. Passkey creation labels include
 its scenario, and each creates a distinct credential; selecting an existing
 credential still derives a different token for each app. A deliberately reused
 pasted token cannot reveal the other scenario's content because document derivation
