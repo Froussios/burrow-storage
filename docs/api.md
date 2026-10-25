@@ -128,7 +128,7 @@ made offline keeps the time it was made: when it is replayed, a newer write of t
 elsewhere meanwhile wins, and the copy takes that value (`onChanged`, `"remote"`). Different keys
 never conflict. A delete is a tombstone that competes like a value, so a device that was offline
 cannot bring a deleted key back with an older write. Deleting a key the copy does not show is
-ignored while offline.
+ignored while offline; online it is kept as an unsynced delete until the store has it.
 
 | Member | Behaviour |
 | --- | --- |
@@ -234,7 +234,9 @@ Both reject with a `BurrowError`, never resolve without a token: `cancelled` whe
 dismissed, times out, or no passkey is there to pick (browsers report all three the same way, on
 purpose), and `prf-unsupported` when the browser or authenticator cannot evaluate PRF (a new
 passkey without PRF is reported to the passkey provider as unknown where the browser allows, so
-it can remove it). Call both from a user gesture: browsers allow passkey prompts only then.
+it can remove it). A configuration mistake is not a `BurrowError`: an `rpId` that does not match
+the page's origin rejects with the browser's `SecurityError` `DOMException`. Call both from a user
+gesture: browsers allow passkey prompts only then.
 
 The token is derived, not stored in the passkey: the passkey and the token are not
 interchangeable. The token works without the passkey, so the user can also keep the string; the
@@ -343,7 +345,8 @@ interface FirestoreConfig {
 Reads and writes go through Firestore transactions; live updates use a document listener on the
 user's manifest. Capabilities: `writeAuth: true, subscribe: true`. Constructing it loads nothing;
 the SDK loads on the first request. The Firebase SDK keeps a heartbeat record of its own (SDK
-versions and a date) in IndexedDB; it holds nothing of the user's.
+versions and dates) in IndexedDB; it holds nothing of the user's, and the SDK keeps documents in
+memory only.
 
 ### `new MemoryBackend(options?: MemoryBackendOptions)`
 

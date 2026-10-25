@@ -167,12 +167,23 @@ must declare `capabilities.writeAuth = false`, and Burrow warns once in the cons
 ## Data on the device
 
 **The core keeps nothing on disk** (D-57). It holds the derived keys and what it last read in
-memory; closing the page or calling `close()` drops them. The browser test
-`test/e2e/browser.spec.ts` checks a real profile after use: no Burrow database, no Web Storage,
-no cookies, and nothing anywhere that contains the token, a document id, a key name or a value.
-One caveat comes from the Firestore adapter: the Firebase SDK keeps its own heartbeat record in
-an IndexedDB database named `firebase-heartbeat-database`, holding SDK version strings, a date and
-the Firebase app name (which contains the project id). It holds nothing of the user's.
+memory; closing the page or calling `close()` drops them. Other libraries on the page may keep
+records of their own; none may hold Burrow data. The Firebase SDK, for one, keeps a heartbeat
+record in IndexedDB (`firebase-heartbeat-database`) with SDK version strings, dates, the Firebase
+app name (which contains the project id) and the site's app id, the same for every user. It runs
+with its default in-memory cache, so it writes no documents to disk.
+
+**No document path reaches the disk.** A document's path (`burrow/<id>`) is a stable pseudonym:
+whoever finds one in a profile can link that device to the user's documents in the store, see
+when they change and how large they are, though not read them. The SDK sends paths only in
+request bodies (POST) and receives them in the streamed responses of its Listen channel; the
+URLs carry the project and database only. The browser tests (`test/e2e/browser.spec.ts`) check
+both layers in each engine: the core leaves no Burrow database, no Web Storage and no cookies,
+and no script-visible storage or file in the browser's own profile directory (HTTP cache,
+history, session restore) contains the token, a document id seen on the wire, or, with the core
+alone, a key name or value. They run under the Firestore emulator, whose response headers can
+differ from production; extensions, proxies and network logs outside the browser are not
+covered.
 
 **The offline wrapper keeps an unencrypted copy** (`burrow-storage/offline`). Items, their
 versions and the sync state of one app and one token live in an IndexedDB database named

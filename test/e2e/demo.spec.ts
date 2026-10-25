@@ -29,18 +29,30 @@ const cancelledListen = (text: string) =>
   );
 // With no network the SDK's requests fail, and its WebChannel connectivity
 // probe (an image on www.google.com) is refused by the page's img-src. Both
-// are expected while a test holds the browser offline.
+// are expected while a test holds the browser offline. Each engine words the
+// failed channel request differently: Chromium ERR_INTERNET_DISCONNECTED,
+// Firefox "CORS request did not succeed", WebKit "internal error", also for
+// the beacon that closes the channel.
 const offlineNoise = (text: string) =>
   /ERR_INTERNET_DISCONNECTED|www\.google\.com\/images\/cleardot\.gif/.test(
     text,
-  );
+  ) ||
+  (/\/google\.firestore\.v1\.Firestore\/(Listen|Write)\/channel\b/.test(text) &&
+    /CORS request did not succeed|WebKit encountered an internal error/.test(
+      text,
+    ));
 
 function watch(p: Page, errors: string[]) {
   const keep = (text: string) => {
     if (!cancelledListen(text) && !offlineNoise(text)) errors.push(text);
   };
   p.on("console", (m: ConsoleMessage) => {
-    if (m.type() === "error") keep(m.text());
+    if (m.type() !== "error") return;
+    // WebKit names the failed resource only in the message's location; the
+    // path is kept, not the query.
+    const at = m.location().url;
+    const url = at && URL.canParse(at) ? new URL(at) : null;
+    keep(url ? `${m.text()} [${url.origin}${url.pathname}]` : m.text());
   });
   p.on("pageerror", (e) => keep(String(e)));
   // These tests run under the emulator; the page must never reach the live

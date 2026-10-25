@@ -144,9 +144,16 @@ class Offline implements OfflineStorage {
       degraded = true;
     }
     const o = new Offline(store, remote, env, cache);
-    o.#meta = await cache.getMeta();
-    for (const [k, e] of await cache.loadItems())
-      if (e.dirty) o.#dirtyKeys.add(k);
+    try {
+      o.#meta = await cache.getMeta();
+      for (const [k, e] of await cache.loadItems())
+        if (e.dirty) o.#dirtyKeys.add(k);
+    } catch (e) {
+      // The store stays free to wrap again.
+      wrapped.delete(remote);
+      cache.close();
+      throw e;
+    }
     if (degraded || !env.online()) o.#setStatus("offline");
     o.#start();
     return o;
@@ -282,9 +289,14 @@ class Offline implements OfflineStorage {
     clearTimeout(timer);
   }
 
+  /** Remote work went through: idle, unless the network has gone since. */
+  #idle(): void {
+    this.#setStatus(this.#env.online() ? "idle" : "offline");
+  }
+
   #ok(): void {
     this.#retryDelay = 0;
-    if (!this.#paused && this.#status !== "syncing") this.#setStatus("idle");
+    if (!this.#paused && this.#status !== "syncing") this.#idle();
     if (this.#dirtyKeys.size || this.#renewDue) this.#kick(false);
   }
 
@@ -353,10 +365,18 @@ class Offline implements OfflineStorage {
     const local = await this.#cache.getItems(list);
     const all = tombstones(list, (k) => local.get(k), this.#meta.maxRemoteTs);
     // A delete of a key this copy does not show is a no-op offline, as in
-    // chrome.storage; online it still reaches the store.
-    const shown = new Map([...all].filter(([k]) => live(local.get(k))));
-    const elsewhere = new Map([...all].filter(([k]) => !shown.has(k)));
-    await this.#writeFresh(shown, elsewhere);
+    // chrome.storage. Online it is kept as unsynced until the store has it,
+    // and skipped there if the store has no document either.
+    const reachable = this.#reachable();
+    const entries = new Map(
+      [...all].filter(([k]) => reachable || live(local.get(k))),
+    );
+    const ifPresent = new Set(
+      [...entries.keys()].filter(
+        (k) => !live(local.get(k)) && !local.get(k)?.dirty,
+      ),
+    );
+    await this.#writeFresh(entries, ifPresent);
   }
 
   async clear(): Promise<void> {
@@ -401,13 +421,14 @@ class Offline implements OfflineStorage {
 
   /**
    * API-6: store a write durably as dirty, then try the store as a fresh write
-   * (stamped above what it holds) for up to `waitMs`.
+   * (stamped above what it holds) for up to `waitMs`. Deletes in `ifPresent`
+   * are dropped where the store has no document.
    */
   async #writeFresh(
     entries: Map<string, Entry>,
-    remoteOnly = new Map<string, Entry>(),
+    ifPresent = new Set<string>(),
   ): Promise<void> {
-    const keys = [...entries.keys(), ...remoteOnly.keys()];
+    const keys = [...entries.keys()];
     if (!keys.length) return;
     for (const k of keys) this.#fresh.set(k, (this.#fresh.get(k) ?? 0) + 1);
     const release = () => {
@@ -425,7 +446,7 @@ class Offline implements OfflineStorage {
     }
     if (!this.#reachable()) return release();
     await this.#attempt(() =>
-      this.#replay(keys, true, remoteOnly).finally(release),
+      this.#replay(keys, true, ifPresent).finally(release),
     );
   }
 
@@ -500,14 +521,14 @@ class Offline implements OfflineStorage {
 
   /**
    * Push unsynced writes: the named keys as fresh writes (`restamp`), or every
-   * dirty entry with its own version. `remoteOnly` adds deletes that are not
-   * kept locally. Clears `dirty` only where nothing newer was written
-   * meanwhile (D-20).
+   * dirty entry with its own version. Clears `dirty` only where nothing newer
+   * was written meanwhile (D-20); a delete skipped under `ifPresent` leaves no
+   * entry.
    */
   async #replay(
     keys: string[] | null,
     restamp: boolean,
-    remoteOnly = new Map<string, Entry>(),
+    ifPresent?: ReadonlySet<string>,
   ): Promise<void> {
     await this.#lock(async () => {
       const found = keys
@@ -518,13 +539,14 @@ class Offline implements OfflineStorage {
       const sent = new Map(
         [...dirty].map(([k, { dirty: _d, ...e }]) => [k, e as Entry]),
       );
-      for (const [k, e] of remoteOnly) if (!sent.has(k)) sent.set(k, e);
       if (!sent.size) return;
       const results = await this.#remote.push(sent, {
-        fresh: restamp ? new Set(sent.keys()) : undefined,
-        // A delete queued here must reach the store even where it has no
-        // document, so an older queued write elsewhere cannot revive the key.
-        ifPresent: new Set([...remoteOnly.keys()].filter((k) => !dirty.has(k))),
+        // A write still on its way from set()/remove() here is fresh even if
+        // a background replay sends it first.
+        fresh: new Set(
+          [...sent.keys()].filter((k) => restamp || this.#fresh.has(k)),
+        ),
+        ifPresent,
       });
       const written = await this.#cache.updateItems(
         [...sent.keys()],
@@ -630,7 +652,7 @@ class Offline implements OfflineStorage {
           if (this.#renewDue) await this.#renew();
           if (withPull) await this.#pull(null);
           this.#retryDelay = 0;
-          this.#setStatus("idle");
+          this.#idle();
         } catch (e) {
           this.#failed(e);
           break;

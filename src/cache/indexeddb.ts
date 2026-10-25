@@ -3,6 +3,7 @@
 // be deleted whole (D-57). "items" holds the plaintext items by key, "meta" the
 // sync state. Nothing token-derived is stored except the identity in the name,
 // a 64-bit fingerprint that cannot open or write anything (D-8).
+import { BurrowError } from "../errors.js";
 import type { AppMeta, Cache, CachedItem, Updated } from "./types.js";
 
 const ITEMS = "items";
@@ -22,6 +23,8 @@ export class IdbCache implements Cache {
   readonly #idb: IDBFactory;
   readonly #name: string;
   #db: Promise<IDBDatabase> | null = null;
+  // Once closed or deleted, a late call must not create the database again.
+  #closed = false;
 
   private constructor(idb: IDBFactory, name: string) {
     this.#idb = idb;
@@ -43,6 +46,10 @@ export class IdbCache implements Cache {
   }
 
   #conn(): Promise<IDBDatabase> {
+    if (this.#closed)
+      return Promise.reject(
+        new BurrowError("closed", "the local copy is closed"),
+      );
     return (this.#db ??= new Promise<IDBDatabase>((res, rej) => {
       const r = this.#idb.open(this.#name, 1);
       r.onupgradeneeded = () => {
@@ -53,7 +60,7 @@ export class IdbCache implements Cache {
         // Another tab deleting this copy (forget()) must not be blocked by us.
         r.result.onversionchange = () => {
           r.result.close();
-          this.#db = null;
+          this.close();
         };
         res(r.result);
       };
@@ -163,6 +170,7 @@ export class IdbCache implements Cache {
   }
 
   close(): void {
+    this.#closed = true;
     void this.#db?.then(
       (db) => db.close(),
       () => {},

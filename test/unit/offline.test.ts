@@ -3,10 +3,11 @@
 // replayed.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryBackend } from "../../src/backends/memory.js";
-import { dbName } from "../../src/cache/indexeddb.js";
+import { IdbCache, dbName } from "../../src/cache/indexeddb.js";
+import type { Cache } from "../../src/cache/types.js";
 import { deriveAppKeys, docId } from "../../src/codec/derive.js";
 import { decodeToken } from "../../src/codec/token.js";
-import { generateToken } from "../../src/core.js";
+import { generateToken, remoteOf } from "../../src/core.js";
 import { burrow } from "../../src/index.js";
 import { createOffline } from "../../src/offline.js";
 import type {
@@ -80,6 +81,33 @@ describe("D-57 one interface for core and wrapper", () => {
     await expect(createOffline(closed, d.env())).rejects.toMatchObject({
       code: "closed",
     });
+  });
+
+  it("a failed offline() leaves the store free to wrap again", async () => {
+    const d = fresh().device();
+    const core = await d.core();
+    const broken = {
+      getMeta: () => Promise.reject(new Error("unreadable")),
+      close() {},
+    } as unknown as Cache;
+    await expect(
+      createOffline(core, d.env({ openCache: async () => broken })),
+    ).rejects.toThrow("unreadable");
+    const local = await createOffline(core, d.env());
+    await local.set({ k: 1 });
+    expect(await local.get()).toEqual({ k: 1 });
+    local.close();
+  });
+
+  it("a closed or forgotten copy is never created again by a late call", async () => {
+    const d = fresh().device();
+    const cache = await IdbCache.open("late", "0000000000000000", d.idb);
+    await cache.destroy();
+    await expect(cache.loadItems()).rejects.toMatchObject({ code: "closed" });
+    await expect(cache.setMeta({ lastSyncAt: 1 })).rejects.toMatchObject({
+      code: "closed",
+    });
+    expect(await d.idb.databases()).toEqual([]);
   });
 
   it("close() closes the core it wraps; later calls reject closed", async () => {
@@ -438,6 +466,67 @@ describe("SYNC-10 replaying queued writes", () => {
     expect(await b.get()).toEqual({});
   });
 
+  it("D-59 an online delete of a key the copy does not show survives a failed push", async () => {
+    const w = fresh();
+    const A = w.device();
+    const a = await A.open();
+    await settle(a); // the copy is current: empty
+    const b = await w.device().core();
+    await b.set({ k: "written elsewhere", keep: 1 });
+    A.backend.failWith = "network"; // reachable, but the push fails
+    await a.remove("k");
+    expect(a.status).toBe("offline");
+    expect(await A.dirty()).toBe(1);
+    expect(await a.get()).toEqual({});
+    A.backend.failWith = null;
+    await a.syncNow();
+    expect(await b.get()).toEqual({ keep: 1 });
+    expect(await a.get()).toEqual({ keep: 1 });
+    expect(await A.dirty()).toBe(0);
+  });
+
+  it("D-59 an online delete of a key nobody has writes nothing and leaves nothing", async () => {
+    const w = fresh();
+    const A = w.device();
+    const a = await A.open();
+    await settle(a);
+    const { puts } = A.backend.stats;
+    await a.remove("never-written");
+    expect(A.backend.stats.puts).toBe(puts);
+    expect((await A.localItems()).has("never-written")).toBe(false);
+  });
+
+  it("D-59 an online write a background replay sends first is still stamped above the store", async () => {
+    const w = fresh();
+    const A = w.device();
+    // No listener and renewed: nothing tells A about k before it writes.
+    A.backend.capabilities.subscribe = false;
+    const a = await A.open();
+    await settle(a);
+    const b = await w.device().core();
+    const real = Date.now.bind(Date);
+    vi.spyOn(Date, "now").mockImplementation(() => real() + 3_600_000);
+    await b.set({ k: "fast clock" });
+    vi.restoreAllMocks();
+    // Hold the sync lock so a background replay queues ahead of the write's.
+    const core = await A.core();
+    const lock = `burrow:${A.ns}:test:${remoteOf(core)!.identity}:sync`;
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    let taken!: () => void;
+    const isTaken = new Promise<void>((r) => (taken = r));
+    void A.locks.request(lock, () => (taken(), held));
+    await isTaken;
+    const sync = a.syncNow();
+    const write = a.set({ k: "slow clock, later" });
+    await until(async () => (await A.dirty()) === 1);
+    release();
+    await Promise.all([sync, write]);
+    expect(await (await w.device().core()).get("k")).toEqual({
+      k: "slow clock, later",
+    });
+  });
+
   it("an online set() overwrites even when the other device's clock is ahead", async () => {
     const { a, b } = await pair();
     const real = Date.now.bind(Date);
@@ -565,6 +654,18 @@ describe("remote changes and status", () => {
     await a.set({ other: 1 });
     expect(await a.get()).toEqual({ k: "kept", other: 1 });
     expect(d.backend.stats.gets).toBe(gets);
+  });
+
+  it("a sync that finishes after the browser went offline reports offline, not idle", async () => {
+    const w = fresh();
+    const A = w.device({ latencyMs: 30 });
+    const a = await A.open();
+    await settle(a);
+    const sync = a.syncNow();
+    A.online = false; // the request already in flight still succeeds
+    A.win.dispatchEvent(new Event("offline"));
+    await sync;
+    expect(a.status).toBe("offline");
   });
 
   it("quota failures report error.code = quota and keep the data", async () => {

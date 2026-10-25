@@ -180,7 +180,7 @@ The demo (`demo/`, [user-journeys.md](user-journeys.md)) is the reference UI. It
 - **Deletes are tombstones.** A removed key stays in the manifest as deleted for 30 days, so a
   device that was offline does not resurrect it. The item document is overwritten with a deleted
   marker and is never removed from the store. Deleting a key the copy does not show is ignored
-  offline and reaches the store online.
+  offline; online it is kept like any write until the store has it.
 - **Remote changes.** The wrapper subscribes to the manifest where the backend can notify
   (Firestore does), refreshes when the page becomes visible or the network returns, and reports
   what changed on `onChanged` with `source: "remote"`. It does not poll.

@@ -965,10 +965,14 @@ The owner chose these between alternatives on #82:
   the store holds, so it wins as the latest write even against a device whose clock runs ahead,
   like the core's own `set()`. A write queued while offline keeps the timestamp it was made with
   and competes by last-writer-wins when it is replayed (SYNC-10, SYNC-11): a newer write made
-  elsewhere in the meantime wins. A pull never replaces a fresh write that is still on its way.
-  Deleting a key the copy does not show is a no-op offline, as in chrome.storage, and reaches the
-  store online; a queued delete of a key the copy does show is always recorded, so an older
-  queued write elsewhere cannot bring the key back.
+  elsewhere in the meantime wins. A pull never replaces a fresh write that is still on its way,
+  and a background replay that sends it first stamps it fresh too. Between tabs this holds only
+  for the tab that made the write. Deleting a key the copy does not show is a no-op offline, as
+  in chrome.storage. Online it is queued in the copy like any delete, invisible to `get()`, and
+  dropped once the store answers that it has no such document. If that first push fails, the
+  later replay writes a tombstone whether or not the store has the key. A queued delete of a key
+  the copy does show is always recorded, so an older queued write elsewhere cannot bring the key
+  back.
 - **A copy per token.** Each app and token has its own database, named by a non-secret
   fingerprint. Opening the wrapper with another token never shows or drops another identity's
   data; returning to a token finds its copy and unsynced writes. `forget()` deletes the current

@@ -1,4 +1,6 @@
 import type { BrowserContext, Page } from "@playwright/test";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 
 export const EMU = process.env.FIRESTORE_EMULATOR_HOST ?? "";
 if (!EMU) throw new Error("run under the emulator: npm run test:e2e");
@@ -43,16 +45,55 @@ export async function openArea(
 }
 
 /**
- * The Firebase SDK keeps a heartbeat record (SDK versions and a date, keyed by
- * the Firebase app name) in its own IndexedDB database; Burrow does not.
+ * Burrow's own IndexedDB databases in a profile dump. Other libraries may keep
+ * their own, such as the Firebase SDK's heartbeat record (SDK versions and
+ * dates); tests check those only for Burrow data.
  */
-export const HEARTBEAT_DB = "firebase-heartbeat-database";
-
-/** The IndexedDB databases in a profile dump, other than the SDK's. */
 export const databases = (dump: string): string[] =>
   Object.keys(JSON.parse(dump).indexedDB)
-    .filter((n) => n !== HEARTBEAT_DB)
+    .filter((n) => n.startsWith("burrow:"))
     .sort();
+
+/**
+ * The Firestore document ids this page's requests name, as they appear on the
+ * wire (the Listen channel sends them URL-encoded).
+ */
+export function documentIds(page: Page): Set<string> {
+  const ids = new Set<string>();
+  page.on("request", (r) => {
+    let body = r.postData() ?? "";
+    try {
+      body = decodeURIComponent(body.replace(/\+/g, " "));
+    } catch {
+      /* not URL-encoded */
+    }
+    for (const m of body.matchAll(/documents\/[^/"]+\/([A-Za-z0-9_-]{20,})/g))
+      ids.add(m[1]!);
+  });
+  return ids;
+}
+
+/** Each file under `dir` that holds one of `needles`, by label. */
+export function scanProfile(
+  dir: string,
+  needles: [label: string, text: string][],
+): Record<string, string[]> {
+  const hits: Record<string, string[]> = {};
+  const walk = (d: string) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      const p = join(d, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (e.isFile()) {
+        const bytes = readFileSync(p);
+        const text = bytes.toString("latin1") + bytes.toString("utf16le");
+        for (const [label, n] of needles)
+          if (text.includes(n)) (hits[label] ??= []).push(p.slice(dir.length));
+      }
+    }
+  };
+  walk(dir);
+  return hits;
+}
 
 export type Store = {
   set(i: object): Promise<void>;

@@ -42,7 +42,7 @@
     }
   };
 
-  // Status badge and debug panel (ERR-4).
+  // Status badge and debug panel.
   const badge = $("status");
   const debug = () => {
     $("debug").textContent = JSON.stringify(
@@ -357,9 +357,15 @@
         "once",
         remembered.since ?? Date.now(),
       );
-    } catch {
-      localStorage.removeItem(KEPT);
+    } catch (e) {
+      // Only a token that cannot be right is dropped; any other failure may
+      // pass, and the record is the user's way back in.
       locked();
+      if (e?.code === "bad-token") localStorage.removeItem(KEPT);
+      else
+        say(
+          `Could not open your storage (${e?.code ?? e?.name}). Reload to try again.`,
+        );
     }
   } else locked();
   document.body.dataset.ready = "true";

@@ -228,10 +228,13 @@ each entry is stored `dirty`, re-stamped inside the transaction above anything a
 meanwhile, and `onChanged` (`local`) fires. That is the durable point (API-6, SYNC-9). Then, if
 reachable, the entries are pushed as fresh writes, again for up to `waitMs`. While that push is
 in flight, a pull never replaces those keys (`#fresh`), so a remote version stamped by a fast
-clock cannot overwrite a write the user just made before it is restamped. `remove()` writes local
-tombstones only for keys the copy shows; the others are pushed with `ifPresent` when reachable
-and dropped otherwise, as `chrome.storage` ignores unknown keys. **`clear()`** pulls the whole
-listing first when reachable, then removes every key the copy shows.
+clock cannot overwrite a write the user just made before it is restamped; a background replay
+that sends one of those keys first restamps it too. `remove()` of a key the copy does not show
+is dropped when not reachable, as `chrome.storage` ignores unknown keys. When reachable it is
+stored as a dirty tombstone like any other and pushed with `ifPresent`: if the store has no
+document, the settled entry is deleted from the copy. If that push fails, the tombstone replays
+later without `ifPresent` and creates a tombstone document. **`clear()`** pulls the whole listing
+first when reachable, then removes every key the copy shows.
 
 **Reachable** means: remote work is not paused, no retry is pending, and the browser does not
 report itself offline. Otherwise calls use the copy at once and do not touch the network.
@@ -397,7 +400,9 @@ map simulate several devices; `failWith` makes every call fail, for tests.
 - Errors map `resource-exhausted` → `quota`, `permission-denied` → `unauthorized`,
   `invalid-argument` → `too-large`, everything else → `network`.
 - The SDK keeps a heartbeat record of its own in IndexedDB (`firebase-heartbeat-database`: SDK
-  versions, a date and the Firebase app name); Burrow cannot turn it off (§13).
+  versions, dates, the Firebase app name and the app id); it holds nothing of the user's. The
+  SDK runs with its default in-memory cache, so documents and their paths stay off the disk
+  (SECURITY.md, "Data on the device").
 
 **Rules** (`firebase/firestore.rules`) are summarised in [firestore-setup.md](firestore-setup.md)
 and tested in `firebase/tests/rules.test.mjs` under the emulator.
@@ -435,7 +440,7 @@ the staged version on npm with 2FA and publishes the release (D-53).
 | Property (`test/property/merge.test.ts`) | `npm test` | Node, fast-check | merge convergence, tombstones, clock skew, offline periods, queued and network-first writes |
 | Conformance (`test/conformance/`) | `npm test` (memory, worker), `npm run test:firestore` (emulator), `npm run test:live` (your own project, never in CI) | Node | `backendConformance()` for every backend; core and wrapper over the emulator |
 | Rules (`firebase/tests/rules.test.mjs`) | `npm run test:rules` | `node --test` under the emulator (Java 21) | the rules matrix |
-| Browser (`test/e2e/*.spec.ts`) | `npm run test:e2e` | Playwright on Chromium, Firefox, WebKit, served by `scripts/serve.mjs` against the emulator | nothing of the core in the profile, the wrapper's plaintext copy without the token, offline start and replay, tabs, apps, forget, expiry; the demo journeys in both modes; passkeys on Chromium via a CDP virtual authenticator with and without PRF |
+| Browser (`test/e2e/*.spec.ts`) | `npm run test:e2e` | Playwright on Chromium, Firefox, WebKit, served by `scripts/serve.mjs` against the emulator | nothing of the core in the profile, no token or document id in the profile's files on disk, the wrapper's plaintext copy without the token, offline start and replay, tabs, apps, forget, expiry; the demo journeys in both modes; passkeys on Chromium via a CDP virtual authenticator with and without PRF |
 | Demo smoke (`test/smoke/demo.spec.ts`) | `npm run test:smoke` | Playwright on Chromium, against the deployed demo (`BURROW_DEMO_URL`) and its live store, or against the assembled `site/` under the emulator | the page shows the expected commit, keeps its strict CSP, loads from its own origin and the store only, logs no console errors, asks how to sign in; two fresh contexts, one in each mode, sync both ways |
 
 Test titles cite the requirement and decision ids they verify. `npm run docs:check`
@@ -488,6 +493,9 @@ Things the code does not do that a reader of the interfaces might expect:
 - The core has no events: it does not notice remote changes until the next read. The offline
   wrapper learns them from the backend's subscription, visibility and reconnection, not by
   polling.
+- An online write is stamped above the store's version only by the tab that made it. If another
+  tab's background replay sends it first, or another tab's pull lands while it is on its way, it
+  competes by its own timestamp, and a device whose clock runs ahead can win.
 - Network first costs one request or more per read. After a failure, the wrapper answers from
   its copy until a retry succeeds, which can be up to five minutes later; `syncNow()` retries at
   once.
@@ -495,9 +503,8 @@ Things the code does not do that a reader of the interfaces might expect:
   has it in its copy as dirty and replays it on the next start; with the core alone it is lost.
 - Copies of tokens no longer used stay on the device until the app opens the wrapper with that
   token and calls `forget()`; there is no listing of them.
-- The Firebase SDK writes a heartbeat record to IndexedDB (`firebase-heartbeat-database`) and,
-  while offline, logs failed requests and probes connectivity with an image request that a
-  strict `img-src` refuses. None of it holds user data; Burrow cannot switch it off.
+- While offline, the Firebase SDK logs failed requests to the console and probes connectivity
+  with an image request that a strict `img-src` refuses. Burrow cannot switch this off.
 - The passkey utility cannot tell "dismissed", "timed out" and "no passkey" apart: WebAuthn
   reports all three as `NotAllowedError` (`cancelled`). Real authenticators and passkey providers
   are not tested; only Chromium's virtual authenticator is.

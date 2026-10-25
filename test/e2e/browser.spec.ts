@@ -1,13 +1,18 @@
 // Browser integration (all engines), under the emulator: the remote-only core
 // keeps nothing in the profile; the offline wrapper keeps a plaintext copy but
 // never the token, starts offline, replays queued writes and shares its copy
-// between tabs (D-57).
+// between tabs (D-57). Other libraries may keep their own records (the
+// Firebase SDK keeps a heartbeat); none may hold Burrow data.
 import { expect, test } from "@playwright/test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
-  HEARTBEAT_DB,
   databases,
+  documentIds,
   openArea,
   profileDump,
+  scanProfile,
   tokenOf,
   withStore,
 } from "./helpers.js";
@@ -15,7 +20,9 @@ import {
 test("D-57 the core leaves nothing in the browser profile", async ({
   context,
 }) => {
-  const page = await openArea(context);
+  const page = await context.newPage();
+  const ids = documentIds(page);
+  await openArea(context, "e2e", page);
   await withStore(page, (s) => s.set({ theme: "dark", draft: "secret note" }));
   expect(await withStore(page, (s) => s.get())).toEqual({
     theme: "dark",
@@ -31,20 +38,68 @@ test("D-57 the core leaves nothing in the browser profile", async ({
   });
   expect(databases(dump)).toEqual([]);
   expect(await context.cookies()).toEqual([]);
-  // Not even the Firebase SDK's own heartbeat record holds anything of ours.
+  // Whatever other libraries keep holds nothing of ours.
+  expect(ids.size).toBeGreaterThan(0);
   for (const secretish of [
     token,
     token.replace(/-/g, ""),
     "secret note",
     '"draft"',
     '"theme"',
+    ...ids,
   ])
     expect(dump).not.toContain(secretish);
-  expect(dump).not.toMatch(/[A-Za-z0-9_-]{40,}/); // no document ids
-  expect(Object.keys(JSON.parse(dump).indexedDB)).toEqual([HEARTBEAT_DB]);
   // A reload has no way back in without the token.
   await page.reload();
   expect(databases(await profileDump(page))).toEqual([]);
+});
+
+test("D-57 nothing on disk names the token or a document, and with the core alone no value either", async ({
+  playwright,
+  browserName,
+  browser,
+  baseURL,
+}) => {
+  // The browser's own files, not only what scripts can see: HTTP cache,
+  // network state, session restore. The wrapper adds the Listen channel,
+  // whose responses carry document names and envelopes.
+  for (const mode of ["core", "offline"] as const) {
+    const dir = mkdtempSync(join(tmpdir(), `burrow-profile-${mode}-`));
+    // Chromium's default headless shell keeps less on disk than the browser.
+    const device = await playwright[browserName].launchPersistentContext(dir, {
+      baseURL,
+      ...(browserName === "chromium" ? { channel: "chromium" } : {}),
+    });
+    const page = device.pages()[0] ?? (await device.newPage());
+    const ids = documentIds(page);
+    await openArea(device, "e2e", page, { offline: mode === "offline" });
+    const token = await tokenOf(page);
+    await withStore(page, (s) => s.set({ draft: "secret note", gone: 1 }));
+    await withStore(page, (s) => s.remove("gone"));
+    const other = await browser.newContext();
+    const b = await openArea(other, "e2e", undefined, { token });
+    await withStore(b, (s) => s.set({ theme: "written elsewhere" }));
+    await other.close();
+    await expect
+      .poll(() => withStore(page, async (s) => (await s.get()).theme))
+      .toBe("written elsewhere");
+    await page.reload();
+    await device.close();
+    expect(ids.size).toBeGreaterThan(0);
+    const hits = scanProfile(dir, [
+      ["token", token],
+      ["token", token.replace(/-/g, "")],
+      ...[...ids].map((id) => ["document id", id] as [string, string]),
+      ...(mode === "core"
+        ? ([
+            ["value", "secret note"],
+            ["value", "written elsewhere"],
+          ] as [string, string][])
+        : []),
+    ]);
+    rmSync(dir, { recursive: true, force: true });
+    expect(hits, mode).toEqual({});
+  }
 });
 
 test("a second device (another browser profile) reads the data with the same token", async ({

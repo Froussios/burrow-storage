@@ -49,7 +49,8 @@ export interface PasskeyToken {
   /**
    * Create a new passkey and return the token it gives this app: a new
    * identity. Never replaces an existing passkey. Rejects `cancelled` (the
-   * prompt was dismissed or timed out) or `prf-unsupported`. Some
+   * prompt was dismissed or timed out), `prf-unsupported`, or the browser's
+   * SecurityError when `rpId` does not fit the page. Some
    * authenticators need a second prompt to evaluate PRF; if that one is
    * dismissed, the passkey exists and `get()` returns its token later.
    */
@@ -57,7 +58,8 @@ export interface PasskeyToken {
   /**
    * Ask for an existing passkey (the user picks it) and return the token it
    * gives this app: the same token every time for the same passkey. Rejects
-   * `cancelled` (dismissed, timed out, or no passkey) or `prf-unsupported`.
+   * `cancelled` (dismissed, timed out, or no passkey), `prf-unsupported`, or
+   * the browser's SecurityError when `rpId` does not fit the page.
    */
   get(): Promise<string>;
 }
@@ -90,10 +92,13 @@ function canonicalRpId(value: string): string {
 
 /**
  * WebAuthn reports a dismissed prompt, a timeout and "no matching passkey" as
- * the same NotAllowedError, on purpose; all are `cancelled`.
+ * the same NotAllowedError, on purpose; all are `cancelled`. A SecurityError
+ * (an `rpId` that does not fit the page) is the site's to fix: it passes
+ * through.
  */
-function credentialError(e: unknown): BurrowError {
+function credentialError(e: unknown): unknown {
   const name = (e as DOMException)?.name;
+  if (name === "SecurityError") return e;
   return name === "NotAllowedError" || name === "AbortError"
     ? new BurrowError("cancelled", "the passkey prompt was dismissed", {
         cause: e,

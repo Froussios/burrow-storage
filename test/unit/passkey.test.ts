@@ -416,6 +416,14 @@ describe("D-58 cancelled and unsupported flows reject; null is never a token", (
     await expect(p.create()).rejects.toMatchObject({ code: "prf-unsupported" });
   });
 
+  it("an rpId that does not fit the page rejects with the browser's SecurityError, not prf-unsupported", async () => {
+    const wrong = new DOMException("bad rp id", "SecurityError");
+    auth.create.mockRejectedValueOnce(wrong);
+    await expect(p.create()).rejects.toBe(wrong);
+    auth.get.mockRejectedValueOnce(wrong);
+    await expect(p.get()).rejects.toBe(wrong);
+  });
+
   it("get() rejects cancelled when the user dismisses the prompt, it times out, or there is no passkey", async () => {
     auth.getMode = "cancel";
     await expect(p.get()).rejects.toMatchObject({ code: "cancelled" });
@@ -431,7 +439,7 @@ describe("D-58 cancelled and unsupported flows reject; null is never a token", (
     auth.getMode = "no-prf";
     await expect(p.get()).rejects.toMatchObject({ code: "prf-unsupported" });
     auth.getMode = "ok";
-    auth.get.mockRejectedValueOnce(new DOMException("x", "SecurityError"));
+    auth.get.mockRejectedValueOnce(new DOMException("x", "InvalidStateError"));
     await expect(p.get()).rejects.toMatchObject({ code: "prf-unsupported" });
   });
 
