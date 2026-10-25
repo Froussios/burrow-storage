@@ -12,7 +12,7 @@ import { commitment, token } from "./derive.js";
 export const MAX_CT_CHARS = 1_000_000;
 /**
  * Largest plaintext that always fits under MAX_CT_CHARS, even incompressible
- * (docs/decisions.md D-4).
+ * (docs/decisions.md D-4). Not a cap: compressible plaintext may be larger.
  */
 export const HARD_MAX_PLAINTEXT = 749_000;
 
@@ -37,6 +37,30 @@ async function pipe(
 
 const canCompress = () => typeof CompressionStream === "function";
 
+/** The bytes to encrypt: deflated when that makes them smaller. */
+async function pack(
+  plaintext: Uint8Array<ArrayBuffer>,
+): Promise<{ body: Uint8Array<ArrayBuffer>; z: boolean }> {
+  if (canCompress() && plaintext.length > 64) {
+    const packed = await pipe(plaintext, new CompressionStream("deflate-raw"));
+    if (packed.length < plaintext.length) return { body: packed, z: true };
+  }
+  return { body: plaintext, z: false };
+}
+
+/** Base64url characters of a ciphertext of `n` bytes plus the GCM tag. */
+const ctChars = (n: number) => Math.ceil(((n + 16) * 4) / 3);
+
+/**
+ * Whether `plaintext` fits one stored document (D-60): the store's limit is the
+ * only one, so compressible data may be far larger than HARD_MAX_PLAINTEXT.
+ */
+export async function fits(
+  plaintext: Uint8Array<ArrayBuffer>,
+): Promise<boolean> {
+  return ctChars((await pack(plaintext)).body.length) <= MAX_CT_CHARS;
+}
+
 /** Encrypt `plaintext` as revision `rev` of document `id`. */
 export async function seal(
   c: DocCipher,
@@ -45,15 +69,7 @@ export async function seal(
   plaintext: Uint8Array<ArrayBuffer>,
   ts: number,
 ): Promise<Envelope> {
-  let body = plaintext;
-  let z = false;
-  if (canCompress() && plaintext.length > 64) {
-    const packed = await pipe(plaintext, new CompressionStream("deflate-raw"));
-    if (packed.length < plaintext.length) {
-      body = packed;
-      z = true;
-    }
-  }
+  const { body, z } = await pack(plaintext);
   const iv = randomBytes(12);
   const ct = b64url(
     new Uint8Array(

@@ -159,6 +159,14 @@ export class Device {
   }
 }
 
+/** Text that deflate barely shrinks: base64url of random bytes. */
+export function noiseText(chars: number): string {
+  const b = new Uint8Array(Math.ceil((chars * 3) / 4));
+  for (let i = 0; i < b.length; i += 65536)
+    crypto.getRandomValues(b.subarray(i, i + 65536));
+  return Buffer.from(b).toString("base64url").slice(0, chars);
+}
+
 /** Wait until `fn` returns truthy. */
 export async function until(fn: () => unknown, ms = 5_000): Promise<void> {
   const t = Date.now();

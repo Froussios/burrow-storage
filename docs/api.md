@@ -79,7 +79,7 @@ type GetKeys = null | undefined | string | string[] | Record<string, unknown>;
 | `get()` / `get(null)` | Every live key. |
 | `get("k")`, `get(["a", "b"])` | The keys that exist. |
 | `get({ a: 1, b: "x" })` | Stored values, with the object's values as defaults for missing keys. |
-| `set(items)` | Validates every key first, so an invalid batch writes nothing: values must be JSON (`undefined`, `NaN`, `Infinity`, functions, `Date`, `Map`, class instances and cycles reject with `TypeError`), and each item must fit 200 000 bytes, measured as the UTF-8 length of `JSON.stringify({ v: 1, key, value, ts })` (`BurrowError("item-too-large")`). Writing a value equal to the current one is still a new write. |
+| `set(items)` | Validates every key first, so an invalid batch writes nothing: values must be JSON (`undefined`, `NaN`, `Infinity`, functions, `Date`, `Map`, class instances and cycles reject with `TypeError`), and each item must fit one stored document once deflated and encrypted: `JSON.stringify({ v: 1, key, value, ts })` of up to 749 000 UTF-8 bytes always does, and compressible data can be much larger (`BurrowError("item-too-large")`, D-60). The offline wrapper makes the same check, offline too, so it never keeps a write the store cannot take. Writing a value equal to the current one is still a new write. |
 | `remove(keys)` | Marks keys deleted; the tombstone reaches other devices. Keys that do not exist are ignored. |
 | `clear()` | `remove()` of every key. |
 | `close()` | Drops the keys and everything held in memory. Every later call rejects `BurrowError("closed")`. Nothing on disk changes. |
@@ -280,7 +280,7 @@ anything that looks like an id or token.
 | `code` | Raised by | Meaning |
 | --- | --- | --- |
 | `bad-token` | `burrow()` | The token is missing, malformed, fails its checksum or has an unknown version. |
-| `item-too-large` | `set()`; the core's writes; the wrapper's `onStatus` | An item exceeds 200 000 bytes, or the encrypted document or manifest would exceed the store's limit. |
+| `item-too-large` | `set()`; the core's writes; the wrapper's `onStatus` | An item, or the manifest, would not fit one stored document once deflated and encrypted. |
 | `backend` | the core's calls; `burrow()`; the wrapper's `onStatus` and `syncNow()` | A network or store failure, or a backend factory that failed. |
 | `quota` | the core's calls; the wrapper's `onStatus` and `syncNow()` | The store's daily quota is exhausted. |
 | `conflict` | the core's writes; the wrapper's `onStatus` and `syncNow()` | Writes kept colliding with another writer after retries. |

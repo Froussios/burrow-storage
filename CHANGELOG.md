@@ -52,7 +52,8 @@ stores a token anywhere. This is a breaking change throughout, made under the no
   distinct stub reads and atomic ordinary-put refusal. Published 0.1.1 predates this behavior;
   verify each deployed bundle or commit, rather than its package version. Existing rules still
   permit older authenticated clients to rewrite stubs.
-- Item size is fixed at 200 000 bytes.
+- The only item size limit is the store's: an item is accepted when its encrypted, deflated
+  document fits Firestore's 1 MiB (always up to 749 000 bytes of JSON) (D-60).
 - The error code `unlinked` is now `closed`.
 - Clarify the no-clients compatibility policy in contributor and review instructions and current
   documentation: prefer the simplest correct design, with no compatibility shims, migrations,

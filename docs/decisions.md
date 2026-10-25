@@ -43,7 +43,8 @@ The rules cap `ct` at 1 000 000 base64url characters, which is 750 000 ciphertex
 the 16-byte GCM tag. An incompressible 900 KB plaintext could never be stored. The hard ceiling for
 `maxItemBytes` (and for the manifest) is therefore 749 000 bytes. Compression is applied only when
 it shrinks the plaintext, so the ceiling always fits. `seal()` also refuses any envelope whose `ct`
-would exceed the cap. A larger configured value is clamped silently.
+would exceed the cap. A larger configured value is clamped silently. (D-60 removes the option;
+`fits()` applies the cap itself, after compression.)
 
 ### D-5 Tie-break by a hash of the serialised value; manifest entries carry it (SYNC-10)
 
@@ -870,8 +871,8 @@ not through the store object or the public types. It is not API and may change f
 **Removed** (D-55): `BurrowArea`, `storage` (the synchronous facade, API-9..12), `link()`,
 `unlink()`, `token`, `onToken`, `TokenSource`, `TokenInfo`, `exportToken()`, `exportJSON()`,
 `importJSON()`, `getBytesInUse()`, `inspect()` (ERR-4), `get(keys, { fresh })`, and the options
-`cache`, `rememberDevice`, `syncIntervalMs`, `debounceMs`, `maxItemBytes` (now a fixed 200 000
-bytes), `debug` (ERR-3: Burrow logs nothing) and `firestore`. The error codes `unlinked` and
+`cache`, `rememberDevice`, `syncIntervalMs`, `debounceMs`, `maxItemBytes` (the store's
+document limit is now the only one, D-60), `debug` (ERR-3: Burrow logs nothing) and `firestore`. The error codes `unlinked` and
 `would-replace` are gone; `closed` names a call after `close()`. `SecretHolder` and its AES-KW
 wrapping are deleted, with the `_token`, `_meta` and per-app stores of the shared `burrow`
 database. The new code neither reads nor deletes that database; a browser that ran an earlier
@@ -990,6 +991,22 @@ The owner chose these between alternatives on #82:
 
 The local-first alternative (answer from the copy, push in the background) and a single copy per
 app (rejecting `would-orphan` on a token switch) were offered and not chosen.
+
+### D-60 The only item limit is the store's document limit
+
+The owner's rule: no cap unless a dependency introduces it. The requirements brief's 200 KB
+(ENC-4) was the default of the removed `maxItemBytes` option, not a limit of any dependency, and
+D-57 had frozen it. The dependency that does impose one is Firestore, at 1 MiB per document; the
+rules hold `ct` to 1 000 000 characters to stay under it (D-4). An item is now accepted exactly
+when its sealed document fits: `fits()` in `src/codec/envelope.ts` deflates the item JSON as
+`seal()` does and measures the ciphertext. Up to 749 000 bytes of JSON always fits; compressible
+data can be much larger. The manifest uses the same test ("manifest is full").
+
+`prepareWrites`, shared by the core and the offline wrapper, makes the check before anything is
+written. The core needs it because the rules would refuse an oversized document as a permission
+failure, not a size one. The wrapper needs it because a write it queues offline must be one the
+store can take, or it would stay unsynced for ever. IndexedDB has no per-item limit of its own;
+its origin quota surfaces as `quota`. The limit is not an option or a parameter of either API.
 
 ## Part B: planning decisions and their status
 

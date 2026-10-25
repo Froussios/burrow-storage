@@ -129,8 +129,9 @@ interface Envelope {
 - **Item plaintext** (id `docId(key)`): `{ v: 1, key, value, ts, deleted? }`.
 
 Manifest and item plaintext is UTF-8 JSON, compressed with deflate-raw when it is over 64 bytes
-and compression shrinks it. An item document is capped at 200 000 bytes of JSON, well under the
-749 000 that always fit the store's 1 000 000-character limit even when incompressible.
+and compression shrinks it. The only size limit is the store's: an item or manifest is accepted
+when its sealed `ct` fits the 1 000 000 characters the rules allow (D-60). Up to 749 000 bytes of
+plaintext always fit, even incompressible.
 
 Any decryption failure surfaces as `decrypt-failed`: the core rejects the call; the offline
 wrapper stops remote work for that instance and leaves its local copy untouched.

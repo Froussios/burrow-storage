@@ -7,7 +7,7 @@ import { decodeToken, encodeToken } from "../../src/codec/token.js";
 import { BackendError, BurrowError } from "../../src/errors.js";
 import { burrow, generateToken } from "../../src/index.js";
 import type { Envelope } from "../../src/types.js";
-import { World } from "../support/devices.js";
+import { World, noiseText } from "../support/devices.js";
 
 let world: World;
 afterEach(() => {
@@ -115,13 +115,17 @@ describe("API-3..6 the async storage interface", () => {
     expect(d.backend.stats.puts).toBe(0);
   });
 
-  it("ENC-4 item-too-large rejects before anything is written", async () => {
+  it("ENC-4/D-60 the store's document limit is the only cap: what deflates to fit is stored, the rest rejects before any write", async () => {
     const d = fresh().device();
     const s = await d.core();
+    const big = "x".repeat(2_000_000); // deflates to a few KB
+    await s.set({ big });
+    expect((await s.get("big")).big).toBe(big);
+    const { puts } = d.backend.stats;
     await expect(
-      s.set({ ok: 1, big: "x".repeat(200_001) }),
+      s.set({ ok: 1, noise: noiseText(1_100_000) }),
     ).rejects.toMatchObject({ code: "item-too-large" });
-    expect(d.backend.stats.puts).toBe(0);
+    expect(d.backend.stats.puts).toBe(puts);
   });
 
   it("D-57 remote failures reject the call; nothing is queued", async () => {

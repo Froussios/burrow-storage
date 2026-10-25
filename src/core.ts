@@ -8,8 +8,8 @@ import { configuredBackend } from "./config.js";
 import { type AppKeys, deriveAppKeys, docId } from "./codec/derive.js";
 import {
   type DocCipher,
-  HARD_MAX_PLAINTEXT,
   assertJson,
+  fits,
   open,
   seal,
 } from "./codec/envelope.js";
@@ -34,8 +34,6 @@ import type {
 
 const APP_RE = /^[a-z0-9-]{1,64}$/;
 const CONFLICT_BACKOFF = [200, 800, 3000];
-/** Size limit per item, in bytes of its JSON item document (ENC-4). */
-export const MAX_ITEM_BYTES = 200_000;
 const jitter = (ms: number) => ms * (0.75 + Math.random() * 0.5);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -112,10 +110,6 @@ export function remoteOf(store: unknown): Remote | undefined {
     : undefined;
 }
 
-function itemBytes(key: string, value: unknown, ts: number): number {
-  return utf8(JSON.stringify({ v: 1, key, value, ts })).length;
-}
-
 /**
  * Validate and stamp writes. Throws TypeError / item-too-large before anything
  * is written (ERR-1). Shared by the core and the offline wrapper.
@@ -134,10 +128,12 @@ export async function prepareWrites(
       throw new TypeError(`value for "${k}" is undefined`);
     assertJson(value, k);
     const ts = nextTs(now, previousTs(k), maxRemoteTs);
-    if (itemBytes(k, value, ts) > MAX_ITEM_BYTES)
+    // D-60: the store's document limit is the only one, checked before the
+    // wrapper queues a write that could never be sent.
+    if (!(await fits(utf8(JSON.stringify({ v: 1, key: k, value, ts })))))
       throw new BurrowError(
         "item-too-large",
-        `"${k}" is larger than ${MAX_ITEM_BYTES} bytes`,
+        `"${k}" does not fit in one stored document`,
       );
     out.set(k, { value: structuredClone(value), ts });
   }
@@ -621,7 +617,7 @@ export class Core implements BurrowStorage {
           Date.now(),
         );
         const pt = utf8(JSON.stringify({ v: 1, items } satisfies Manifest));
-        if (pt.length > HARD_MAX_PLAINTEXT)
+        if (!(await fits(pt)))
           throw new BurrowError("item-too-large", "manifest is full");
         const rev = menv ? menv.rev + 1 : 0;
         try {

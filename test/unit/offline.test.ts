@@ -16,7 +16,13 @@ import type {
   OfflineStorage,
   StatusEvent,
 } from "../../src/types.js";
-import { type Device, World, settle, until } from "../support/devices.js";
+import {
+  type Device,
+  World,
+  noiseText,
+  settle,
+  until,
+} from "../support/devices.js";
 
 let world: World;
 afterEach(() => {
@@ -208,13 +214,22 @@ describe("API-3/API-6 network first, local fallback", () => {
     });
   });
 
-  it("API-4/ENC-4 invalid writes reject before anything is stored locally", async () => {
-    const a = await fresh().device().open();
+  it("API-4/ENC-4 invalid writes reject before anything is stored locally, offline too", async () => {
+    const w = fresh();
+    const d = w.device();
+    const a = await d.open();
+    d.setOnline(false);
     await expect(a.set({ ok: 1, bad: () => 1 })).rejects.toThrow(TypeError);
-    await expect(a.set({ big: "x".repeat(200_001) })).rejects.toMatchObject({
-      code: "item-too-large",
-    });
+    // D-60: one that can never fit the store is never queued.
+    await expect(
+      a.set({ ok: 1, noise: noiseText(1_100_000) }),
+    ).rejects.toMatchObject({ code: "item-too-large" });
     expect(await a.get()).toEqual({});
+    const big = "x".repeat(2_000_000); // deflates to fit
+    await a.set({ big });
+    d.setOnline(true);
+    await settle(a);
+    expect((await (await w.device().core()).get("big")).big).toBe(big);
   });
 
   it("API-5 onChanged fires for local writes with chrome's shape, skipping no-ops", async () => {

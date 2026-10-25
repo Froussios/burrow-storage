@@ -154,9 +154,9 @@ same entry shape.
 
 | | Value | Where |
 | --- | --- | --- |
-| Item | 200 000 bytes of `{v, key, value, ts}` JSON (`MAX_ITEM_BYTES`) | `prepareWrites` in `core.ts` |
+| Item | The `{v, key, value, ts}` JSON must fit one document once deflated and sealed (`fits()`, D-60); 749 000 bytes always do | `prepareWrites` in `core.ts`, for the core and the wrapper |
 | Ciphertext | `MAX_CT_CHARS = 1_000_000` base64url characters | `seal()`, both backends, the rules |
-| Manifest plaintext | 749 000 bytes (`HARD_MAX_PLAINTEXT`), else `item-too-large` ("manifest is full") | `#publish` |
+| Manifest plaintext | Must fit the same way (`fits()`), else `item-too-large` ("manifest is full") | `#publish` |
 | Tombstone retention | 30 days (`TOMBSTONE_TTL_MS`) | `merge.ts` |
 | Conflict retries | 3 per document. Manifest: after 200, 800 and 3000 ms. Item: at once, then after 200 and 800 ms. Jitter ×0.75–1.25 | `CONFLICT_BACKOFF` |
 | Wrapper wait for the store | 3 000 ms (`waitMs`), then answer from the copy | `#attempt` |

@@ -400,7 +400,7 @@ adapter. The full comparison with Web Storage and `chrome.storage`:
 
 | | |
 | --- | --- |
-| Item size | 200 000 bytes of JSON per item |
+| Item size | What fits one Firestore document (1 MiB) once deflated and encrypted: always 749 000 bytes of JSON, more when it compresses |
 | Spark quotas | Per day, shared by all your sites: 50 000 reads, 20 000 writes, 20 000 deletes; 1 GiB stored in total |
 | Reading one key | 1 read |
 | Reading every key | 1 read, plus 1 per item changed since this instance last read it (all of them the first time; the offline wrapper only fetches what its copy lacks) |

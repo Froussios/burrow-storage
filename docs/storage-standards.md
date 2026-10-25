@@ -36,7 +36,7 @@ are defaults. The offline wrapper adds `onChanged`. It differs in these ways:
 | Failure | Rejections with a message | `BurrowError` with a stable `code` ([api.md](api.md#errors)). The core rejects when the store cannot be reached; the offline wrapper does not. |
 | Values | JSON-serialisable values; other objects are coerced (a `Map` is stored as `{}`, for example) | JSON values only; anything else rejects with `TypeError` instead of being coerced |
 | `onChanged` | On every area | Offline wrapper only: `{ changes, source }`, where `source` is `"local"` for writes on this device and `"remote"` for changes from the store. Listen with `addListener(fn)` or `addEventListener("changed", …)`. |
-| Limits | `storage.sync`: about 100 KB in total and 8 KB per item; `storage.local`: about 10 MB | 200 000 bytes per item, no item count limit, and the quotas of the backing store |
+| Limits | `storage.sync`: about 100 KB in total and 8 KB per item; `storage.local`: about 10 MB | What fits one stored document per item (with Firestore, always 749 000 bytes of JSON, more when it compresses), no item count limit, and the quotas of the backing store |
 | Not implemented | | `getBytesInUse()`, `setAccessLevel()`, `getKeys()`, the `QUOTA_*` constants and the area name |
 | Extra members | | `close()`; on the offline wrapper `status`, `onStatus`, `syncNow()` and `forget()` |
 
