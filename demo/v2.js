@@ -8,36 +8,34 @@
   // Add scenarios here; the navigation enumerates the entire registry.
   const scenarios = [
     {
-      id: "offline",
-      title: "Offline wrapper",
-      app: "burrow-demo-v2-offline",
-      mode: "once",
-      summary: "Keep working when the network goes away.",
-      detail:
-        "The offline wrapper keeps a plaintext copy on this device and syncs changes when the store is reachable. This demo also keeps this scenario's token in localStorage, unencrypted, so it can reopen without a prompt.",
-      storage: "Plaintext copy in IndexedDB",
-      token: "Remembered by this page",
-      network: "Edits queue locally, then sync",
-      setup:
-        'const core = await Burrow.burrow({ app: "burrow-demo-v2-offline", backend, token });\nconst store = await Burrow.offline(core);',
-    },
-    {
       id: "core",
       title: "Remote only",
       app: "burrow-demo-v2-core",
-      mode: "often",
+      offline: false,
       summary: "Core lib, backed by Firebase.",
       detail:
-        "The core keeps the token in this page's memory and stores no content on disk. A reload asks you to open it again. Network failures reject reads and writes; there is no durable offline queue.",
+        "The core library stores no content or token on disk. Network failures reject reads and writes; there is no durable offline queue. This demo can remember the token separately if you choose.",
       storage: "No persistent content copy",
-      token: "Memory for this visit",
       network: "Failed writes are reported",
       setup:
         'const store = await Burrow.burrow({ app: "burrow-demo-v2-core", backend, token });',
     },
+    {
+      id: "offline",
+      title: "Offline wrapper",
+      app: "burrow-demo-v2-offline",
+      offline: true,
+      summary: "Keep working when the network goes away.",
+      detail:
+        "The offline wrapper keeps a plaintext content copy on this device and syncs changes when the store is reachable. Remembering the token is a separate option implemented by this demo.",
+      storage: "Plaintext copy in IndexedDB",
+      network: "Edits queue locally, then sync",
+      setup:
+        'const core = await Burrow.burrow({ app: "burrow-demo-v2-offline", backend, token });\nconst store = await Burrow.offline(core);',
+    },
   ];
   const url = new URL(location.href);
-  const requested = url.searchParams.get("scenario") ?? "offline";
+  const requested = url.searchParams.get("scenario") ?? scenarios[0].id;
   const scenario = scenarios.find(({ id }) => id === requested);
   for (const item of scenarios) {
     const target = new URL(location.href);
@@ -52,10 +50,9 @@
     const name = document.createElement("strong");
     name.textContent = item.title;
     const hint = document.createElement("span");
-    hint.textContent =
-      item.mode === "once"
-        ? "Local copy + sync"
-        : "Core lib, backed by Firebase";
+    hint.textContent = item.offline
+      ? "Local copy + sync"
+      : "Core lib, backed by Firebase";
     link.append(name, hint);
     $("scenarios").append(link);
   }
@@ -78,12 +75,22 @@
   $("scenario-summary").textContent = scenario.summary;
   $("scenario-detail").textContent = scenario.detail;
   $("setup-code").textContent = scenario.setup;
-  for (const key of ["storage", "token", "network"])
+  for (const key of ["storage", "network"])
     $("scenario-" + key).textContent = scenario[key];
-  $("signin-hint").textContent =
-    scenario.mode === "once"
-      ? "Open once on a trusted device. This page remembers the token and keeps a plaintext offline copy. Anyone who can read this browser's files can read both."
-      : "Open on every visit. Your token stays in memory and your content stays in the encrypted store. Keep the token or passkey to return after a reload.";
+  $("signin-hint").textContent = scenario.offline
+    ? "The offline wrapper keeps a plaintext content copy in this browser. You still need a token or passkey to reopen it."
+    : "Reads and writes go directly to the encrypted remote store. The core library keeps no content on disk.";
+  const updateCustodyChoice = () => {
+    const remember = $("remember-token").checked;
+    $("scenario-token").textContent = remember
+      ? "Saved by this demo on this device"
+      : "In memory for this visit";
+    $("token-only-hint").textContent = remember
+      ? "No passkey is created. This demo will save the token on this device because remembering is selected. Keep a separate copy: clearing browser data removes it."
+      : "No passkey is created, and this demo will not store the token. Write it down or save it in your password manager before leaving.";
+  };
+  $("remember-token").addEventListener("change", updateCustodyChoice);
+  updateCustodyChoice();
   const APP = scenario.app;
   // Token custody is an explicit demo choice, scoped to this scenario.
   const KEPT = `${APP}:token`;
@@ -126,9 +133,9 @@
       {
         scenario: scenario.id,
         app: APP,
-        mode: session?.mode ?? null,
+        library: scenario.offline ? "offline wrapper" : "core",
         status,
-        tokenKeptByPage: scenario.mode === "once" && !!kept(),
+        tokenKeptByPage: !!kept(),
       },
       null,
       2,
@@ -181,7 +188,7 @@
         await target.set(items);
         for (const key of Object.keys(items)) failedKeys.delete(key);
         if (!failedKeys.size) say("");
-        status = session.mode === "often" ? "idle" : target.status;
+        status = scenario.offline ? target.status : "idle";
       } catch (e) {
         for (const key of Object.keys(items)) failedKeys.add(key);
         status = "offline";
@@ -226,8 +233,7 @@
     if (!store) return;
     try {
       render(await store.get());
-      if (session.mode === "often")
-        showStatus(failedKeys.size ? "offline" : "idle");
+      if (!scenario.offline) showStatus(failedKeys.size ? "offline" : "idle");
     } catch (e) {
       if (e.code === "closed") return locked();
       showStatus("offline", e);
@@ -245,23 +251,29 @@
     pasted: "pasted or typed in",
   };
   const showToken = () => {
-    const { token, source, mode, since, remembered } = session;
+    const { token, source, since, remembered, persistenceFailed } = session;
     const from = SOURCES[source] ?? source;
     $("code").textContent = token;
     $("token-source").textContent =
       (since
         ? `Kept by this page since ${new Date(since).toLocaleString()}; originally ${from}`
         : from.charAt(0).toUpperCase() + from.slice(1)) + ".";
-    $("custody").textContent =
-      mode === "once"
-        ? remembered
-          ? "Kept by this page in this browser's localStorage, unencrypted, until you sign out."
-          : "In memory only: this browser could not remember it. Keep the token to reopen the offline copy after a reload."
-        : "In this page's memory only. Reloading or closing the page locks it.";
-    $("data-copy").textContent =
-      mode === "once"
-        ? "Encrypted in the store, plus an unencrypted copy in this browser for offline use."
-        : "Only in the store, encrypted. Nothing is kept on this device.";
+    $("custody").textContent = remembered
+      ? "Saved unencrypted in localStorage by this demo, until you sign out. The library does not store it."
+      : "In this page's memory only. This demo has not stored it; reloading or closing the page requires the token or passkey again.";
+    $("token-reminder").textContent = persistenceFailed
+      ? "This browser could not save your token. Write it down or save it in your password manager before leaving."
+      : remembered
+        ? "This demo saved the token on this device. Keep a separate copy in case browser data is cleared."
+        : source === "passkey" || source === "new passkey"
+          ? "This demo has not stored your token. Use the passkey to get it again, or write the token down."
+          : "This demo has not stored your token. Write it down or save it in your password manager before leaving; otherwise you cannot reopen this data.";
+    $("data-copy").textContent = scenario.offline
+      ? "Encrypted in the store, plus an unencrypted content copy in this browser for offline use."
+      : "Only in the store, encrypted. No persistent content copy on this device.";
+    $("scenario-token").textContent = remembered
+      ? "Saved by this demo on this device"
+      : "In memory for this visit";
   };
 
   /** Show the sign-in choices; nothing is open. */
@@ -275,19 +287,22 @@
     $("app").hidden = true;
     $("signin").hidden = false;
     draft.value = "";
+    $("code").textContent = "";
+    $("remember-token").checked = false;
+    updateCustodyChoice();
     applyTheme("light");
     showStatus("locked");
   };
 
   /**
-   * Open the store with a token. "once" also keeps the token in this page's
-   * own record and wraps the core in the offline copy.
+   * Library choice controls content caching; the separate remember choice
+   * controls the demo-owned token record for either library setup.
    */
-  const open = async (input, source, mode, since) => {
+  const open = async (input, source, remember, since) => {
     const core = await Burrow.burrow({ app: APP, backend, token: input });
     const token = canonical(input);
     store?.close();
-    if (mode === "once") {
+    if (scenario.offline) {
       store = await Burrow.offline(core);
       store.onStatus.addListener(({ status: s, error }) =>
         showStatus(s, error),
@@ -298,46 +313,42 @@
         if ("draft" in changes && document.activeElement !== draft)
           draft.value = changes.draft.newValue ?? "";
       });
-      if (!since) {
-        try {
+    } else {
+      store = core;
+    }
+    let remembered = false;
+    let persistenceFailed = false;
+    if (remember) {
+      try {
+        if (!since)
           localStorage.setItem(
             KEPT,
             JSON.stringify({ token, source, since: Date.now() }),
           );
-        } catch {
-          say(
-            "This browser could not remember the token. Keep it yourself; a reload will ask for it again.",
-          );
-        }
+        remembered = true;
+      } catch {
+        persistenceFailed = true;
       }
-    } else {
-      store = core;
     }
-    session = {
-      token,
-      source,
-      mode,
-      since,
-      remembered: mode === "once" && !!kept(),
-    };
+    session = { token, source, since, remembered, persistenceFailed };
+    $("remember-token").checked = remembered;
     $("signin").hidden = true;
     $("app").hidden = false;
     showToken();
-    showStatus(mode === "once" ? store.status : "syncing");
+    showStatus(scenario.offline ? store.status : "syncing");
     await refresh();
   };
 
-  const mode = () => scenario.mode;
-
-  // Passkey: the token comes from the passkey itself; nothing is stored.
+  // Passkey: the utility derives a token. The demo owns any persistence.
   const NO_PASSKEY =
     "This browser cannot use passkeys for this. Use a storage token instead.";
   const signin = async (get, source) => {
-    for (const b of document.querySelectorAll("#signin button"))
+    const remember = $("remember-token").checked;
+    for (const b of document.querySelectorAll("#signin button, #signin input"))
       b.disabled = true;
     try {
       const token = await get();
-      await open(token, source, mode());
+      await open(token, source, remember);
       return true;
     } catch (e) {
       say(
@@ -351,7 +362,9 @@
       );
       return false;
     } finally {
-      for (const b of document.querySelectorAll("#signin button"))
+      for (const b of document.querySelectorAll(
+        "#signin button, #signin input",
+      ))
         b.disabled = false;
     }
   };
@@ -370,7 +383,9 @@
   $("new-token").addEventListener("click", async () => {
     if (await signin(() => Burrow.generateToken(), "generated"))
       say(
-        "New token. Copy it and keep it: it is the only way back to this data.",
+        session.remembered
+          ? "Token created and saved on this device by the demo. Keep a separate copy."
+          : "Token created. This demo has not stored it. Write it down or save it in your password manager before leaving.",
       );
   });
   $("token-form").addEventListener("submit", async (e) => {
@@ -416,12 +431,11 @@
     URL.revokeObjectURL(a.href);
   });
 
-  // Sign out: forget the token here. "Stay signed in" also deletes the page's
-  // token record and the local copy (after pushing unsynced writes, or with
-  // confirmation). The data stays in the store for the token.
+  // Sign out removes the demo-owned token record for either scenario. The
+  // offline wrapper also clears its content copy, after handling queued edits.
   $("signout").addEventListener("click", async () => {
     await flush();
-    if (session.mode === "once") {
+    if (scenario.offline) {
       try {
         await store.forget();
       } catch (e) {
@@ -435,7 +449,6 @@
           return say("Still signed in.");
         await store.forget({ discardLocal: true });
       }
-      localStorage.removeItem(KEPT);
     } else {
       if (
         failedKeys.size &&
@@ -444,13 +457,23 @@
         return say("Still signed in.");
       store.close();
     }
+    let cleanupFailed = false;
+    try {
+      localStorage.removeItem(KEPT);
+    } catch {
+      cleanupFailed = session.remembered;
+    }
     locked();
-    say("Signed out. Keep your token or passkey to come back to your data.");
+    say(
+      cleanupFailed
+        ? "Could not remove the saved token. Clear this site's browser data to remove it."
+        : "Signed out. Keep your token or passkey to come back to your data.",
+    );
   });
 
-  // Another tab signed out of "stay signed in".
+  // Another tab removed this scenario's demo-owned token record.
   window.addEventListener("storage", (e) => {
-    if (e.key === KEPT && !e.newValue && session?.mode === "once") {
+    if (e.key === KEPT && !e.newValue && session?.remembered) {
       store.close();
       locked();
     }
@@ -485,21 +508,26 @@
     }
   });
 
-  const remembered = scenario.mode === "once" ? kept() : null;
+  const remembered = kept();
   if (remembered) {
     try {
       await open(
         remembered.token,
         remembered.source,
-        "once",
+        true,
         remembered.since ?? Date.now(),
       );
     } catch (e) {
       // Only a token that cannot be right is dropped; any other failure may
       // pass, and the record is the user's way back in.
       locked();
-      if (e?.code === "bad-token") localStorage.removeItem(KEPT);
-      else
+      if (e?.code === "bad-token") {
+        try {
+          localStorage.removeItem(KEPT);
+        } catch {
+          /* browser storage unavailable */
+        }
+      } else
         say(
           `Could not open your storage (${e?.code ?? e?.name}). Reload to try again.`,
         );

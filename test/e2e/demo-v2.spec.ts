@@ -54,7 +54,8 @@ async function open(page: Page, scenario = "offline") {
   await expect(page.locator("body")).toHaveAttribute("data-ready", "true");
 }
 
-async function start(page: Page) {
+async function start(page: Page, remember = false) {
+  await page.locator("#remember-token").setChecked(remember);
   await page.locator("#new-token").click();
   await expect(page.locator("#code")).toHaveText(TOKEN);
   await expect(page.locator("#status")).toHaveText("synced");
@@ -79,11 +80,16 @@ test("scenario URLs enumerate every setup and reject unknown scenarios without o
     if (m.type() === "error") errors.push(m.text());
   });
   await page.goto("/demo/v2.html");
-  await expect(page).toHaveURL(/scenario=offline$/);
+  await expect(page).toHaveURL(/scenario=core$/);
   await expect(page.locator(".scenario-link")).toHaveCount(2);
+  await expect(page.locator(".scenario-link").first()).toHaveAttribute(
+    "data-scenario",
+    "core",
+  );
+  await expect(page.locator("#remember-token")).not.toBeChecked();
   await expect(page.locator('[aria-current="page"]')).toHaveAttribute(
     "data-scenario",
-    "offline",
+    "core",
   );
   await expect(page.locator("#signin")).toBeVisible();
   await open(page, "does-not-exist");
@@ -100,7 +106,7 @@ test("switching immediately after an edit preserves offline data; core uses a se
 }) => {
   await backend(context);
   await open(page);
-  const offline = await start(page);
+  const offline = await start(page, true);
   await page.locator("#draft").fill("offline space");
   // Navigation must await the debounce/local write, without a data-loss prompt.
   await page.locator('[data-scenario="core"]').click();
@@ -134,7 +140,7 @@ test("offline writes survive a reload without a backend, then reach another devi
   const second = await browser.newContext();
   await backend(second, remote);
   await open(page);
-  const token = await start(page);
+  const token = await start(page, true);
   remote.failWith = "network";
   await page.locator("#draft").fill("queued while offline");
   await expect(page.locator("#status")).toHaveText("offline");
@@ -158,7 +164,7 @@ test("even an explicitly reused token cannot expose another scenario's remote co
 }) => {
   await backend(context);
   await open(page);
-  const token = await start(page);
+  const token = await start(page, true);
   await page.locator("#draft").fill("isolated by app as well as token");
   await expect(page.locator("#status")).toHaveText("synced");
   await page.locator('[data-scenario="core"]').click();
@@ -249,4 +255,84 @@ test("passkeys create distinct credentials and tokens for the two scenarios", as
   });
   expect(credentials).toHaveLength(2);
   expect(new Set(credentials.map((c) => c.userHandle)).size).toBe(2);
+});
+
+test("core can remember the token as a demo option without persisting content", async ({
+  context,
+  page,
+}) => {
+  await backend(context);
+  await open(page, "core");
+  const token = await start(page, true);
+  await page.locator("#draft").fill("remote content only");
+  await expect(page.locator("#status")).toHaveText("synced");
+  await expect(page.locator("#custody")).toContainText("by this demo");
+  const dump = await profileDump(page);
+  expect(
+    JSON.parse(JSON.parse(dump).localStorage["burrow-demo-v2-core:token"])
+      .token,
+  ).toBe(token);
+  expect(databases(dump)).toEqual([]);
+  expect(dump).not.toContain("remote content only");
+  await page.reload();
+  await expect(page.locator("#code")).toHaveText(token);
+  await expect(page.locator("#draft")).toHaveValue("remote content only");
+  await page.locator("#signout").click();
+  await expect(page.locator("#signin")).toBeVisible();
+  expect(JSON.parse(await profileDump(page)).localStorage).toEqual({});
+  await page.reload();
+  await expect(page.locator("#signin")).toBeVisible();
+  await expect(page.locator("#remember-token")).not.toBeChecked();
+});
+
+test("offline content can persist without remembering the token; a token is required to reopen it", async ({
+  context,
+  page,
+}) => {
+  const remote = await backend(context);
+  await open(page);
+  await expect(page.locator("#remember-token")).not.toBeChecked();
+  await expect(page.locator("#token-only-hint")).toContainText(
+    "will not store the token",
+  );
+  const token = await start(page);
+  await expect(page.locator("#token-reminder")).toContainText("Write it down");
+  await page.locator("#draft").fill("cached without token custody");
+  await expect(page.locator("#status")).toHaveText("synced");
+  const dump = await profileDump(page);
+  expect(JSON.parse(dump).localStorage).toEqual({});
+  expect(dump).not.toContain(token);
+  expect(databases(dump)).toHaveLength(1);
+  remote.failWith = "network";
+  await page.reload();
+  await expect(page.locator("#signin")).toBeVisible();
+  await expect(page.locator("#app")).toBeHidden();
+  await page.locator("#token-input").fill(token);
+  await page.locator("#token-form button").click();
+  await expect(page.locator("#draft")).toHaveValue(
+    "cached without token custody",
+  );
+  await expect(page.locator("#status")).toHaveText("offline");
+  expect(JSON.parse(await profileDump(page)).localStorage).toEqual({});
+});
+
+test("a failed demo token save stays in memory and tells the user to keep it", async ({
+  context,
+  page,
+}) => {
+  await backend(context);
+  await open(page, "core");
+  await page.evaluate(() => {
+    Storage.prototype.setItem = () => {
+      throw new DOMException("Storage disabled", "SecurityError");
+    };
+  });
+  await start(page, true);
+  await expect(page.locator("#token-reminder")).toContainText(
+    "could not save your token",
+  );
+  await expect(page.locator("#custody")).toContainText("memory only");
+  expect(JSON.parse(await profileDump(page)).localStorage).toEqual({});
+  await page.reload();
+  await expect(page.locator("#signin")).toBeVisible();
 });

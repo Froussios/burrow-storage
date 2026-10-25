@@ -64,7 +64,7 @@
               <dd id="scenario-storage"></dd>
             </div>
             <div>
-              <dt>Token custody</dt>
+              <dt>Token storage · demo option</dt>
               <dd id="scenario-token"></dd>
             </div>
             <div>
@@ -87,27 +87,62 @@
           <p class="eyebrow">Get started</p>
           <h2 id="h-signin">Open this space</h2>
           <p id="signin-hint" class="hint"></p>
-          <div class="row wrap">
-            <button id="passkey-get" type="button">
-              Get token from passkey
-            </button>
-            <button id="passkey-create" type="button">
-              Create passkey and token
-            </button>
-            <button id="new-token" class="primary" type="button">
-              Create token only
-            </button>
+          <fieldset class="custody-choice">
+            <legend>Token storage · demo option</legend>
+            <label class="remember-choice">
+              <input
+                id="remember-token"
+                type="checkbox"
+                aria-describedby="remember-hint"
+              />
+              Remember token on this device
+            </label>
+            <p id="remember-hint" class="hint">
+              Off by default. When selected, this demo saves the token
+              unencrypted in this browser's localStorage and reopens it on your
+              next visit. Anyone who can read the browser's files can use it.
+              This is demo code, independent of either library setup.
+            </p>
+          </fieldset>
+          <div class="token-choices">
+            <section class="token-choice" aria-labelledby="h-existing-token">
+              <h3 id="h-existing-token">Use an existing token</h3>
+              <button id="passkey-get" type="button">
+                Get token from passkey
+              </button>
+              <form id="token-form" class="row wrap">
+                <label for="token-input">Or enter a storage token</label>
+                <input
+                  id="token-input"
+                  autocomplete="off"
+                  spellcheck="false"
+                  placeholder="XXXX-XXXX-…"
+                />
+                <button type="submit">Open</button>
+              </form>
+            </section>
+            <section class="token-choice" aria-labelledby="h-new-token">
+              <h3 id="h-new-token">Create a new token</h3>
+              <div class="creation-choice">
+                <button id="passkey-create" type="button">
+                  Create passkey and token
+                </button>
+                <p class="hint">
+                  Create a passkey that can reproduce this scenario's token.
+                </p>
+              </div>
+              <div class="creation-choice">
+                <button
+                  id="new-token"
+                  type="button"
+                  aria-describedby="token-only-hint"
+                >
+                  Create token only
+                </button>
+                <p id="token-only-hint" class="hint"></p>
+              </div>
+            </section>
           </div>
-          <form id="token-form" class="row wrap">
-            <label for="token-input">Or enter a storage token</label>
-            <input
-              id="token-input"
-              autocomplete="off"
-              spellcheck="false"
-              placeholder="XXXX-XXXX-…"
-            />
-            <button type="submit">Open</button>
-          </form>
         </section>
 
         <div id="app" hidden>
@@ -136,6 +171,7 @@
               passkey if it gave you the token.
             </p>
             <code id="code">…</code>
+            <p id="token-reminder" class="hint"></p>
             <dl class="facts">
               <dt>From</dt>
               <dd id="token-source">…</dd>

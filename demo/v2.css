@@ -295,18 +295,73 @@ button:disabled {
   opacity: 0.5;
   cursor: wait;
 }
-.primary {
-  background: var(--accent);
-  color: var(--bg);
-  border-color: var(--accent);
-}
 #signin .row.wrap {
   gap: 8px;
 }
+h3 {
+  font-size: 14px;
+  font-weight: 650;
+  margin: 0 0 16px;
+}
+.custody-choice {
+  margin: 22px 0 26px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.custody-choice legend {
+  color: var(--muted);
+  font-size: 11px;
+  padding: 0 6px;
+}
+.remember-choice {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  color: var(--fg);
+  font-size: 13px;
+}
+.remember-choice input {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+.custody-choice .hint {
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+.token-choices {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 24px;
+}
+.token-choice + .token-choice {
+  border-left: 1px solid var(--line);
+  padding-left: 24px;
+}
+.creation-choice + .creation-choice {
+  margin-top: 18px;
+}
+.creation-choice .hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+}
 #token-form {
-  border-top: 1px solid var(--line);
-  padding-top: 18px;
-  margin: 20px 0 0;
+  margin: 18px 0 0;
+}
+@media (max-width: 1000px) {
+  .token-choices {
+    grid-template-columns: 1fr;
+  }
+  .token-choice + .token-choice {
+    border-left: none;
+    padding-left: 0;
+    border-top: 1px solid var(--line);
+    padding-top: 22px;
+  }
 }
 label {
   flex-basis: 100%;

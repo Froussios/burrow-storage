@@ -18,7 +18,8 @@ stores a token anywhere. This is a breaking change throughout, made under the no
 
 - Demo v2 with URL-selectable offline/core scenarios, a scenario sidebar, isolated
   token/passkey scopes and content, and a shared async editor. The original demo
-  remains available.
+  remains available. Core is first; an opt-in demo-owned token remembering choice
+  works independently of the selected library setup.
 
 - `generateToken()`: a fresh random storage token, for apps that keep their own.
 - `burrow-storage/offline` with `offline(store)`: the same interface as the core over a plaintext
