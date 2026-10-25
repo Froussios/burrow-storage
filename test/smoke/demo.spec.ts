@@ -65,12 +65,6 @@ async function load(page: Page): Promise<void> {
   });
 }
 
-/** The demo's debug panel: `store.inspect()`. */
-const inspect = (page: Page) =>
-  page.evaluate(() =>
-    JSON.parse(document.getElementById("debug")?.textContent || "null"),
-  );
-
 const directives = (csp: string) =>
   Object.fromEntries(
     csp
@@ -83,7 +77,7 @@ const directives = (csp: string) =>
       }),
   );
 
-test("the page is this build, runs under its strict CSP, loads only from its origin and the store, and shows a token", async ({
+test("the page is this build, runs under its strict CSP, loads only from its origin and the store, and asks how to sign in", async ({
   browser,
   baseURL,
 }) => {
@@ -107,14 +101,17 @@ test("the page is this build, runs under its strict CSP, loads only from its ori
     "connect-src": ["'self'", ...STORES].join(" "),
   });
 
+  // No token is made up: the page asks how to sign in.
+  await expect(a.page.locator("#signin")).toBeVisible();
+  await a.page.locator("#new-token").click();
   await expect(a.page.locator("#code")).toHaveText(TOKEN);
   await expect(a.page.locator("#token-source")).toContainText(
-    "Generated on this device (new)",
+    "Generated on this device",
   );
   expect(a.problems).toEqual([]);
 });
 
-test("two fresh browser contexts sync through the store", async ({
+test("two fresh browser contexts sync through the store, one signed in for every visit and one staying signed in", async ({
   browser,
   baseURL,
 }) => {
@@ -123,27 +120,24 @@ test("two fresh browser contexts sync through the store", async ({
   const b = await device(browser, origin);
   const note = `smoke test ${COMMIT?.slice(0, 7) ?? "local"} ${new Date().toISOString()}`;
 
-  // A writes, and the write reaches the store: a new token has no manifest
-  // until its first push.
+  // A stays signed in (the offline wrapper) and writes; the write reaches the
+  // store before the badge says "synced".
   await load(a.page);
+  await a.page.locator("input[name=mode][value=once]").check();
+  await a.page.locator("#new-token").click();
   await a.page.locator("#draft").fill(note);
-  await expect
-    .poll(() => inspect(a.page), { timeout: 30_000 })
-    .toMatchObject({
-      status: "idle",
-      dirtyKeys: 0,
-      manifestRev: expect.any(Number),
-    });
+  await expect(a.page.locator("#status")).toHaveText("synced", {
+    timeout: 30_000,
+  });
   const token = (await a.page.locator("#code").textContent())!;
 
-  // B links with A's token and gets the write.
+  // B signs in for this visit only (the core) with A's token.
   await load(b.page);
-  await b.page.locator("#link-code").fill(token);
-  await b.page.locator("#link-form button[type=submit]").click();
-  await expect(b.page.locator("#message")).toHaveText(
-    "Linked. Your data is here.",
-    { timeout: 30_000 },
-  );
+  await b.page.locator("#token-input").fill(token);
+  await b.page.locator("#token-form button[type=submit]").click();
+  await expect(b.page.locator("#message")).toHaveText("Your data is here.", {
+    timeout: 30_000,
+  });
   await expect(b.page.locator("#draft")).toHaveValue(note, { timeout: 30_000 });
 
   // And back: B's change reaches A, still open, through the store.

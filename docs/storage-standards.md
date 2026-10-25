@@ -1,65 +1,60 @@
 # Burrow and the browser's storage APIs
 
-`burrow()` resolves to a `BurrowArea`, which offers two interfaces to the same data:
-
-- `BurrowArea` itself follows `chrome.storage.StorageArea` from the WebExtensions API.
-- Its `storage` property implements the Web Storage `Storage` interface, the one behind
-  `localStorage`.
+`burrow()` resolves to a `BurrowStorage`, and the optional `offline()` wrapper to an
+`OfflineStorage` that extends it (D-57). Both follow the argument shapes of
+`chrome.storage.StorageArea` from the WebExtensions API, without claiming to be one. Neither
+offers the synchronous Web Storage interface behind `localStorage`.
 
 Both are declared in [`src/types.ts`](../src/types.ts). This page shows how to set Burrow up, then
-lists exactly where each interface differs from the standard it imitates.
+lists exactly where it differs from the standards it is compared with.
 
 ## Setting up
 
-1. **Backend.** Without one, data stays on the device. To sync across devices, configure Firestore
-   once ([firestore-setup.md](firestore-setup.md)).
-2. **Library.** `dist/burrow.min.js` defines the global `Burrow`; the `burrow-storage` package
+1. **Backend.** Configure Firestore once ([firestore-setup.md](firestore-setup.md)), or another
+   adapter. `burrow()` needs one.
+2. **Token.** A storage token for the user: `generateToken()`, a passkey's
+   (`passkeyToken().get()`), or one the user or the page kept
+   ([sync-and-tokens.md](sync-and-tokens.md)).
+3. **Library.** `dist/burrow.min.js` defines the global `Burrow`; the `burrow-storage` package
    exports the same API ([README](../README.md#quick-start)).
-3. **`burrow({ app })`** resolves to the app's `BurrowArea`, once per page. Neither interface
-   exists before it resolves. Both read and write the same keys.
+4. **`burrow({ app, backend, token })`** resolves to the store, and `offline(store)` to the wrapped
+   one if you want a local copy. Every call opens a new instance.
 
 The [API reference](api.md) documents every member.
 
-## `BurrowArea.storage` and Web Storage
+## Burrow and `chrome.storage.StorageArea`
 
-`BurrowArea.storage` implements the
-[`Storage` interface](https://html.spec.whatwg.org/multipage/webstorage.html#the-storage-interface)
-synchronously: its six members and named-property access. A named property never shadows one of
-the six members; `getItem()` reads such a key. It differs from `localStorage` in these ways:
+Both layers offer `get`, `set`, `remove` and `clear` with `StorageArea`'s argument shapes: `get()`
+accepts nothing or `null` for every key, one key, an array of keys, or an object whose values
+are defaults. The offline wrapper adds `onChanged`. It differs in these ways:
 
-| | Web Storage (`localStorage`) | `BurrowArea.storage` |
-| --- | --- | --- |
-| When it exists | Before any script runs | Once `burrow()` resolves, a few milliseconds from a warm cache |
-| Scope | The whole origin | One `app`; two apps on an origin have separate keys |
-| Values | Strings; `setItem` stores `String(value)` | The same for `setItem`. A value written through the async API with `set()` reads back as its JSON text. |
-| Persistence | Synchronous; the browser persists it | Visible at once, written to IndexedDB in the background (batched per microtask), and flushed when the page is hidden or closed. A failed background write is not reported. |
-| Other tabs | See a write at once, and get a `storage` event | See it once it reaches IndexedDB, usually within milliseconds; no `storage` event is fired, use `BurrowArea.onChanged` |
-| Size limit | An origin-wide quota, typically about 5 MB; exceeding it throws `QuotaExceededError` | No total quota of its own. Each item is limited to `maxItemBytes` (200 000 bytes of JSON by default); exceeding it throws `BurrowError("item-too-large")` |
-| Key order for `key(i)` | Implementation-defined | Also implementation-defined: keys loaded from the cache come in sorted order, and keys added later follow in insertion order |
-| `instanceof Storage` | `true` | `false`; `Object.prototype.toString.call(s)` still gives `"[object Storage]"` |
-| After `BurrowArea.unlink()` | Not applicable | Writes throw `BurrowError("unlinked")`; call `burrow()` again for a new `BurrowArea` |
-| Clearing site data | Deletes the data | Deletes the local copy; the data stays in the store, reachable with the storage token |
-| Other devices | Never | Writes sync to every device that uses the same storage token |
-
-## `BurrowArea` and `chrome.storage.StorageArea`
-
-`BurrowArea` mirrors `chrome.storage.StorageArea` from the WebExtensions API: `get`, `set`,
-`remove`, `clear`, `getBytesInUse` and `onChanged`, with the same argument shapes. `get()` accepts
-nothing or `null` for every key, one key, an array of keys, or an object whose values are defaults.
-It differs in these ways:
-
-| | `chrome.storage.StorageArea` | `BurrowArea` |
+| | `chrome.storage.StorageArea` | Burrow |
 | --- | --- | --- |
 | Availability | Browser extensions only | Any web page in a secure context (HTTPS or `localhost`) |
 | Call style | Promises, or callbacks with `chrome.runtime.lastError` | Promises only |
+| Where calls go | The browser's own storage | The core: the network, every call. The offline wrapper: the network first, then the device's copy. |
+| Failure | Rejections with a message | `BurrowError` with a stable `code` ([api.md](api.md#errors)). The core rejects when the store cannot be reached; the offline wrapper does not. |
 | Values | JSON-serialisable values; other objects are coerced (a `Map` is stored as `{}`, for example) | JSON values only; anything else rejects with `TypeError` instead of being coerced |
-| `onChanged` payload | `changes`, plus the area name on `chrome.storage.onChanged` | `{ changes, source }`, where `source` is `"local"` for writes on this device and `"remote"` for changes pulled from the store. Listen with `addListener(fn)` or `addEventListener("changed", …)` |
-| Limits | `storage.sync`: about 100 KB in total and 8 KB per item; `storage.local`: about 10 MB | 200 000 bytes per item by default (up to 749 000), no item count limit, and the quotas of the backing store |
-| Errors | Rejections with a message | `BurrowError` with a stable `code` (see [api.md](api.md#errors)) |
-| Not implemented | | `setAccessLevel()`, `getKeys()`, the `QUOTA_*` constants and the area name |
+| `onChanged` | On every area | Offline wrapper only: `{ changes, source }`, where `source` is `"local"` for writes on this device and `"remote"` for changes from the store. Listen with `addListener(fn)` or `addEventListener("changed", …)`. |
+| Limits | `storage.sync`: about 100 KB in total and 8 KB per item; `storage.local`: about 10 MB | What fits one stored document per item (with Firestore, always 749 000 bytes of JSON, more when it compresses), no item count limit, and the quotas of the backing store |
+| Not implemented | | `getBytesInUse()`, `setAccessLevel()`, `getKeys()`, the `QUOTA_*` constants and the area name |
+| Extra members | | `close()`; on the offline wrapper `status`, `onStatus`, `syncNow()` and `forget()` |
 
-`BurrowArea` adds members of its own for sync and tokens (`status`, `token`, `link()`, `unlink()`,
-`exportToken()`, `syncNow()` and others), described in the [API reference](api.md).
+Writing a key to the value it already has is still a new write, so the last writer wins across
+devices; like `chrome.storage`, the offline wrapper fires no `onChanged` event for it.
 
-Writing a key to the value it already has is still a new write that syncs, so the last writer
-wins across devices; like `chrome.storage`, Burrow fires no `onChanged` event for it.
+## Burrow and Web Storage
+
+Burrow has no synchronous `Storage` facade (D-57): the core cannot answer without the network,
+and a facade over the offline wrapper is left to an optional adapter. Moving from `localStorage`:
+
+| | Web Storage (`localStorage`) | Burrow |
+| --- | --- | --- |
+| Calls | Synchronous | Promises |
+| When it exists | Before any script runs | Once `burrow()` (and `offline()`) resolve, with the token |
+| Scope | The whole origin | One `app` and one token |
+| Values | Strings | Any JSON value |
+| Other tabs | A `storage` event | The offline wrapper's `onChanged`; the core has no events |
+| On the device | Plaintext, until site data is cleared | The core: nothing. The offline wrapper: plaintext, until site data is cleared or `forget()` |
+| Clearing site data | Deletes the data | Deletes the offline copy; the data stays in the store, reachable with the token |
+| Other devices | Never | Every device that uses the same token |

@@ -50,11 +50,10 @@ caps, and an approximately 1 MiB envelope. Push is optional. The unchanged
 `test/conformance/suite.ts` verifies adapter semantics; raw HTTP policy probes must additionally
 verify no-list/no-delete and bypass resistance. Local mocks cannot establish hosted policy.
 
-Preserve [independent token and content storage](extending.md#independent-token-and-content-storage)
-(D-50). Adapter reports should verify independently configured instances and mixed adapters:
-save/restore through one backend, then link and read/write content through another, including
-while recovery is unavailable. The requirements below apply to envelope backends, not token
-carriers.
+Burrow stores no token record in any backend (D-58; it supersedes D-50's independent
+recovery backend), so a backend holds content only and token custody stays outside it
+([token custody](extending.md#token-custody-stays-outside-the-store)). The requirements below
+apply to envelope backends, not to however a site keeps its tokens.
 
 Ids are capabilities. Every store needs a primary lookup structure, but no extra secondary
 indexes or application logs should retain ids. Whether BE-2 permits that necessary lookup
@@ -206,10 +205,7 @@ rejected as a direct authenticated-chain backend.
 emulator (`npm run test:firestore`); an actual public Firebase project must separately pass
 raw setup checks. Emulator results cannot prove hosted cost, logs or quota behavior.
 
-The existing `test/unit/passkey.test.ts` integration covers token save/restore through an
-independent `MemoryBackend`, linking that token to content storage, and continuing content
-sync while the token backend is unavailable without further token-backend calls. The Firestore
-emulator suite additionally creates two independently configured project instances with the
+The Firestore emulator suite creates two independently configured project instances with the
 shipped rules: identical document ids retain distinct envelopes through creates, updates,
 `get`, `getMany` and watch delivery. That verifies SDK project routing locally. It is not a
 live two-project test; hosted two-project validation has **not been performed**.

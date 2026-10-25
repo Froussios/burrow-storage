@@ -2,7 +2,7 @@
 // reject BackendError.
 
 export type BurrowErrorCode =
-  | "unlinked"
+  | "closed"
   | "cancelled"
   | "prf-unsupported"
   | "bad-token"
@@ -12,8 +12,7 @@ export type BurrowErrorCode =
   | "quota"
   | "decrypt-failed"
   | "expired"
-  | "would-orphan"
-  | "would-replace";
+  | "would-orphan";
 
 export class BurrowError extends Error {
   override readonly name = "BurrowError";

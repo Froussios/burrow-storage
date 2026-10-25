@@ -9,47 +9,69 @@ path or a major release solely for compatibility. This policy lasts until client
 
 ## [Unreleased]
 
+Burrow is split into three independent parts (#82, D-57): a remote-only core, an optional
+plaintext offline wrapper, and a passkey token utility. Burrow no longer generates, remembers or
+stores a token anywhere. This is a breaking change throughout, made under the no-clients policy
+(D-55); data and tokens remembered by earlier builds are neither read nor migrated.
+
 ### Added
 
-- Use-driven, per-app/device content renewal with a persistent 29–30 day coalescing receipt,
-  item-first/manifest-last writes and unchanged logical versions (#22, D-48).
+- `generateToken()`: a fresh random storage token, for apps that keep their own.
+- `burrow-storage/offline` with `offline(store)`: the same interface as the core over a plaintext
+  IndexedDB copy, one per app and token. Network first: calls try the store for up to 3 s and
+  fall back to the copy; writes made offline are kept and replayed with last-writer-wins, while
+  online writes are stamped as the latest. Adds `onChanged`, `status`, `onStatus`, `syncNow()`
+  and `forget()` (D-59).
+- `passkeyToken({ app })` in `burrow-storage/passkey`: `create()` makes a passkey and returns the
+  token derived from its PRF output; `get()` returns the same token from an existing passkey.
+  Nothing is stored; a dismissed prompt rejects `cancelled`, missing PRF `prf-unsupported`
+  (D-58).
+- `readBackendConfig()`: the page's backend config, for the app to pass to `burrow()`.
+- The demo shows both sign-in modes: every visit (token in memory only, the core) and staying
+  signed in (the page keeps the token in `localStorage`, the offline wrapper keeps an unencrypted
+  copy), with what each keeps on the device.
 - Optional owner-only `burrow-reaper` outside CI: dry-run default, explicit content-only target,
   395-day server-write inactivity, exact updateTime precondition, permanent minimal stubs,
-  pagination and a persistent daily read/write budget. Full token-access payloads stay untouched.
+  pagination and a persistent daily read/write budget.
 
 ### Changed
 
-- Clarify the no-clients compatibility policy in contributor and review instructions and current
-  documentation: prefer the simplest correct design, with no compatibility shims, migrations,
-  deprecation periods or major-version bumps required solely for compatibility until clients
-  arrive (D-55). Security, correctness and documentation requirements still apply.
-- Each app has its own storage token on the device instead of one per origin (#76, D-54). `link()`
-  and `unlink()` affect only the calling app, so another app's token, data and unsynced writes
-  are never touched, and unrelated sites sharing an origin no longer share a token. Pages that
-  pass the same `app` still share one. Token format, derivation, envelope and keyslots are
-  unchanged.
-- Passkey handles derive from the decoded token and canonical effective RP ID using a separate
-  HKDF domain (#75, D-56). Different tokens coexist even with identical visible labels;
-  `userName` and `displayName` affect presentation only. The demo saves without a preliminary
-  confirmation, reports success only after the keyslot write, and marks backup status uncertain
-  after a failed re-save. Keep the token and retry if saving fails.
-- `link()` and `unlink()` reject `would-replace` when leaving live cached data, unless
-  `replace: true` explicitly confirms the change (#75, D-56). Empty stores and same-token links
-  need no replacement confirmation. The independent `would-orphan`/`discardLocal` guard still
-  protects unsynced writes.
-- Tokens are stored per app in `_token`. No origin-wide token migration or temporary demo
-  cleanup is provided: the demo is the only client, and this change targets a clean codebase.
-- `TokenInfo.since` is always a number, and `TokenSource` no longer includes `"unknown"`: every
-  remembered token records its source and time.
+- `burrow({ app, backend, token })` requires all three, makes no network call, and returns a
+  `BurrowStorage` (`get`, `set`, `remove`, `clear`, `close`) that talks to the store on every
+  call and rejects when it cannot be reached. It writes nothing to disk (D-57).
+- A backend is selected only by the app: page config is no longer discovered implicitly, and a
+  failing backend factory rejects `backend` instead of opening a local-only store.
+- Use-driven content renewal (#22, D-48) is the offline wrapper's, with a persistent 29–30 day
+  deadline per app, token and device; the core alone renews only what it writes (D-59).
 - Backend reads/watches return `StoredDocument` (live envelope or distinct expiry stub).
   Ordinary puts atomically reject `expired`; explicit low-level replacement still requires the
-  revision/token chain. Core expiry pauses before remote cache merge/pruning, preserving local
-  values and unsynced writes. Remote writes committed before a later expiry cannot be rolled back.
+  revision/token chain. The core rejects `expired`; the offline wrapper pauses remote work and
+  keeps its copy and unsynced writes. Remote writes committed before a later expiry cannot be
+  rolled back.
 - Before `burrow-reaper --apply`, every writer must use an expiry-aware build implementing D-48's
   distinct stub reads and atomic ordinary-put refusal. Published 0.1.1 predates this behavior;
   verify each deployed bundle or commit, rather than its package version. Existing rules still
   permit older authenticated clients to rewrite stubs.
+- The only item size limit is the store's: an item is accepted when its encrypted, deflated
+  document fits Firestore's 1 MiB (always up to 749 000 bytes of JSON) (D-60).
+- The error code `unlinked` is now `closed`.
+- Clarify the no-clients compatibility policy in contributor and review instructions and current
+  documentation: prefer the simplest correct design, with no compatibility shims, migrations,
+  deprecation periods or major-version bumps required solely for compatibility until clients
+  arrive (D-55). Security, correctness and documentation requirements still apply.
 
+### Removed
+
+- Token custody in the library: the generated-on-first-use token, the IndexedDB token record and
+  its co-located wrapping key, `rememberDevice`, `link()`, `unlink()`, `token`, `onToken`,
+  `exportToken()` and the `would-replace` error (D-57).
+- The passkey backup: `passkeyBackup()`, `save()`, `restore()`, online keyslot documents, the
+  `burrow/slot/v1` and `burrow/prf/v1` derivations and the token-bound passkey user handle
+  (D-58).
+- The synchronous `storage` facade, `getBytesInUse()`, `exportJSON()`, `importJSON()`,
+  `inspect()`, `get(keys, { fresh })`, and the options `cache`, `syncIntervalMs`, `debounceMs`,
+  `maxItemBytes`, `debug` and `firestore` (D-57). Polling is gone; the offline wrapper uses the
+  backend's listener, visibility and reconnection.
 
 ## [0.1.1] - 2026-10-10
 

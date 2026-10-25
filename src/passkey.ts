@@ -1,27 +1,20 @@
-// burrow-storage/passkey. KP-5..8, ENC-11, SEC-7: a passkey backs up the
-// storage token in a keyslot, a backend document encrypted under a key derived
-// from the passkey's PRF output. The passkey never becomes the token.
+// burrow-storage/passkey (D-58): a storage token derived from a passkey. The
+// WebAuthn PRF extension gives a fixed 32-byte secret per credential and input;
+// HKDF turns it into one token per app. Nothing is stored, on the device or in
+// any backend: the passkey reproduces the token wherever it is available. It is
+// independent of the core and the offline wrapper; the token string is the only
+// link (D-42).
 import { randomBytes, utf8, zeroise } from "./bytes.js";
-import {
-  PRF_SALT_V1,
-  derivePasskeyUserHandle,
-  deriveSlotKeys,
-  type SlotKeys,
-} from "./codec/derive.js";
-import { type DocCipher, open, seal } from "./codec/envelope.js";
-import { decodeToken, encodeToken } from "./codec/token.js";
-import { defaultBackend, validateBackend } from "./config.js";
-import { BackendError, BurrowError } from "./errors.js";
-import type { Backend } from "./types.js";
+import { PRF_SALT, derivePasskeySecret } from "./codec/derive.js";
+import { encodeToken } from "./codec/token.js";
+import { BurrowError } from "./errors.js";
 
-export interface PasskeyBackupOptions {
+export interface PasskeyTokenOptions {
   /**
-   * Backend instance where the keyslot lives. Default: resolve the page's
-   * config, like `burrow()`. This option does not accept BackendConfig.
-   * `save()` and `restore()` reject `backend` before prompting when the
-   * backend is missing, invalid, or the page config cannot be resolved.
+   * The app the token is for, as passed to `burrow()`. One passkey gives each
+   * app its own token. Must match /^[a-z0-9-]{1,64}$/.
    */
-  backend?: Backend;
+  app: string;
   /**
    * WebAuthn rp.id. Default: the page's host. Set it to the registrable domain
    * to share across subdomains. Case and IDNs are canonicalised as URL hosts;
@@ -32,47 +25,43 @@ export interface PasskeyBackupOptions {
   /** Relying-party display name. Default: the page's host. */
   rpName?: string;
   /**
-   * user.name shown by the authenticator. Default: the page's host. Never an
-   * email unless you choose one. Presentation only: the user handle derives
-   * from the decoded token and effective RP ID, independently of this label.
+   * user.name shown by the authenticator for a new passkey. Default: `app`.
+   * Presentation only: it does not enter the token.
    */
   userName?: string;
-  /**
-   * user.displayName shown by the authenticator. Default: `userName`. It does
-   * not affect the user handle or the replacement scope. Applies to the new
-   * credential; this utility does not rename an existing passkey.
-   */
+  /** user.displayName for a new passkey. Default: `userName`. */
   displayName?: string;
   /** How long a prompt may stay open, in ms. Default 120 000. */
   timeoutMs?: number;
 }
 
-/** Backs up a storage token behind a passkey, and gets it back. */
-export interface PasskeyBackup {
+/**
+ * Gets a storage token from a passkey. Call `create()` and `get()` from a user
+ * gesture; the app decides when.
+ */
+export interface PasskeyToken {
   /**
    * Whether this browser can create a passkey with the PRF extension, in a
-   * secure context. Never prompts (KP-7).
+   * secure context. Never prompts (KP-7). The authenticator chosen at the
+   * prompt may still lack PRF.
    */
   available(): Promise<boolean>;
   /**
-   * Create a passkey and store `token` in a keyslot only it can open (KP-5).
-   * A passkey for the same token and RP may be replaced before this backup is
-   * written, regardless of its labels. Different tokens have distinct handles.
-   * Keep the token elsewhere: a failure after creation does not restore its
-   * old passkey. Restore also needs the backend that holds the keyslot.
-   * Call from a user gesture. Rejects `bad-token`, `cancelled` (the prompt was
-   * dismissed), `prf-unsupported`, `backend` or `conflict`.
-   * Invalid `rpId` rejects with TypeError before prompting or backend access.
+   * Create a new passkey and return the token it gives this app: a new
+   * identity. Never replaces an existing passkey. Rejects `cancelled` (the
+   * prompt was dismissed or timed out), `prf-unsupported`, or the browser's
+   * SecurityError when `rpId` does not fit the page. Some
+   * authenticators need a second prompt to evaluate PRF; if that one is
+   * dismissed, the passkey exists and `get()` returns its token later.
    */
-  save(token: string): Promise<void>;
+  create(): Promise<string>;
   /**
-   * Ask for a passkey and return the token from its keyslot (KP-6): one
-   * prompt. Resolves `null` when the prompt is dismissed or the passkey has no
-   * keyslot. Call from a user gesture (KP-8). Rejects `prf-unsupported`,
-   * `decrypt-failed` or `backend`.
-   * Invalid `rpId` rejects with TypeError before prompting or backend access.
+   * Ask for an existing passkey (the user picks it) and return the token it
+   * gives this app: the same token every time for the same passkey. Rejects
+   * `cancelled` (dismissed, timed out, or no passkey), `prf-unsupported`, or
+   * the browser's SecurityError when `rpId` does not fit the page.
    */
-  restore(): Promise<string | null>;
+  get(): Promise<string>;
 }
 
 type PrfResults = { enabled?: boolean; results?: { first?: BufferSource } };
@@ -80,7 +69,7 @@ const prfOf = (c: PublicKeyCredential) =>
   (c.getClientExtensionResults() as { prf?: PrfResults }).prf;
 const prfInput = () =>
   ({
-    prf: { eval: { first: utf8(PRF_SALT_V1) } },
+    prf: { eval: { first: utf8(PRF_SALT) } },
   }) as AuthenticationExtensionsClientInputs;
 const bytes = (b: BufferSource) =>
   new Uint8Array(
@@ -88,9 +77,9 @@ const bytes = (b: BufferSource) =>
       ? b
       : b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength),
   );
-// Use the same canonical RP for the handle and every WebAuthn request. Reject
-// URL fields rather than silently dropping them; WebAuthn validates whether
-// the resulting domain is allowed for the current origin.
+// Use the same canonical RP for every WebAuthn request. Reject URL fields
+// rather than silently dropping them; WebAuthn validates whether the resulting
+// domain is allowed for the current origin.
 function canonicalRpId(value: string): string {
   try {
     if (typeof value !== "string" || !value || /[:/?#@\\%\s]/.test(value))
@@ -100,81 +89,52 @@ function canonicalRpId(value: string): string {
     throw new TypeError("invalid relying-party id");
   }
 }
-const slotCipher = (s: SlotKeys): DocCipher => ({
-  key: s.kek,
-  mac: s.slotMac,
-  aad: s.slotId + "slot",
-});
 
-function dismissed(e: unknown): boolean {
-  return (
-    (e as DOMException)?.name === "NotAllowedError" ||
-    (e as DOMException)?.name === "AbortError"
-  );
+/**
+ * WebAuthn reports a dismissed prompt, a timeout and "no matching passkey" as
+ * the same NotAllowedError, on purpose; all are `cancelled`. A SecurityError
+ * (an `rpId` that does not fit the page) is the site's to fix: it passes
+ * through.
+ */
+function credentialError(e: unknown): unknown {
+  const name = (e as DOMException)?.name;
+  if (name === "SecurityError") return e;
+  return name === "NotAllowedError" || name === "AbortError"
+    ? new BurrowError("cancelled", "the passkey prompt was dismissed", {
+        cause: e,
+      })
+    : new BurrowError("prf-unsupported", undefined, { cause: e });
 }
 
-async function writeSlot(
-  backend: Backend,
-  s: SlotKeys,
-  secret: Uint8Array,
-): Promise<void> {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const cur = await backend.get(s.slotId);
-    const rev = cur ? cur.rev + 1 : 0;
-    const plain = new Uint8Array(secret);
-    let env;
-    try {
-      env = await seal(slotCipher(s), s.slotId, rev, plain, Date.now());
-    } finally {
-      zeroise(plain); // SEC-1
-    }
-    try {
-      await backend.put(s.slotId, env, cur ? cur.rev : null);
-      return;
-    } catch (e) {
-      if (!(e instanceof BackendError && e.code === "conflict")) throw e;
-    }
-  }
-  throw new BurrowError("conflict");
-}
-
-export function passkeyBackup(
-  options: PasskeyBackupOptions = {},
-): PasskeyBackup {
+export function passkeyToken(options: PasskeyTokenOptions): PasskeyToken {
+  const app = options?.app;
+  if (typeof app !== "string" || !/^[a-z0-9-]{1,64}$/.test(app))
+    throw new TypeError("app must match /^[a-z0-9-]{1,64}$/");
   const host = () => globalThis.location?.hostname ?? "localhost";
   const rp = () =>
     canonicalRpId(options.rpId === undefined ? host() : options.rpId);
   const timeout = options.timeoutMs ?? 120_000;
-  let backend: Promise<Backend> | undefined;
-  const store = () =>
-    (backend ??= (async () => {
-      let b: Backend | null;
-      try {
-        b =
-          options.backend === undefined
-            ? await defaultBackend()
-            : validateBackend(options.backend);
-      } catch {
-        // Factory exceptions can contain arbitrary config values, even in a
-        // BurrowError. Match the core's fixed config error without a cause.
-        throw new BurrowError("backend", "backend configuration failed");
-      }
-      if (!b)
-        throw new BurrowError("backend", "a passkey keyslot needs a backend");
-      return b;
-    })().catch((e) => {
-      backend = undefined; // try again on the next call
-      throw e;
-    }));
+
+  /** The app's token from a PRF output, which is zeroised. */
+  async function tokenOf(prf: Uint8Array): Promise<string> {
+    let secret: Uint8Array | undefined;
+    try {
+      secret = await derivePasskeySecret(prf, app);
+      return await encodeToken(secret);
+    } finally {
+      zeroise(prf); // SEC-1
+      zeroise(secret);
+    }
+  }
 
   /**
-   * One assertion with the PRF extension; null when dismissed. Discoverable:
-   * the user picks the passkey.
+   * One assertion with the PRF extension. Without `credentialId` it is
+   * discoverable: the user picks the passkey.
    */
   async function evaluate(
     rpId: string,
     credentialId?: Uint8Array<ArrayBuffer>,
-  ): Promise<Uint8Array | null> {
+  ): Promise<Uint8Array> {
     let cred: PublicKeyCredential | null;
     try {
       cred = (await navigator.credentials.get({
@@ -190,10 +150,9 @@ export function passkeyBackup(
         },
       })) as PublicKeyCredential | null;
     } catch (e) {
-      if (dismissed(e)) return null;
-      throw new BurrowError("prf-unsupported", undefined, { cause: e });
+      throw credentialError(e);
     }
-    if (!cred) return null;
+    if (!cred) throw new BurrowError("cancelled");
     const first = prfOf(cred)?.results?.first;
     if (!first) throw new BurrowError("prf-unsupported");
     return bytes(first);
@@ -224,94 +183,68 @@ export function passkeyBackup(
     },
 
     // KP-5, SEC-7: discoverable credential, user verification required, no
-    // attestation.
-    async save(token) {
-      const secret = await decodeToken(token); // bad-token before any prompt
+    // attestation. A random user handle, so a new passkey never replaces one.
+    async create() {
+      const rpId = rp();
+      const userName = options.userName ?? app;
+      let cred: PublicKeyCredential | null;
       try {
-        const rpId = rp();
-        const b = await store();
-        const userName = options.userName ?? host();
-        const userId = await derivePasskeyUserHandle(secret, rpId);
-        let cred: PublicKeyCredential | null;
-        try {
-          cred = (await navigator.credentials.create({
-            publicKey: {
-              rp: {
-                name: options.rpName ?? host(),
-                id: rpId,
-              },
-              user: {
-                id: userId,
-                name: userName,
-                displayName: options.displayName ?? userName,
-              },
-              challenge: randomBytes(32),
-              pubKeyCredParams: [
-                { type: "public-key", alg: -7 },
-                { type: "public-key", alg: -257 },
-              ],
-              authenticatorSelection: {
-                residentKey: "required",
-                requireResidentKey: true,
-                userVerification: "required",
-              },
-              attestation: "none",
-              timeout,
-              extensions: prfInput(),
+        cred = (await navigator.credentials.create({
+          publicKey: {
+            rp: { name: options.rpName ?? host(), id: rpId },
+            user: {
+              id: randomBytes(16),
+              name: userName,
+              displayName: options.displayName ?? userName,
             },
-          })) as PublicKeyCredential | null;
-        } catch (e) {
-          if (dismissed(e))
-            throw new BurrowError(
-              "cancelled",
-              "the passkey prompt was dismissed",
-              { cause: e },
-            );
-          throw new BurrowError("prf-unsupported", undefined, { cause: e });
-        }
-        if (!cred) throw new BurrowError("cancelled");
-        const prf = prfOf(cred);
-        if (!prf?.enabled && !prf?.results?.first)
-          throw new BurrowError("prf-unsupported");
-        // Some authenticators return PRF output at creation; the rest need one
-        // assertion.
-        const out = prf.results?.first
-          ? bytes(prf.results.first)
-          : await evaluate(rpId, new Uint8Array(cred.rawId));
-        if (!out)
-          throw new BurrowError(
-            "cancelled",
-            "the passkey prompt was dismissed",
-          );
-        try {
-          await writeSlot(b, await deriveSlotKeys(out), secret);
-        } finally {
-          zeroise(out);
-        }
-      } finally {
-        zeroise(secret); // SEC-1
+            challenge: randomBytes(32),
+            pubKeyCredParams: [
+              { type: "public-key", alg: -7 },
+              { type: "public-key", alg: -257 },
+            ],
+            authenticatorSelection: {
+              residentKey: "required",
+              requireResidentKey: true,
+              userVerification: "required",
+            },
+            attestation: "none",
+            timeout,
+            extensions: prfInput(),
+          },
+        })) as PublicKeyCredential | null;
+      } catch (e) {
+        throw credentialError(e);
       }
+      if (!cred) throw new BurrowError("cancelled");
+      const prf = prfOf(cred);
+      if (!prf?.enabled && !prf?.results?.first) {
+        // The new passkey cannot give a token. Where the browser supports it,
+        // tell the passkey provider so it can drop the useless credential.
+        try {
+          void (
+            PublicKeyCredential as unknown as {
+              signalUnknownCredential?: (o: object) => Promise<void>;
+            }
+          )
+            .signalUnknownCredential?.({ rpId, credentialId: cred.id })
+            ?.catch(() => {});
+        } catch {
+          /* not supported */
+        }
+        throw new BurrowError("prf-unsupported");
+      }
+      // Some authenticators return PRF output at creation; the rest need one
+      // assertion.
+      return tokenOf(
+        prf.results?.first
+          ? bytes(prf.results.first)
+          : await evaluate(rpId, new Uint8Array(cred.rawId)),
+      );
     },
 
-    // KP-6: one passkey prompt per new device.
-    async restore() {
-      const rpId = rp();
-      const b = await store();
-      const prf = await evaluate(rpId);
-      if (!prf) return null;
-      let secret: Uint8Array | undefined;
-      try {
-        const slot = await deriveSlotKeys(prf);
-        const env = await b.get(slot.slotId);
-        if (!env) return null;
-        if ("x" in env) throw new BurrowError("expired");
-        secret = await open(slotCipher(slot), env);
-        if (secret.length !== 32) throw new BurrowError("decrypt-failed");
-        return await encodeToken(secret);
-      } finally {
-        zeroise(prf);
-        if (secret) zeroise(secret);
-      }
+    // KP-6: one passkey prompt on any device the passkey is available on.
+    async get() {
+      return tokenOf(await evaluate(rp()));
     },
   };
 }

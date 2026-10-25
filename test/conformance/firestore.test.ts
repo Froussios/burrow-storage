@@ -145,20 +145,15 @@ describe("Burrow over FirestoreBackend (emulator)", () => {
     }
   });
 
-  it("two devices sync through the emulator", async () => {
+  it("two devices sync through the emulator: the core and the offline wrapper", async () => {
     const world = new World();
     try {
-      const A = world.device(),
-        B = world.device();
-      const a = await A.open({ backend: make() });
-      const b = await B.open({ backend: make() });
+      const a = await world.device().core({ backend: make() });
+      const b = await world.device().open({ backend: make() });
       await a.set({ theme: "dark", draft: "hello" });
-      await a.syncNow();
-      await b.link({ token: await a.exportToken() });
       expect(await b.get()).toEqual({ theme: "dark", draft: "hello" });
       await b.remove("draft");
       await b.syncNow();
-      await a.syncNow();
       expect(await a.get()).toEqual({ theme: "dark" });
     } finally {
       world.close();
@@ -168,11 +163,10 @@ describe("Burrow over FirestoreBackend (emulator)", () => {
   it("FS-9 onSnapshot on the manifest delivers changes", async () => {
     const world = new World();
     try {
-      const a = await world.device().open({ backend: make() });
+      const a = await world.device().core({ backend: make() });
       const b = await world.device().open({ backend: make() });
-      await b.link({ token: await a.exportToken() });
+      await b.get();
       await a.set({ live: 1 });
-      await a.syncNow();
       await expect
         .poll(async () => (await b.get("live")).live, { timeout: 10_000 })
         .toBe(1);

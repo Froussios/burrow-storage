@@ -24,64 +24,91 @@
       <header>
         <h1>Burrow</h1>
         <p class="lede">
-          Your notes and theme follow you to other devices. No account, no
-          login, no server of ours.
+          Your notes and theme follow you to other devices. No account and no
+          server of ours: a storage token opens your data.
         </p>
-        <span id="status" class="badge" data-status="idle">starting…</span>
+        <span id="status" class="badge" data-status="locked">starting…</span>
       </header>
 
-      <section aria-labelledby="h-draft">
-        <div class="row">
-          <h2 id="h-draft">Draft</h2>
-          <button id="theme" type="button" aria-pressed="false">
-            Dark theme
-          </button>
-        </div>
-        <textarea
-          id="draft"
-          rows="8"
-          placeholder="Type something. It saves as you go."
-          aria-label="Draft"
-        ></textarea>
-      </section>
-
-      <section aria-labelledby="h-token">
-        <h2 id="h-token">Storage token</h2>
-        <p class="warn">
-          Burrow cannot reset your data. Keep your storage token.
-        </p>
-        <code id="code">…</code>
-        <dl class="facts">
-          <dt>Source</dt>
-          <dd id="token-source">…</dd>
-          <dt>Passkey backup</dt>
-          <dd id="token-backup">…</dd>
-        </dl>
+      <section id="signin" aria-labelledby="h-signin" hidden>
+        <h2 id="h-signin">Open your storage</h2>
+        <fieldset class="modes">
+          <legend>On this device</legend>
+          <label>
+            <input type="radio" name="mode" value="often" checked />
+            Sign in on every visit
+          </label>
+          <p class="hint">
+            The token stays in this page's memory. Reloading or closing the page
+            locks it again. Nothing is stored on this device.
+          </p>
+          <label>
+            <input type="radio" name="mode" value="once" />
+            Stay signed in
+          </label>
+          <p class="hint">
+            This page keeps the token and a copy of your data in this browser,
+            unencrypted, so it opens at once and works offline. Anyone who can
+            read this browser's files can read both and use the token.
+          </p>
+        </fieldset>
         <div class="row wrap">
-          <button id="copy-token" type="button">Copy token</button>
+          <button id="passkey-get" type="button">Use my passkey</button>
+          <button id="passkey-create" type="button">Create a passkey</button>
+          <button id="new-token" type="button">Start with a new token</button>
         </div>
-      </section>
-
-      <section aria-labelledby="h-backup">
-        <h2 id="h-backup">Backup</h2>
-        <div class="row wrap">
-          <button id="passkey" type="button">Create new backup with key</button>
-          <button id="export" type="button">Export JSON</button>
-          <button id="forget" type="button">Forget this device</button>
-        </div>
-        <form id="link-form" class="row wrap">
-          <label for="link-code">Link to existing backup</label>
+        <form id="token-form" class="row wrap">
+          <label for="token-input">Or enter a storage token</label>
           <input
-            id="link-code"
+            id="token-input"
             autocomplete="off"
             spellcheck="false"
             placeholder="XXXX-XXXX-…"
           />
-          <button type="submit">Link this device</button>
-          <button id="link-passkey" type="button">Use my passkey</button>
+          <button type="submit">Open</button>
         </form>
-        <p id="message" role="status"></p>
       </section>
+
+      <div id="app" hidden>
+        <section aria-labelledby="h-draft">
+          <div class="row">
+            <h2 id="h-draft">Draft</h2>
+            <button id="theme" type="button" aria-pressed="false">
+              Dark theme
+            </button>
+          </div>
+          <textarea
+            id="draft"
+            rows="8"
+            placeholder="Type something. It saves as you go."
+            aria-label="Draft"
+          ></textarea>
+        </section>
+
+        <section aria-labelledby="h-token">
+          <h2 id="h-token">Storage token</h2>
+          <p class="warn">
+            Burrow cannot reset your data. Keep your storage token, or your
+            passkey if it gave you the token.
+          </p>
+          <code id="code">…</code>
+          <dl class="facts">
+            <dt>From</dt>
+            <dd id="token-source">…</dd>
+            <dt>Token</dt>
+            <dd id="custody">…</dd>
+            <dt>Data</dt>
+            <dd id="data-copy">…</dd>
+          </dl>
+          <div class="row wrap">
+            <button id="copy-token" type="button">Copy token</button>
+            <button id="export" type="button">Export JSON</button>
+            <button id="signout" type="button">Sign out</button>
+          </div>
+        </section>
+      </div>
+
+      <p id="message" role="status"></p>
 
       <details>
         <summary>Debug</summary>

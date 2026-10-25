@@ -1,49 +1,52 @@
-import type { AppMeta, Cache, CachedItem, StoredToken } from "./types.js";
+import type { AppMeta, Cache, CachedItem, Updated } from "./types.js";
 
 /**
  * Holds what a device would keep in IndexedDB. One per simulated device; the
  * page has one.
  */
 export class MemoryDevice {
-  readonly apps = new Map<string, MemoryApp>();
+  readonly copies = new Map<string, MemoryCopy>();
 }
 
-interface MemoryApp {
+interface MemoryCopy {
   items: Map<string, CachedItem>;
   meta: AppMeta;
-  token?: StoredToken;
 }
 
 const pageDevice = new MemoryDevice();
 
 const copy = <T>(v: T): T => structuredClone(v);
-// The CryptoKey is immutable and shared; the wrapped bytes are copied.
-const copyToken = (t: StoredToken): StoredToken => ({
-  ...t,
-  wrapped: new Uint8Array(t.wrapped),
-});
 
 /** SYNC-1: the memory cache, for tests and private-mode fallback (SYNC-4). */
 export class MemoryCache implements Cache {
   readonly kind = "memory" as const;
-  readonly #app: MemoryApp;
+  readonly #name: string;
+  readonly #device: MemoryDevice;
+  readonly #copy: MemoryCopy;
 
-  constructor(app: string, device: MemoryDevice = pageDevice) {
-    let a = device.apps.get(app);
-    if (!a) device.apps.set(app, (a = { items: new Map(), meta: {} }));
-    this.#app = a;
+  constructor(
+    app: string,
+    identity: string,
+    device: MemoryDevice = pageDevice,
+  ) {
+    this.#name = `${app}:${identity}`;
+    this.#device = device;
+    let c = device.copies.get(this.#name);
+    if (!c) device.copies.set(this.#name, (c = { items: new Map(), meta: {} }));
+    this.#copy = c;
   }
 
   async loadItems() {
-    return new Map([...this.#app.items].map(([k, v]) => [k, copy(v)]));
+    return new Map([...this.#copy.items].map(([k, v]) => [k, copy(v)]));
   }
 
-  async putItems(entries: Iterable<[string, CachedItem | null]>) {
-    // Copy everything first so a value that cannot be cloned leaves the batch
-    // unwritten.
-    const list = [...entries].map(([k, v]) => [k, v && copy(v)] as const);
-    for (const [k, v] of list)
-      v ? this.#app.items.set(k, v) : this.#app.items.delete(k);
+  async getItems(keys: string[]) {
+    const out = new Map<string, CachedItem>();
+    for (const k of keys) {
+      const v = this.#copy.items.get(k);
+      if (v) out.set(k, copy(v));
+    }
+    return out;
   }
 
   async updateItems(
@@ -55,35 +58,31 @@ export class MemoryCache implements Cache {
   ) {
     // Compute and copy every change before applying any, so the batch is all or
     // nothing.
-    const changes: [string, CachedItem | null][] = [];
+    const changes: [string, CachedItem | undefined, CachedItem | null][] = [];
     for (const k of keys) {
-      const cur = this.#app.items.get(k);
+      const cur = this.#copy.items.get(k);
       const next = fn(k, cur && copy(cur));
-      if (next !== undefined) changes.push([k, next && copy(next)]);
+      if (next !== undefined) changes.push([k, cur, next && copy(next)]);
     }
-    const out = new Map<string, CachedItem | null>();
-    for (const [k, v] of changes) {
-      v ? this.#app.items.set(k, v) : this.#app.items.delete(k);
-      out.set(k, v && copy(v));
+    const out: Updated = new Map();
+    for (const [k, before, v] of changes) {
+      v ? this.#copy.items.set(k, v) : this.#copy.items.delete(k);
+      out.set(k, [before && copy(before), v && copy(v)]);
     }
     return out;
   }
 
-  async clearItems() {
-    this.#app.items.clear();
-  }
   async getMeta() {
-    return copy(this.#app.meta);
+    return copy(this.#copy.meta);
   }
   async setMeta(patch: Partial<AppMeta>) {
-    Object.assign(this.#app.meta, copy(patch));
+    Object.assign(this.#copy.meta, copy(patch));
   }
-  async getToken() {
-    return this.#app.token && copyToken(this.#app.token);
-  }
-  async setToken(token: StoredToken | null) {
-    if (token) this.#app.token = copyToken(token);
-    else delete this.#app.token;
+  async destroy() {
+    if (this.#device.copies.get(this.#name) === this.#copy)
+      this.#device.copies.delete(this.#name);
+    this.#copy.items.clear();
+    this.#copy.meta = {};
   }
 
   close() {}

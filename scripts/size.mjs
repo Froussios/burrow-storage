@@ -1,7 +1,9 @@
 #!/usr/bin/env node
-// CI size check (NF table): core + memory backend ≤ 12 KB min+gzip; the passkey
-// backup (burrow-storage/passkey) ≤ 2 KB on top of it. The Firestore adapter
-// and lazy SDK have separate 2 KB and 150 KB budgets outside the core budget.
+// CI size check (NF table): core + memory backend ≤ 12 KB min+gzip, and with
+// the offline wrapper (burrow-storage/offline) still ≤ 12 KB; the passkey token
+// utility (burrow-storage/passkey) ≤ 2 KB on top of the core. The Firestore
+// adapter and lazy SDK have separate 2 KB and 150 KB budgets outside the core
+// budget.
 import { build } from "esbuild";
 import { gzipSync } from "node:zlib";
 
@@ -37,25 +39,34 @@ async function measure(name, contents, stubs, limit) {
   return { ok, gz };
 }
 
-// The core alone: what `burrow({ app, backend: new MemoryBackend() })` pulls
-// in, minus the Firestore adapter (loaded on demand).
+// The core alone: what `burrow({ app, backend: new MemoryBackend(), token })`
+// pulls in, minus the Firestore adapter (loaded on demand).
 const core = await measure(
   "core + memory backend",
-  `export { burrow, MemoryBackend, BurrowError } from "./src/index.ts";`,
+  `export { burrow, generateToken, MemoryBackend, BurrowError } from "./src/index.ts";`,
+  /backends\/firestore\.js$/,
+  12 * 1024,
+);
+// D-57: the offline wrapper is optional and keeps the whole 12 KB envelope the
+// local-first core had: core + wrapper + memory backend.
+const withOffline = await measure(
+  "core + offline wrapper + memory backend",
+  `export { burrow, generateToken, MemoryBackend, BurrowError } from "./src/index.ts";
+   export { offline } from "./src/offline.ts";`,
   /backends\/firestore\.js$/,
   12 * 1024,
 );
 const withPk = await measure(
-  "core + memory backend + passkey backup (info)",
-  `export { burrow, MemoryBackend, BurrowError } from "./src/index.ts";
-   export { passkeyBackup } from "./src/passkey.ts";`,
+  "core + memory backend + passkey token (info)",
+  `export { burrow, generateToken, MemoryBackend, BurrowError } from "./src/index.ts";
+   export { passkeyToken } from "./src/passkey.ts";`,
   /backends\/firestore\.js$/,
   Infinity,
 );
 const pkGz = withPk.gz - core.gz;
 const pkOk = pkGz <= 2 * 1024;
 console.log(
-  `${pkOk ? "ok  " : "FAIL"} passkey backup (incremental): ${(pkGz / 1024).toFixed(2)} KB min+gzip (limit 2 KB)`,
+  `${pkOk ? "ok  " : "FAIL"} passkey token (incremental): ${(pkGz / 1024).toFixed(2)} KB min+gzip (limit 2 KB)`,
 );
 await measure(
   "everything incl. Firestore adapter, excl. SDK (info)",
@@ -78,4 +89,6 @@ const sdk = await measure(
   undefined,
   150 * 1024,
 );
-process.exit(core.ok && pkOk && firestore.ok && sdk.ok ? 0 : 1);
+process.exit(
+  core.ok && withOffline.ok && pkOk && firestore.ok && sdk.ok ? 0 : 1,
+);

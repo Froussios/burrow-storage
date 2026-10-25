@@ -12,8 +12,7 @@ import {
 import {
   commitment,
   deriveAppKeys,
-  derivePasskeyUserHandle,
-  deriveSlotKeys,
+  derivePasskeySecret,
   docId,
   token,
 } from "../../src/codec/derive.js";
@@ -102,43 +101,36 @@ describe("ENC-1/ENC-2 derivation matches the committed vectors", () => {
       );
   });
 
-  it("slot keys", async () => {
-    const s = await deriveSlotKeys(fromHex(vectors.slot.prfHex));
-    expect(s.slotId).toBe(vectors.slot.slotId);
-    expect(await token(s.slotMac, s.slotId, 0)).toBe(vectors.slot.tok0);
-  });
-
-  it.each(vectors.passkeyUser)(
-    "passkey user handle for $rpId matches the frozen 128-bit HKDF vector",
-    async ({ rootSecretHex, rpId, handleHex }) => {
-      const secret = fromHex(rootSecretHex);
-      expect(hex(await derivePasskeyUserHandle(secret, rpId))).toBe(handleHex);
-      expect(hex(secret)).toBe(rootSecretHex);
-      expect(handleHex).toHaveLength(32);
+  it.each(vectors.passkeyToken)(
+    "D-58 the passkey token for app $app matches the HKDF vector",
+    async ({ prfHex, app, secretHex, token: t }) => {
+      const prf = fromHex(prfHex);
+      const secret = await derivePasskeySecret(prf, app);
+      expect(hex(secret)).toBe(secretHex);
+      expect(await encodeToken(secret)).toBe(t);
+      expect(hex(prf)).toBe(prfHex); // the input is not consumed
     },
   );
 
-  it("passkey user handles use a separate HKDF domain from app and keyslot keys", async () => {
-    const rpId = vectors.passkeyUser[0]!.rpId;
-    const handle = hex(await derivePasskeyUserHandle(root, rpId));
-    const ikm = await subtle().importKey("raw", root, "HKDF", false, [
+  it("D-58 a passkey token uses its own HKDF domain, apart from the app keys", async () => {
+    const prf = fromHex(vectors.passkeyToken[0]!.prfHex);
+    const app = vectors.passkeyToken[0]!.app;
+    const secret = hex(await derivePasskeySecret(prf, app));
+    const ikm = await subtle().importKey("raw", prf, "HKDF", false, [
       "deriveBits",
     ]);
     for (const [salt, info] of [
-      ["burrow/v1", "path" + rpId],
-      ["burrow/v1", "enc" + rpId],
-      ["burrow/v1", "auth" + rpId],
-      ["burrow/slot/v1", "kek"],
-      ["burrow/slot/v1", "auth"],
-      ["burrow/slot/v1", "slot"],
-      ["burrow/v1", "burrow/passkey-user/v1" + rpId],
+      ["burrow/v1", "path" + app],
+      ["burrow/v1", "enc" + app],
+      ["burrow/v1", "auth" + app],
+      ["burrow/v1", app],
     ]) {
       const other = await subtle().deriveBits(
         { name: "HKDF", hash: "SHA-256", salt: utf8(salt!), info: utf8(info!) },
         ikm,
-        128,
+        256,
       );
-      expect(handle).not.toBe(hex(new Uint8Array(other)));
+      expect(secret).not.toBe(hex(new Uint8Array(other)));
     }
   });
 

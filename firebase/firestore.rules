@@ -1,7 +1,7 @@
 rules_version = '2';
 service cloud.firestore {
   // One collection for every Burrow app and user. Document id is an unguessable
-  // 43-char derived id; manifests, items and keyslots look identical to the store.
+  // 43-char derived id; manifests and items look identical to the store.
   match /databases/{db}/documents/burrow/{id} {
 
     function shape(d) {

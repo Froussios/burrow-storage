@@ -17,12 +17,6 @@
     "base0": "6ac6ae0810006a8e3acfafde0944f4583454ba394c93390a98206c3bf35b012e",
     "theme7": "9c27174a1422ee1f96c9611fab6aa3c31f5d365f69d2467ef8e6b3cafbf1615d"
   },
-  "slot": {
-    "prfHex": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
-    "slotId": "03vZS2uCxKGE9kACRqrGOgP2VV1-EFHoC-5y6UQPJ9c",
-    "tok0": "TguVwHgqW1hVdbnELjpappPYA4jneuq1n6Ur-QOe1Mg",
-    "kekSha256": "fe0d8f3a8c8585adac517f5375550e7845b5f039b8897bac8012eedbb2cb4392"
-  },
   "syncCode": "0400-20G3-0G2G-C1R8-1450-P30D-1R7H-048J-2CA1-A5GQ-30CH-M6RW-3MF1-YJ8H",
   "unicodeKey": "κλειδί 鍵 🔑",
   "chain": [
@@ -116,26 +110,30 @@
     "app": "other",
     "base": "G4wbI34boDMXw-jinB2Yo8BsMU8qT-w6N3yHDFn5rvY"
   },
-  "passkeyUser": [
+  "passkeyToken": [
     {
-      "rootSecretHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
-      "rpId": "example.com",
-      "handleHex": "68127e7f59376e42d8d8c3f8c53e5155"
+      "prfHex": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+      "app": "notes",
+      "secretHex": "ff4545506235fd107d1ca969cf8f029b0648dbdf5ee79772e85fbc933976d132",
+      "token": "07ZM-AHAG-C8TZ-T43X-3JMP-KKWF-0ADG-CJ6V-VXFE-F5VJ-X1FV-S4SS-EV8K-4JAZ"
     },
     {
-      "rootSecretHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
-      "rpId": "notes.example.com",
-      "handleHex": "a1b5b85a4e965a7c062dfa7db7f07929"
+      "prfHex": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+      "app": "test-app",
+      "secretHex": "7f264a19b06f4ea40aa0c8ddadfa393357465113d02ab21d5217a307058384f6",
+      "token": "05ZJ-CJGS-P1QM-X90A-M34D-VBFT-74SN-EHJH-2F82-NCGX-A8BT-61R5-GE2F-CYJQ"
     },
     {
-      "rootSecretHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
-      "rpId": "xn--bcher-kva.example",
-      "handleHex": "6735b38b392daf0e220bc83eaa46be06"
+      "prfHex": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+      "app": "x",
+      "secretHex": "59f2977d03f22f8e836f39cc74ee41bd5ebbda97ebb3c3f9f9a5b8f4b01f1e33",
+      "token": "05CZ-55VX-0FS2-Z3M3-DWWW-RX7E-86YN-XEYT-JZNV-7GZS-Z6JV-HX5G-3WF3-6ZWD"
     },
     {
-      "rootSecretHex": "43f3d9f154f34b2614fc1b8a5462925e467f04ea66f6a10734836c05efa51dd2",
-      "rpId": "example.com",
-      "handleHex": "0eecb75291e58ce187a1add0f5f01861"
+      "prfHex": "5dc2080fbbddf7629c458b4dcefb79fae3b0769a633efbcf98e36333d7abcb7a",
+      "app": "notes",
+      "secretHex": "35491781f0b09416ca9dacfb8124ea6920b345423a8326a7a646561bea8bcfe7",
+      "token": "04TM-J5W1-Y2R9-85PA-KPPF-Q094-X9MJ-1CT5-88X8-69N7-MS35-C6ZA-HF7Y-F84W"
     }
   ]
 }

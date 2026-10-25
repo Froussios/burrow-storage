@@ -13,10 +13,9 @@ has hard daily quotas instead of a meter (so abuse can pause sync but never prod
 accepts unauthenticated requests gated by security rules, and its rules language can evaluate
 SHA-256, which is all the write chain needs.
 
-For separate content and keyslot projects, deploy the shipped `firebase/firestore.rules`
-unmodified in both projects; keyslots use the same `burrow` collection and write-token rules.
-See
-[independent configuration](extending.md#independent-token-and-content-storage).
+The project stores content only. Burrow keeps no token record in it or anywhere else; the
+site keeps the token, or a passkey gives it (see
+[token custody](extending.md#token-custody-stays-outside-the-store)).
 
 ## Create the project
 
@@ -85,10 +84,10 @@ billing, Auth, Storage, Functions or Hosting. By hand:
 
 ## Put the config on the page
 
-Any one of:
+Either keep it in the page and pass it on:
 
 ```html
-<!-- A: meta tag, no JavaScript -->
+<!-- A: meta tag -->
 <meta name="burrow-firestore" content='{"apiKey":"…","projectId":"…","appId":"…"}'>
 
 <!-- B: a global -->
@@ -96,15 +95,26 @@ Any one of:
 ```
 
 ```js
-// C: explicitly, with a bundler
-import { burrow } from "burrow-storage";
-import { FirestoreBackend } from "burrow-storage/firestore";
-const store = await burrow({ app: "my-app", backend: new FirestoreBackend({ apiKey: "…", projectId: "…", appId: "…" }) });
+// with A or B (Burrow.burrow and Burrow.readBackendConfig in the script-tag build)
+const store = await burrow({ app: "my-app", backend: readBackendConfig(), token });
 ```
 
-With A or B, `burrow()` finds the config and loads the adapter on demand. Script-tag pages load
-the Firestore SDK from `burrow-firestore.js` next to `burrow.min.js`, on your own origin;
-bundler users import the SDK through the optional `firebase` peer dependency.
+or pass it explicitly:
+
+```js
+// C: with a bundler
+import { burrow } from "burrow-storage";
+import { FirestoreBackend } from "burrow-storage/firestore";
+const store = await burrow({
+  app: "my-app",
+  backend: new FirestoreBackend({ apiKey: "…", projectId: "…", appId: "…" }),
+  token,
+});
+```
+
+`burrow()` never reads the page by itself, and the adapter loads on demand. Script-tag pages load
+the Firestore SDK from `burrow-firestore.js` next to `burrow.min.js`, on your own origin, on the
+first request; bundler users import the SDK through the optional `firebase` peer dependency.
 
 The config may also carry `"collection"` (default `burrow`; the rules file names the collection
 too, so change both) and, for local development, `"emulator": { "host", "port" }`.
@@ -131,29 +141,27 @@ Spark, per day, shared by every app and user on the project: **50 000 reads, 20 
 
 | Operation | Reads | Writes |
 | --- | --- | --- |
-| A sync pass with nothing new | 1 (the manifest) | 0 |
-| The page becoming visible or regaining focus | One sync pass; a focus within five seconds of the last pass costs nothing | 0 |
-| Pulling *k* changed items | 1 + *k* | 0 |
-| Pushing *n* changed items | *n* + 2, plus 1 for each key this device has not synced before | *n* + 1 |
-| Live listener on the manifest | 1 each time it attaches, then 1 per manifest change, this device's own pushes included | 0 |
-| Passkey backup: create | 2 | 1 |
-| Passkey backup: restore | 1, then a sync pass | 0 |
+| `get("k")` or `get(["a", "b"])` | 1 per key | 0 |
+| `get()` | 1 (the manifest) + 1 per item changed since this instance (or the offline copy) last saw it | 0 |
+| Writing *n* items | *n* + 1 to *n* + 2, plus 1 for each key the writer has not seen before | *n* + 1 |
+| Offline wrapper: a refresh with nothing new (visibility, reconnection, `syncNow()`) | 1 (the manifest) | 0 |
+| Offline wrapper: live listener on the manifest | 1 each time it attaches, then 1 per manifest change, this device's own writes included, plus the refresh it triggers | 0 |
+| Passkey token: `create()` or `get()` | 0 | 0 |
 
-Pushes cost more reads than writes because the adapter writes through Firestore transactions,
-which read the document before writing it. A push reads the manifest twice: once when the pass
-pulls, and again inside the transaction that writes it. The listener attaches when the page
-loads, and again when it becomes visible after more than five hidden minutes.
+Writes cost more reads than writes because the adapter writes through Firestore transactions,
+which read the document before writing it, and every write also reads and rewrites the
+manifest. The offline wrapper's listener attaches when it opens, and again when the page becomes
+visible after more than five hidden minutes.
 
-Writes are debounced (`debounceMs`, 1.5 s) and coalesced, so a user typing into a draft field costs
-one write per pause, not per keystroke. Polling runs every `syncIntervalMs` (30 s) while a tab is
-visible: about 120 reads an hour, or 2 900 a day for an always-visible tab. The daily 50 000 reads
-therefore cover roughly 400 hours of open, visible tabs across all your sites. Raise the interval,
-or set it to 0 and rely on the listener plus the visibility and focus triggers, for sites with
-long-lived tabs.
+Every read is a request: the core has no local copy, and the offline wrapper asks the store first
+whenever it answers. Writes are not debounced, so an app that saves a draft on every keystroke
+should wait for a pause first, as the demo does. Nothing polls: an idle tab costs nothing until it
+reads, writes or the manifest changes.
 
-When a ceiling is hit the store answers `resource-exhausted`; Burrow sets `status` to `"offline"`
-with `error.code === "quota"`, keeps unsynced writes, and retries with backoff until the daily
-reset. Nothing can convert that into a charge while the project stays on Spark.
+When a ceiling is hit the store answers `resource-exhausted`; the core rejects with
+`error.code === "quota"`, and the offline wrapper sets `status` to `"offline"` with that error,
+keeps unsynced writes, and retries with backoff. Nothing can convert that into a charge while
+the project stays on Spark.
 
 ## Abuse, honestly
 
@@ -171,9 +179,8 @@ Removed keys leave occupied item documents with a deleted marker; the manifest f
 after 30 days. Optional content-only [inactivity cleanup](retention.md) replaces old payloads
 with permanent `{ x, rev, next }` stubs after 395 days of server write inactivity. It uses ordinary
 owner REST reads/writes outside CI, dry-run by default, exact `updateTime` preconditions and a
-persistent daily budget. It does not enable paid TTL or free permanent stub storage, solve
-ongoing junk creation, or clean token-access payloads. Do not target a mixed content/keyslot
-collection: their encrypted roles cannot be classified. Configure independent stores first.
+persistent daily budget. It does not enable paid TTL or free permanent stub storage, or solve
+ongoing junk creation. Target only a collection that holds Burrow content.
 
 ## Local development
 

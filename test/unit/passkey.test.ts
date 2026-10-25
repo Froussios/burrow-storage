@@ -1,25 +1,20 @@
-// KP-5..8, SEC-7, ENC-11: burrow-storage/passkey against a scripted WebAuthn
+// KP-5..8, SEC-7, D-58: burrow-storage/passkey against a scripted WebAuthn
 // authenticator. Browser coverage with a real (virtual) authenticator lives in
 // test/e2e/passkey.spec.ts.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MemoryBackend } from "../../src/backends/memory.js";
 import {
   b64url,
   concat,
   fromB64url,
-  randomBytes,
+  hex,
   sha256,
   utf8,
 } from "../../src/bytes.js";
-import {
-  PRF_SALT_V1,
-  derivePasskeyUserHandle,
-  deriveSlotKeys,
-} from "../../src/codec/derive.js";
+import { PRF_SALT, derivePasskeySecret } from "../../src/codec/derive.js";
 import { decodeToken, encodeToken } from "../../src/codec/token.js";
-import { BackendError, BurrowError } from "../../src/errors.js";
-import { type PasskeyBackup, passkeyBackup } from "../../src/passkey.js";
-import type { BackendConfig } from "../../src/types.js";
+import { BurrowError } from "../../src/errors.js";
+import { type PasskeyToken, passkeyToken } from "../../src/passkey.js";
+import vectors from "../vectors.json" with { type: "json" };
 import { World } from "../support/devices.js";
 
 const fresh = (b: Uint8Array): ArrayBuffer => b.slice().buffer;
@@ -71,7 +66,7 @@ class FakeAuthenticator {
    * PRF output this authenticator gives for credential `id` with Burrow's salt.
    */
   async expectedPrf(id: string): Promise<Uint8Array> {
-    return this.prf(this.creds.get(id)!, utf8(PRF_SALT_V1));
+    return this.prf(this.creds.get(id)!, utf8(PRF_SALT));
   }
 
   #credential(
@@ -150,6 +145,7 @@ function install(
     isUserVerifyingPlatformAuthenticatorAvailable: vi.fn(
       async () => platform.uv ?? true,
     ),
+    signalUnknownCredential: vi.fn(async (_o: object) => {}),
     ...(platform.caps === null
       ? {}
       : {
@@ -169,18 +165,42 @@ function install(
 }
 
 let auth: FakeAuthenticator;
-let backend: MemoryBackend;
-let p: PasskeyBackup;
-const newToken = () => encodeToken(randomBytes(32));
+let p: PasskeyToken;
 
 beforeEach(() => {
   auth = new FakeAuthenticator();
-  backend = new MemoryBackend();
-  p = passkeyBackup({ backend });
+  p = passkeyToken({ app: "notes" });
 });
 afterEach(() => {
   vi.unstubAllGlobals();
   delete (globalThis.navigator as { credentials?: unknown }).credentials;
+});
+
+/** The token the fake authenticator's credential `id` gives `app`. */
+async function expectedToken(id: string, app = "notes"): Promise<string> {
+  return encodeToken(
+    await derivePasskeySecret(await auth.expectedPrf(id), app),
+  );
+}
+
+describe("passkeyToken() options", () => {
+  it("rejects an invalid app id synchronously", () => {
+    for (const app of [undefined, "", "Upper", "x".repeat(65)])
+      expect(() => passkeyToken({ app } as unknown as { app: string })).toThrow(
+        TypeError,
+      );
+  });
+
+  it("rejects an invalid rpId with TypeError before prompting", async () => {
+    install(auth);
+    for (const rpId of ["", "https://example.com", "example.com:443", "a b"]) {
+      const bad = passkeyToken({ app: "notes", rpId });
+      await expect(bad.create()).rejects.toThrow(TypeError);
+      await expect(bad.get()).rejects.toThrow(TypeError);
+    }
+    expect(auth.create).not.toHaveBeenCalled();
+    expect(auth.get).not.toHaveBeenCalled();
+  });
 });
 
 describe("KP-7 available()", () => {
@@ -205,770 +225,248 @@ describe("KP-7 available()", () => {
     ).not.toHaveBeenCalled();
   });
 
-  it("KP-7 false when there is no user-verifying platform authenticator", async () => {
-    install(auth, { uv: false });
+  it("KP-7 false when getClientCapabilities reports extension:prf false, or the probe throws", async () => {
+    install(auth, { caps: { "extension:prf": false } });
     expect(await p.available()).toBe(false);
-  });
-
-  it("KP-7 false when getClientCapabilities reports extension:prf false", async () => {
-    const PKC = install(auth, { caps: { "extension:prf": false } });
-    expect(await p.available()).toBe(false);
-    expect(PKC.getClientCapabilities).toHaveBeenCalledOnce();
-  });
-
-  it("KP-7 false when the capability probe throws", async () => {
     const PKC = install(auth);
     PKC.isUserVerifyingPlatformAuthenticatorAvailable.mockRejectedValueOnce(
       new Error("boom"),
     );
     expect(await p.available()).toBe(false);
+    install(auth, { uv: false });
+    expect(await p.available()).toBe(false);
   });
 
-  it("KP-7 true with a UV platform authenticator and PRF (or no capability report)", async () => {
+  it("KP-7 true with a UV platform authenticator and PRF (or no capability report), and never prompts", async () => {
     install(auth);
     expect(await p.available()).toBe(true);
-    // extension:prf unknown: falls back to the UV check
     install(auth, { caps: {} });
     expect(await p.available()).toBe(true);
-    install(auth, { caps: null }); // browser without getClientCapabilities
+    install(auth, { caps: null });
     expect(await p.available()).toBe(true);
-  });
-
-  it("KP-7 never prompts: create() and get() are not called", async () => {
-    install(auth);
-    await p.available();
-    install(auth, { uv: false });
-    await p.available();
     expect(auth.create).not.toHaveBeenCalled();
     expect(auth.get).not.toHaveBeenCalled();
   });
 });
 
-describe("KP-5/KP-6 save and restore", () => {
+describe("D-58 supported: the token comes from the PRF output, with nothing stored", () => {
   beforeEach(() => {
     install(auth);
   });
 
-  it("KP-5 save with PRF results from create() writes a keyslot that KP-6 restore() opens", async () => {
-    const token = await newToken();
-    await p.save(token);
+  it("create() returns the token derived from the new passkey; get() returns the same token", async () => {
+    const token = await p.create();
     expect(auth.create).toHaveBeenCalledOnce();
-    // PRF came back at creation: no second prompt
-    expect(auth.get).not.toHaveBeenCalled();
-
-    // ENC-11: one ordinary envelope at slotId, derived from the PRF output.
-    const slot = await deriveSlotKeys(await auth.expectedPrf(auth.chosen!));
-    expect([...backend.store.keys()]).toEqual([slot.slotId]);
-    expect(backend.store.get(slot.slotId)).toMatchObject({ v: 1, rev: 0 });
-
-    // A new device: a fresh utility, the same (synced) passkey, same backend.
-    expect(await passkeyBackup({ backend }).restore()).toBe(token);
-    expect(auth.get).toHaveBeenCalledOnce();
+    expect(auth.get).not.toHaveBeenCalled(); // PRF came back at creation
+    expect(token).toBe(await expectedToken(auth.chosen!));
+    expect(await decodeToken(token)).toHaveLength(32);
+    expect(await p.get()).toBe(token);
+    expect(await passkeyToken({ app: "notes" }).get()).toBe(token);
   });
 
-  it("KP-5 save accepts the token as a user would type it", async () => {
-    const token = await newToken();
-    await p.save(token.toLowerCase().replace(/-/g, " "));
-    expect(await p.restore()).toBe(token);
-  });
-
-  it("KP-12 save rejects bad-token before prompting or writing", async () => {
-    for (const bad of ["", "0000-0000", 42 as unknown as string])
-      await expect(p.save(bad)).rejects.toMatchObject({ code: "bad-token" });
-    expect(auth.create).not.toHaveBeenCalled();
-    expect(backend.stats.puts).toBe(0);
-  });
-
-  it("KP-5/SEC-7 create() asks for a discoverable, user-verified credential, no attestation, PRF with the library salt", async () => {
-    p = passkeyBackup({
-      backend,
-      rpId: "example.com",
-      rpName: "Example",
-      userName: "notes",
-    });
-    await p.save(await newToken());
-    const pk = auth.createCalls[0]!.publicKey;
-    expect(pk.rp).toEqual({ id: "example.com", name: "Example" });
-    expect(pk.user.name).toBe("notes");
-    expect(pk.authenticatorSelection).toMatchObject({
+  it("KP-5/SEC-7 create() asks for a discoverable, user-verified credential with a random handle, no attestation, PRF with the library input", async () => {
+    await p.create();
+    const opts = auth.createCalls[0]!.publicKey;
+    expect(opts.authenticatorSelection).toMatchObject({
       residentKey: "required",
       requireResidentKey: true,
       userVerification: "required",
     });
-    expect(pk.attestation).toBe("none");
-    const first = (pk.extensions as { prf: { eval: { first: Uint8Array } } })
-      .prf.eval.first;
-    expect(new TextDecoder().decode(first)).toBe(PRF_SALT_V1);
-  });
-
-  it("KP-5 rp.name and user.name default to the page's host", async () => {
-    vi.stubGlobal("location", { hostname: "notes.example" });
-    await p.save(await newToken());
-    const pk = auth.createCalls[0]!.publicKey;
-    expect(pk.rp).toEqual({ id: "notes.example", name: "notes.example" });
-    expect(pk.user).toMatchObject({
-      name: "notes.example",
-      displayName: "notes.example",
-    });
-  });
-
-  it("KP-5 user handles identify tokens independently of presentation labels", async () => {
-    const token = await newToken();
-    const handle = async (o: { userName?: string; displayName?: string }) => {
-      auth.createCalls.length = 0;
-      await passkeyBackup({ backend, ...o }).save(token);
-      const pk = auth.createCalls[0]!.publicKey;
-      return { id: b64url(new Uint8Array(pk.user.id as ArrayBuffer)), pk };
-    };
-    const a1 = await handle({ userName: "a" });
-    const a2 = await handle({ userName: "a", displayName: "Alice's laptop" });
-    const b = await handle({ userName: "b" });
-    expect(a1.id).toBe(a2.id);
-    expect(a1.id).toBe(b.id);
-    expect(a1.id).toHaveLength(22); // 16 bytes
-    expect(a2.pk.user).toMatchObject({
-      name: "a",
-      displayName: "Alice's laptop",
-    });
-  });
-
-  it("KP-5 normalized spellings of a token share a handle, while different tokens do not", async () => {
-    const token = await encodeToken(new Uint8Array(32));
-    await p.save(token);
-    await p.save(token.toLowerCase().replace(/-/g, " \n").replace(/0/g, "o"));
-    await p.save(await newToken());
-    const ids = auth.createCalls.map((c) => c.publicKey.user.id);
-    expect(ids[0]).toEqual(ids[1]);
-    expect(ids[0]).not.toEqual(ids[2]);
-    expect(ids[0]).toEqual(
-      await derivePasskeyUserHandle(await decodeToken(token), "localhost"),
-    );
-  });
-
-  it("KP-5 default and explicit current-host RP IDs share a handle across new backup utilities", async () => {
-    vi.stubGlobal("location", { hostname: "notes.example" });
-    const token = await newToken();
-    await p.save(token);
-    const first = auth.createCalls[0]!.publicKey;
-    await passkeyBackup({ backend, rpId: "NOTES.Example" }).save(token);
-    const second = auth.createCalls[1]!.publicKey;
-    expect(second.user.id).toEqual(first.user.id);
-    expect(second.user.displayName).toBe("notes.example");
-    expect(first.rp.id).toBe("notes.example");
-    expect(second.rp.id).toBe("notes.example");
-    // The stable identity does not make the WebAuthn challenge predictable.
-    expect(second.challenge).not.toEqual(first.challenge);
-  });
-
-  it("KP-5 the effective RP scopes a handle, with shared parent RPs agreeing across subdomains", async () => {
-    const token = await newToken();
-    vi.stubGlobal("location", { hostname: "notes.example.com" });
-    await passkeyBackup({ backend, rpId: "EXAMPLE.com" }).save(token);
-    await p.save(token);
-    vi.stubGlobal("location", { hostname: "tasks.example.com" });
-    await passkeyBackup({ backend, rpId: "example.com" }).save(token);
-    await p.save(token);
-    const ids = auth.createCalls.map((c) => c.publicKey.user.id);
-    expect(ids[0]).toEqual(ids[2]);
+    expect(opts.attestation).toBe("none");
+    expect(opts.user).toMatchObject({ name: "notes", displayName: "notes" });
+    expect((opts.user.id as Uint8Array).byteLength).toBe(16);
     expect(
-      new Set(ids.map((id) => b64url(new Uint8Array(id as ArrayBuffer)))).size,
-    ).toBe(3);
-  });
-
-  it("KP-5/KP-6 canonicalizes IDNs consistently for creation, follow-up assertions and restore", async () => {
-    const token = await newToken();
-    auth.createMode = "enabled-only";
-    vi.stubGlobal("location", { hostname: "xn--bcher-kva.example" });
-    const unicode = passkeyBackup({ backend, rpId: "BÜCHER.Example" });
-    await unicode.save(token);
-    await p.save(token);
-    expect(auth.createCalls[0]!.publicKey.user.id).toEqual(
-      auth.createCalls[1]!.publicKey.user.id,
-    );
-    expect(await unicode.restore()).toBe(token);
-    expect(auth.createCalls.map((c) => c.publicKey.rp.id)).toEqual([
-      "xn--bcher-kva.example",
-      "xn--bcher-kva.example",
-    ]);
-    expect(auth.getCalls.map((c) => c.publicKey.rpId)).toEqual([
-      "xn--bcher-kva.example",
-      "xn--bcher-kva.example",
-      "xn--bcher-kva.example",
-    ]);
-  });
-
-  it.each([
-    "",
-    "https://example.com",
-    "example.com:443",
-    "example.com/",
-    "example.com/path",
-    "example.com?x",
-    "example.com#x",
-    "user@example.com",
-    "example.com\\path",
-    " example.com",
-    "example.com\n",
-    "%65xample.com",
-    null,
-    42,
-  ])(
-    "KP-5/KP-6 rejects an invalid RP ID %j before prompting or backend access",
-    async (rpId) => {
-      const invalid = passkeyBackup({ backend, rpId: rpId as string });
-      const token = await newToken();
-      for (const operation of [
-        () => invalid.save(token),
-        () => invalid.restore(),
-      ]) {
-        const error = await operation().catch((e: unknown) => e);
-        expect(error).toBeInstanceOf(TypeError);
-        expect(error).toMatchObject({ message: "invalid relying-party id" });
-      }
-      expect(auth.create).not.toHaveBeenCalled();
-      expect(auth.get).not.toHaveBeenCalled();
-      expect(backend.stats.gets).toBe(0);
-      expect(backend.stats.puts).toBe(0);
-    },
-  );
-
-  it("KP-5 create() with prf.enabled but no results takes exactly one follow-up get() for the PRF output", async () => {
-    auth.createMode = "enabled-only";
-    const token = await newToken();
-    await p.save(token);
-    expect(auth.create).toHaveBeenCalledOnce();
-    expect(auth.get).toHaveBeenCalledOnce();
-    // The follow-up assertion targets the credential just created and asks for
-    // UV and the salt.
-    const pk = auth.getCalls[0]!.publicKey;
-    expect(pk.userVerification).toBe("required");
-    expect(pk.allowCredentials).toHaveLength(1);
-    expect(
-      b64url(
-        new Uint8Array(pk.allowCredentials![0]!.id as Uint8Array<ArrayBuffer>),
+      new TextDecoder().decode(
+        (opts.extensions as { prf: { eval: { first: Uint8Array } } }).prf.eval
+          .first,
       ),
-    ).toBe(auth.chosen);
-    const slot = await deriveSlotKeys(await auth.expectedPrf(auth.chosen!));
-    expect(backend.store.has(slot.slotId)).toBe(true);
-    expect(await p.restore()).toBe(token);
+    ).toBe("burrow/prf-token/v1");
+    await p.create();
+    expect(auth.createCalls[1]!.publicKey.user.id).not.toEqual(opts.user.id);
   });
 
-  it("KP-5 save rejects cancelled when the follow-up get() is dismissed, and writes nothing", async () => {
+  it("each create() is a new passkey and a new token; it never replaces an earlier one", async () => {
+    const first = await p.create();
+    const firstId = auth.chosen!;
+    const second = await p.create();
+    expect(second).not.toBe(first);
+    auth.chosen = firstId; // the user picks the first passkey again
+    expect(await p.get()).toBe(first);
+  });
+
+  it("D-54 one passkey gives each app its own token", async () => {
+    const notes = await p.create();
+    const todo = await passkeyToken({ app: "todo" }).get();
+    expect(todo).not.toBe(notes);
+    expect(todo).toBe(await expectedToken(auth.chosen!, "todo"));
+  });
+
+  it("KP-6 get() is discoverable, user-verified and evaluates the library input", async () => {
+    await p.create();
+    await p.get();
+    const opts = auth.getCalls[0]!.publicKey;
+    expect(opts.allowCredentials).toEqual([]);
+    expect(opts.userVerification).toBe("required");
+  });
+
+  it("create() with prf.enabled but no results takes exactly one follow-up assertion for that credential", async () => {
     auth.createMode = "enabled-only";
-    auth.getMode = "cancel";
-    await expect(p.save(await newToken())).rejects.toMatchObject({
-      name: "BurrowError",
-      code: "cancelled",
+    const token = await p.create();
+    expect(auth.get).toHaveBeenCalledOnce();
+    const allow = auth.getCalls[0]!.publicKey.allowCredentials!;
+    expect(allow).toHaveLength(1);
+    expect(b64url(new Uint8Array(allow[0]!.id as ArrayBuffer))).toBe(
+      auth.chosen,
+    );
+    expect(token).toBe(await expectedToken(auth.chosen!));
+  });
+
+  it("D-58 nothing is written to IndexedDB, Web Storage or a backend", async () => {
+    const before = await indexedDB.databases();
+    const opened = vi.spyOn(indexedDB, "open");
+    const fetched = vi.spyOn(globalThis, "fetch");
+    await p.create();
+    await p.get();
+    expect(opened).not.toHaveBeenCalled();
+    expect(fetched).not.toHaveBeenCalled();
+    expect(await indexedDB.databases()).toEqual(before);
+  });
+
+  it("the token opens the store like any other token", async () => {
+    const token = await p.create();
+    const world = new World();
+    try {
+      const a = await world.device().core({ app: "notes", token });
+      await a.set({ k: "from the passkey's token" });
+      const b = await world
+        .device()
+        .core({ app: "notes", token: await p.get() });
+      expect(await b.get()).toEqual({ k: "from the passkey's token" });
+    } finally {
+      world.close();
+    }
+  });
+
+  it("rp.name defaults to the host, rpId and labels are passed through", async () => {
+    vi.stubGlobal("location", { hostname: "Example.COM" });
+    const q = passkeyToken({
+      app: "notes",
+      rpId: "Example.com",
+      userName: "me",
+      displayName: "Me",
     });
-    expect(backend.store.size).toBe(0);
+    await q.create();
+    await q.get();
+    const c = auth.createCalls[0]!.publicKey;
+    expect(c.rp).toEqual({ name: "Example.COM", id: "example.com" });
+    expect(c.user).toMatchObject({ name: "me", displayName: "Me" });
+    expect(auth.getCalls[0]!.publicKey.rpId).toBe("example.com");
+  });
+});
+
+describe("D-58 cancelled and unsupported flows reject; null is never a token", () => {
+  beforeEach(() => {
+    install(auth);
   });
 
-  it("KP-7 create() reporting prf.enabled false rejects prf-unsupported and writes nothing", async () => {
-    auth.createMode = "disabled";
-    const err = await p.save(await newToken()).catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(BurrowError);
-    expect(err).toMatchObject({ code: "prf-unsupported" });
-    expect(auth.get).not.toHaveBeenCalled();
-    expect(backend.store.size).toBe(0);
-  });
-
-  it("KP-5 save rejects cancelled when the create() prompt is dismissed", async () => {
+  it("create() rejects cancelled when the prompt is dismissed or aborted", async () => {
     auth.create.mockRejectedValueOnce(notAllowed());
-    await expect(p.save(await newToken())).rejects.toMatchObject({
-      code: "cancelled",
-    });
-    auth.create.mockResolvedValueOnce(null);
-    await expect(p.save(await newToken())).rejects.toMatchObject({
-      code: "cancelled",
-    });
-    expect(backend.store.size).toBe(0);
-  });
-
-  it("KP-5 save rejects prf-unsupported when create() fails for another reason", async () => {
-    auth.create.mockRejectedValueOnce(
-      new DOMException("nope", "NotSupportedError"),
-    );
-    await expect(p.save(await newToken())).rejects.toMatchObject({
-      code: "prf-unsupported",
-    });
-  });
-
-  it("KP-5/ENC-11 saving again over an existing keyslot continues its write-token chain", async () => {
-    await p.save(await newToken());
-    const id = auth.chosen!;
-    const slot = await deriveSlotKeys(await auth.expectedPrf(id));
-    expect(backend.store.get(slot.slotId)!.rev).toBe(0);
-
-    // A new token saved under a credential whose PRF output is the same (the
-    // authenticator hands back the existing credential), so the slot id is the
-    // same and the write must follow the chain.
-    auth.createMode = "enabled-only";
-    auth.create.mockImplementation(async (opts) => {
-      auth.createCalls.push(opts);
-      return {
-        rawId: fresh(fromB64url(id)),
-        getClientExtensionResults: () => ({ prf: { enabled: true } }),
-      } as unknown as PublicKeyCredential;
-    });
-    const second = await newToken();
-    // MemoryBackend refuses a put that breaks the tok/next chain
-    await p.save(second);
-    expect(backend.store.size).toBe(1);
-    expect(backend.store.get(slot.slotId)!.rev).toBe(1);
-    await p.save(second);
-    expect(backend.store.get(slot.slotId)!.rev).toBe(2);
-    expect(await p.restore()).toBe(second);
-  });
-
-  it("KP-5 save retries a keyslot write that loses a race, then succeeds", async () => {
-    const put = backend.put.bind(backend);
-    const spy = vi
-      .spyOn(backend, "put")
-      .mockRejectedValueOnce(new BackendError("conflict"))
-      .mockRejectedValueOnce(new BackendError("conflict"))
-      .mockImplementation(put);
-    const token = await newToken();
-    await p.save(token);
-    expect(spy).toHaveBeenCalledTimes(3);
-    expect(await p.restore()).toBe(token);
-  });
-
-  it("KP-5 save rejects conflict after three lost races", async () => {
-    vi.spyOn(backend, "put").mockRejectedValue(new BackendError("conflict"));
-    await expect(p.save(await newToken())).rejects.toMatchObject({
+    await expect(p.create()).rejects.toMatchObject({
       name: "BurrowError",
-      code: "conflict",
+      code: "cancelled",
     });
-    expect(backend.put).toHaveBeenCalledTimes(3);
+    auth.create.mockRejectedValueOnce(new DOMException("x", "AbortError"));
+    await expect(p.create()).rejects.toMatchObject({ code: "cancelled" });
+    auth.create.mockResolvedValueOnce(null);
+    await expect(p.create()).rejects.toMatchObject({ code: "cancelled" });
   });
 
-  it("KP-5 a store failure during the keyslot write rejects save with the raw BackendError (docs/api.md)", async () => {
-    backend.failWith = "network";
-    const err = await p.save(await newToken()).catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(BackendError);
-    expect(err).toMatchObject({ code: "network" });
-    expect(backend.store.size).toBe(0);
-  });
-
-  it("save and restore reject backend, without prompting, when there is none and the page has no config", async () => {
-    const none = passkeyBackup();
-    await expect(none.save(await newToken())).rejects.toMatchObject({
-      code: "backend",
-    });
-    await expect(none.restore()).rejects.toMatchObject({ code: "backend" });
-    expect(auth.create).not.toHaveBeenCalled();
-    expect(auth.get).not.toHaveBeenCalled();
-  });
-});
-
-describe("the default backend", () => {
-  beforeEach(() => {
-    install(auth);
-  });
-
-  it("rejects invalid page config before prompting, without retaining its values", async () => {
-    vi.resetModules();
-    try {
-      vi.stubGlobal("document", {
-        querySelector: (selector: string) =>
-          selector === 'meta[name="burrow-backend"]'
-            ? { getAttribute: () => '{"projectId":"short-private' }
-            : null,
-      });
-      const { passkeyBackup: fresh } = await import("../../src/passkey.js");
-      const backup = fresh();
-      const token = await newToken();
-      for (const operation of [
-        () => backup.save(token),
-        () => backup.restore(),
-      ]) {
-        const error = await operation().catch((e: unknown) => e);
-        expect(error).toMatchObject({
-          name: "BurrowError",
-          code: "backend",
-          message: "backend configuration failed",
-        });
-        expect(error).not.toHaveProperty("cause");
-      }
-      expect(auth.create).not.toHaveBeenCalled();
-      expect(auth.get).not.toHaveBeenCalled();
-    } finally {
-      vi.resetModules();
-    }
-  });
-
-  it.each(["error", "burrow", "backend"])(
-    "drops values from a factory-thrown %s error and retries corrected config",
-    async (kind) => {
-      vi.resetModules();
-      try {
-        const { registerBackend } = await import("../../src/config.js");
-        const errors = await import("../../src/errors.js");
-        const { passkeyBackup: fresh } = await import("../../src/passkey.js");
-        const factory = vi.fn((config: BackendConfig) => {
-          if (config.privateValue) {
-            const message = `bad config: ${config.privateValue}`;
-            throw kind === "burrow"
-              ? new errors.BurrowError("backend", message)
-              : kind === "backend"
-                ? new errors.BackendError("network", message)
-                : new Error(message);
-          }
-          return backend;
-        });
-        registerBackend("passkey-test", factory);
-        vi.stubGlobal("BURROW", {
-          backend: { type: "passkey-test", privateValue: "short-private" },
-        });
-        const backup = fresh();
-        const token = await newToken();
-        for (const operation of [
-          () => backup.save(token),
-          () => backup.restore(),
-        ]) {
-          const error = await operation().catch((e: unknown) => e);
-          expect(error).toMatchObject({
-            name: "BurrowError",
-            code: "backend",
-            message: "backend configuration failed",
-          });
-          expect(error).not.toHaveProperty("cause");
-        }
-        expect(auth.create).not.toHaveBeenCalled();
-        expect(auth.get).not.toHaveBeenCalled();
-        vi.stubGlobal("BURROW", { backend: { type: "passkey-test" } });
-        await backup.save(token);
-        expect(await backup.restore()).toBe(token);
-        expect(factory).toHaveBeenCalledTimes(3);
-      } finally {
-        vi.resetModules();
-      }
-    },
-  );
-
-  it("is looked up again after a failure, not cached", async () => {
-    vi.resetModules();
-    const lookups = vi.fn<() => Promise<MemoryBackend | null>>();
-    vi.doMock("../../src/config.js", () => ({ defaultBackend: lookups }));
-    try {
-      const { passkeyBackup: fresh } = await import("../../src/passkey.js");
-      const b = fresh();
-      lookups.mockRejectedValueOnce(new TypeError("chunk failed to load"));
-      await expect(b.restore()).rejects.toMatchObject({
-        name: "BurrowError",
-        code: "backend",
-      });
-      lookups.mockResolvedValueOnce(null);
-      await expect(b.restore()).rejects.toMatchObject({ code: "backend" });
-      const token = await newToken();
-      lookups.mockResolvedValue(backend);
-      await b.save(token);
-      expect(await b.restore()).toBe(token);
-      expect(lookups).toHaveBeenCalledTimes(3);
-      expect(auth.get).toHaveBeenCalledOnce();
-    } finally {
-      vi.doUnmock("../../src/config.js");
-      vi.resetModules();
-    }
-  });
-});
-
-describe("BE-1 explicit backend instances", () => {
-  beforeEach(() => {
-    install(auth);
-  });
-
-  it.each([
-    { get: undefined },
-    { put: undefined },
-    { id: undefined },
-    { capabilities: undefined },
-    { capabilities: { writeAuth: "true", subscribe: false } },
-    { capabilities: { writeAuth: true, subscribe: undefined } },
-  ])(
-    "rejects malformed instance %j before prompting or calling it",
-    async (invalid) => {
-      const get = vi.fn(async () => null);
-      const put = vi.fn(async () => {});
-      const supplied = {
-        id: "supplied",
-        capabilities: { writeAuth: true, subscribe: false },
-        get,
-        put,
-        ...invalid,
-      };
-      const backup = passkeyBackup({ backend: supplied as never });
-      const token = await newToken();
-      for (const operation of [
-        () => backup.save(token),
-        () => backup.restore(),
-      ]) {
-        const error = await operation().catch((e: unknown) => e);
-        expect(error).toMatchObject({
-          name: "BurrowError",
-          code: "backend",
-          message: "backend configuration failed",
-        });
-        expect(error).not.toHaveProperty("cause");
-      }
-      expect(auth.create).not.toHaveBeenCalled();
-      expect(auth.get).not.toHaveBeenCalled();
-      expect(get).not.toHaveBeenCalled();
-      expect(put).not.toHaveBeenCalled();
-    },
-  );
-
-  it("drops errors from instance validation before prompting", async () => {
-    const supplied = {
-      get: vi.fn(),
-      put: vi.fn(),
-      get capabilities(): never {
-        throw new Error("private-config-value");
-      },
-    };
-    const backup = passkeyBackup({ backend: supplied as never });
-    const token = await newToken();
-    for (const operation of [
-      () => backup.save(token),
-      () => backup.restore(),
-    ]) {
-      const error = await operation().catch((e: unknown) => e);
-      expect(error).toMatchObject({
-        code: "backend",
-        message: "backend configuration failed",
-      });
-      expect(error).not.toHaveProperty("cause");
-    }
-    expect(auth.create).not.toHaveBeenCalled();
-    expect(auth.get).not.toHaveBeenCalled();
-    expect(supplied.get).not.toHaveBeenCalled();
-    expect(supplied.put).not.toHaveBeenCalled();
-  });
-
-  it("rejects explicit config or null without invoking a factory or falling back to the page", async () => {
-    vi.resetModules();
-    try {
-      const { registerBackend } = await import("../../src/config.js");
-      const { passkeyBackup: fresh } = await import("../../src/passkey.js");
-      const factory = vi.fn(() => backend);
-      registerBackend("explicit-passkey-test", factory);
-      vi.stubGlobal("BURROW", {
-        backend: { type: "explicit-passkey-test" },
-      });
-      for (const invalid of [{ type: "explicit-passkey-test" }, null]) {
-        const backup = fresh({ backend: invalid as never });
-        await expect(backup.save(await newToken())).rejects.toMatchObject({
-          code: "backend",
-          message: "backend configuration failed",
-        });
-        await expect(backup.restore()).rejects.toMatchObject({
-          code: "backend",
-        });
-      }
-      expect(factory).not.toHaveBeenCalled();
-      expect(auth.create).not.toHaveBeenCalled();
-      expect(auth.get).not.toHaveBeenCalled();
-    } finally {
-      vi.resetModules();
-    }
-  });
-});
-
-describe("KP-6 restore outcomes", () => {
-  beforeEach(() => {
-    install(auth);
-  });
-
-  it("KP-6 restore() makes a discoverable request: the user picks the passkey, nothing is remembered on the device", async () => {
-    const token = await newToken();
-    await p.save(token);
-    const ls = vi.fn();
-    vi.stubGlobal("localStorage", { getItem: ls, setItem: ls });
-    expect(await p.restore()).toBe(token);
-    expect(await p.restore()).toBe(token);
-    for (const c of auth.getCalls)
-      expect(c.publicKey.allowCredentials).toEqual([]);
-    expect(ls).not.toHaveBeenCalled();
-  });
-
-  it("KP-6 restore() returns null when the user cancels (get rejects NotAllowedError)", async () => {
-    await p.save(await newToken());
+  it("create() rejects cancelled when the follow-up assertion is dismissed; get() later returns the token", async () => {
+    auth.createMode = "enabled-only";
     auth.getMode = "cancel";
-    expect(await p.restore()).toBeNull();
+    await expect(p.create()).rejects.toMatchObject({ code: "cancelled" });
+    auth.getMode = "ok";
+    expect(await p.get()).toBe(await expectedToken(auth.chosen!));
   });
 
-  it("KP-6 restore() returns null when the prompt is aborted (AbortError)", async () => {
-    await p.save(await newToken());
-    auth.get.mockRejectedValueOnce(new DOMException("aborted", "AbortError"));
-    expect(await p.restore()).toBeNull();
-  });
-
-  it("KP-6 restore() returns null when get() resolves null", async () => {
-    await p.save(await newToken());
-    auth.getMode = "null";
-    expect(await p.restore()).toBeNull();
-  });
-
-  it("KP-6 restore() returns null when no keyslot exists for the PRF output", async () => {
-    await p.save(await newToken());
-    // a backend without the slot
-    expect(
-      await passkeyBackup({ backend: new MemoryBackend() }).restore(),
-    ).toBeNull();
-    // A different passkey whose PRF output has no slot behind it.
-    auth.creds.set("other-credential-id-xx", new Uint8Array(32).fill(0x99));
-    auth.chosen = "other-credential-id-xx";
-    const before = backend.stats.gets;
-    expect(await p.restore()).toBeNull();
-    expect(backend.stats.gets).toBe(before + 1);
-  });
-
-  it("KP-6/ENC-6 restore() rejects decrypt-failed when the keyslot ciphertext is tampered with", async () => {
-    await p.save(await newToken());
-    const slot = await deriveSlotKeys(await auth.expectedPrf(auth.chosen!));
-    const env = backend.store.get(slot.slotId)!;
-    if ("x" in env) throw new Error("unexpected expired slot");
-    const ct = env.ct;
-    env.ct = (ct[0] === "A" ? "B" : "A") + ct.slice(1);
-    const err = await p.restore().catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(BurrowError);
-    expect(err).toMatchObject({ code: "decrypt-failed" });
-  });
-
-  it("KP-6/ENC-11 a keyslot moved to another revision does not decrypt (rev is in the AAD)", async () => {
-    await p.save(await newToken());
-    const slot = await deriveSlotKeys(await auth.expectedPrf(auth.chosen!));
-    backend.store.get(slot.slotId)!.rev = 7;
-    await expect(p.restore()).rejects.toMatchObject({
-      code: "decrypt-failed",
+  it("create() on an authenticator without PRF rejects prf-unsupported and signals the useless passkey", async () => {
+    const PKC = install(auth);
+    auth.createMode = "disabled";
+    await expect(p.create()).rejects.toMatchObject({ code: "prf-unsupported" });
+    expect(PKC.signalUnknownCredential).toHaveBeenCalledWith({
+      rpId: "localhost",
+      credentialId: auth.chosen,
     });
   });
 
-  it("KP-6 restore() rejects prf-unsupported when the assertion carries no PRF result", async () => {
-    await p.save(await newToken());
-    auth.getMode = "no-prf";
-    await expect(p.restore()).rejects.toMatchObject({
-      code: "prf-unsupported",
-    });
+  it("create() still rejects prf-unsupported where signalUnknownCredential is missing or fails", async () => {
+    const PKC = install(auth) as { signalUnknownCredential?: unknown };
+    delete PKC.signalUnknownCredential;
+    auth.createMode = "disabled";
+    await expect(p.create()).rejects.toMatchObject({ code: "prf-unsupported" });
+    const PKC2 = install(auth);
+    PKC2.signalUnknownCredential.mockRejectedValueOnce(new Error("no"));
+    await expect(p.create()).rejects.toMatchObject({ code: "prf-unsupported" });
   });
 
-  it("KP-6 restore() rejects prf-unsupported when get() fails for a reason other than dismissal", async () => {
-    await p.save(await newToken());
-    auth.get.mockRejectedValueOnce(
-      new DOMException("bad rp id", "SecurityError"),
+  it("create() rejects prf-unsupported when it fails for another reason", async () => {
+    auth.create.mockRejectedValueOnce(
+      new DOMException("no", "NotSupportedError"),
     );
-    await expect(p.restore()).rejects.toMatchObject({
-      code: "prf-unsupported",
-    });
+    await expect(p.create()).rejects.toMatchObject({ code: "prf-unsupported" });
   });
 
-  it("KP-6 get() asks for user verification and evaluates PRF with the library salt", async () => {
-    p = passkeyBackup({ backend, rpId: "example.com", timeoutMs: 5_000 });
-    await p.save(await newToken());
-    await p.restore();
-    const pk = auth.getCalls[0]!.publicKey;
-    expect(pk).toMatchObject({
-      rpId: "example.com",
-      userVerification: "required",
-      timeout: 5_000,
-    });
-    const first = (pk.extensions as { prf: { eval: { first: Uint8Array } } })
-      .prf.eval.first;
-    expect(new TextDecoder().decode(first)).toBe(PRF_SALT_V1);
+  it("an rpId that does not fit the page rejects with the browser's SecurityError, not prf-unsupported", async () => {
+    const wrong = new DOMException("bad rp id", "SecurityError");
+    auth.create.mockRejectedValueOnce(wrong);
+    await expect(p.create()).rejects.toBe(wrong);
+    auth.get.mockRejectedValueOnce(wrong);
+    await expect(p.get()).rejects.toBe(wrong);
+  });
+
+  it("get() rejects cancelled when the user dismisses the prompt, it times out, or there is no passkey", async () => {
+    auth.getMode = "cancel";
+    await expect(p.get()).rejects.toMatchObject({ code: "cancelled" });
+    auth.getMode = "null";
+    await expect(p.get()).rejects.toMatchObject({ code: "cancelled" });
+    // No credential at all: the browser says NotAllowedError.
+    auth.getMode = "ok";
+    await expect(p.get()).rejects.toMatchObject({ code: "cancelled" });
+  });
+
+  it("get() rejects prf-unsupported when the assertion has no PRF result or fails otherwise", async () => {
+    await p.create();
+    auth.getMode = "no-prf";
+    await expect(p.get()).rejects.toMatchObject({ code: "prf-unsupported" });
+    auth.getMode = "ok";
+    auth.get.mockRejectedValueOnce(new DOMException("x", "InvalidStateError"));
+    await expect(p.get()).rejects.toMatchObject({ code: "prf-unsupported" });
+  });
+
+  it("every rejection is a BurrowError, never a null or empty token", async () => {
+    auth.getMode = "null";
+    const err = await p.get().catch((e) => e);
+    expect(err).toBeInstanceOf(BurrowError);
   });
 });
 
-describe("KP-5/KP-6 with the StorageArea", () => {
-  let world: World;
-  afterEach(() => world?.close());
-
-  it("save(exportToken()) on one device; restore() then link({ token, source }) on another restores the data with one prompt", async () => {
-    install(auth);
-    world = new World();
-    const A = world.device();
-    const a = await A.open();
-    await a.set({ theme: "dark" });
-    await a.syncNow();
-    const token = await a.exportToken();
-    await passkeyBackup({ backend: A.backend }).save(token);
-
-    const B = world.device();
-    const b = await B.open();
-    expect(await b.exportToken()).not.toBe(token);
-    const got = await passkeyBackup({ backend: B.backend }).restore();
-    expect(got).toBe(token);
-    await b.link({ token: got!, source: "passkey" });
-    expect(await b.get("theme")).toEqual({ theme: "dark" });
-    expect(b.token.source).toBe("passkey");
-    expect(auth.get).toHaveBeenCalledOnce();
+describe("D-58 derivation vectors", () => {
+  it("token = HKDF-SHA256(prf, salt burrow/passkey-token/v1, info app), encoded as a storage token", async () => {
+    for (const v of vectors.passkeyToken) {
+      const secret = await derivePasskeySecret(
+        Uint8Array.from(Buffer.from(v.prfHex, "hex")),
+        v.app,
+      );
+      expect(hex(secret)).toBe(v.secretHex);
+      expect(await encodeToken(secret)).toBe(v.token);
+    }
   });
 
-  it("KP-5/KP-6 independent keyslot and content backends allow content sync while recovery is unavailable (D-50)", async () => {
-    install(auth);
-    world = new World();
-    const A = world.device();
-    const a = await A.open();
-    await a.set({ theme: "dark" });
-    await a.syncNow();
-    const token = await a.exportToken();
-    const contentBefore = structuredClone(world.store);
-
-    const recovery = new MemoryBackend();
-    const get = vi.spyOn(recovery, "get");
-    const put = vi.spyOn(recovery, "put");
-    const subscribe = vi.spyOn(recovery, "subscribe");
-    await passkeyBackup({ backend: recovery }).save(token);
-    const restored = await passkeyBackup({ backend: recovery }).restore();
-    expect(restored).toBe(token);
-    expect(get).toHaveBeenCalledTimes(2);
-    expect(put).toHaveBeenCalledOnce();
-    expect(subscribe).not.toHaveBeenCalled();
-    expect(world.store).toEqual(contentBefore);
-    expect(recovery.store.size).toBe(1);
-    const [slotId] = recovery.store.keys();
-    expect(world.store.has(slotId!)).toBe(false);
-
-    recovery.failWith = "network";
-    const B = world.device();
-    const b = await B.open();
-    await b.link({ token: restored!, source: "passkey" });
-    expect(await b.get("theme")).toEqual({ theme: "dark" });
-    await b.set({ theme: "light" });
-    await b.syncNow();
-    await a.syncNow();
-    expect(await a.get("theme")).toEqual({ theme: "light" });
-    expect(get).toHaveBeenCalledTimes(2);
-    expect(put).toHaveBeenCalledOnce();
-    expect(subscribe).not.toHaveBeenCalled();
-    expect(recovery.store.size).toBe(1);
-    expect(world.store.has(slotId!)).toBe(false);
-  });
-
-  it("API-7 with unsynced data, a would-orphan retry reuses the restored token: still one prompt", async () => {
-    install(auth);
-    world = new World();
-    const A = world.device();
-    const a = await A.open();
-    await a.set({ theme: "dark" });
-    await a.syncNow();
-    await passkeyBackup({ backend: A.backend }).save(await a.exportToken());
-
-    const B = world.device();
-    const b = await B.open();
-    B.backend.failWith = "network";
-    await b.set({ unsynced: 1 });
-    const token = (await passkeyBackup({ backend: A.backend }).restore())!;
-    await expect(b.link({ token, source: "passkey" })).rejects.toMatchObject({
-      code: "would-orphan",
-    });
-    B.backend.failWith = null;
-    await b.link({
-      token,
-      source: "passkey",
-      discardLocal: true,
-      replace: true,
-    });
-    expect(await b.get()).toEqual({ theme: "dark" });
-    expect(auth.get).toHaveBeenCalledOnce();
+  it("the PRF input is the library constant", async () => {
+    expect(PRF_SALT).toBe("burrow/prf-token/v1");
+    // The fake authenticator's own outputs: one seed, one input, one output.
+    const out = await sha256(concat(new Uint8Array(32), utf8(PRF_SALT)));
+    expect(out).toHaveLength(32);
+    expect(fromB64url(b64url(out))).toEqual(out);
   });
 });

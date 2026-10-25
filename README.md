@@ -1,34 +1,46 @@
 # Burrow
 
-**Per-user data for static sites that survives a browser reset and follows the user to their other
-devices. No login. No server to write or run. Nothing readable in the store.**
+**Per-user data for static sites that follows the user to their other devices. No login. No
+server to write or run. Nothing readable in the store.**
 
-**[Try the live demo](https://froussios.github.io/burrow-storage/)**: type something, then open the
-page on another device and paste the storage token it shows.
+**[Try the live demo](https://froussios.github.io/burrow-storage/)**: start with a new token or a
+passkey, type something, then open the page on another device and sign in the same way.
 
 ```js
-// In an ES module. With no store configured, the data simply stays on this device.
-import { burrow } from "burrow-storage";
+// In an ES module.
+import { burrow, generateToken } from "burrow-storage";
 
-const store = await burrow({ app: "my-prototype" });
+const token = await generateToken(); // or a passkey's token, or one the user kept
+const store = await burrow({ app: "my-prototype", backend, token });
 await store.set({ theme: "dark" });
 const { theme } = await store.get("theme");
 ```
 
-The user never signs up, and you never write or run a server. Burrow encrypts every value on the
-device and syncs it through one free Firestore project that you create once and reuse for every
-site you build. That project holds opaque ids and ciphertext: no accounts, no key names, no values.
-The data belongs to a random **storage token** that the device generates and remembers. To reach
-the data from another device, or after clearing the browser, the user enters that token or
-unlocks a **passkey backup** of it.
+The user never signs up, and you never write or run a server. Burrow encrypts every value in the
+browser and stores it in one free Firestore project that you create once and reuse for every site
+you build. That project holds opaque ids and ciphertext: no accounts, no key names, no values.
+The data belongs to a random **storage token**. Whoever holds the token can read and write the
+data from any device; Burrow itself never stores it. Your page decides how the user keeps it:
+typed or pasted, derived from a **passkey** each visit, or kept by the page on the device.
+
+Burrow comes in three independent parts:
+
+- **The core** (`burrow-storage`): remote storage. Async `get`/`set`/`remove`/`clear` that go
+  to the store, encryption under the hood, nothing written to the device.
+- **The offline wrapper** (`burrow-storage/offline`), optional: the same interface over a local,
+  **unencrypted** copy in IndexedDB, so reads and writes keep working offline and sync later.
+- **The passkey token** (`burrow-storage/passkey`), optional: a storage token derived from a
+  passkey, so a user can sign in on any device that has the passkey, with nothing stored anywhere.
 
 - **Status:** pre-release. Everything below is implemented and tested in Chromium, Firefox and
   WebKit (passkeys in Chromium only, with a virtual authenticator), but nothing is on npm yet.
   Until the first release, follow [Installing before the first release](#installing-before-the-first-release).
 - **Demo:** <https://froussios.github.io/burrow-storage/> is a page whose theme and text draft
-  follow you across devices. It is redeployed from every push to `main`, and its footer shows the
-  commit it was built from. It syncs through the maintainer's demo project, which does not delete
-  documents, so what you type there stays in it, encrypted. The source is in
+  follow you across devices, with both ways of signing in: on every visit (nothing stored on the
+  device) or staying signed in (the page keeps the token and an unencrypted copy). It is
+  redeployed from every push to `main`, and its footer shows the commit it was built from. It
+  syncs through the maintainer's demo project, which does not delete documents, so what you type
+  there stays in it, encrypted. The source is in
   [`demo/`](https://github.com/Froussios/burrow-storage/tree/main/demo/); run
   it locally against the emulator with `npm run build` then
   `node scripts/emulator.mjs "npm run serve"` (needs Java 21) and open
@@ -44,8 +56,8 @@ unlocks a **passkey backup** of it.
 - [Privacy: who can see what](#privacy-who-can-see-what)
 - [Quick start](#quick-start)
 - [The API in one page](#the-api-in-one-page)
-- [Reaching the data from another device](#reaching-the-data-from-another-device)
-- [Replacing localStorage](#replacing-localstorage)
+- [Signing in: where the token lives](#signing-in-where-the-token-lives)
+- [Coming from localStorage](#coming-from-localstorage)
 - [Limits, costs and browser support](#limits-costs-and-browser-support)
 - [Security in brief](#security-in-brief)
 - [Documentation](#documentation)
@@ -59,59 +71,66 @@ device. The usual fix is an account system and a hosted database. That asks a lo
 a sign-up form for the user, a backend for you, and a table of personal data you then have to
 protect.
 
-Burrow replaces the account with a **capability**: the storage token, 256 random bits that the
-device generates the first time your site runs and remembers, the way a browser remembers a login.
-Everything follows from the token. It derives the ids under which the user's documents are stored,
-the key that encrypts them, and the key that authorises writes to them. The store holds no
-identity, because the ids are unguessable and the content is opaque. To use the same data on
-another device, the user carries the token across (typed or pasted, ideally from a password
-manager) or unlocks a passkey backup of it, and that device derives the same ids and keys.
+Burrow replaces the account with a **capability**: the storage token, 256 random bits. Everything
+follows from the token. It derives the ids under which the user's documents are stored, the key
+that encrypts them, and the key that authorises writes to them. The store holds no identity,
+because the ids are unguessable and the content is opaque. On another device, the same token
+derives the same ids and keys, so the data is simply there.
+
+Because the token is the whole identity and cannot be revoked, Burrow does not keep it for you.
+Your page passes it to `burrow()`, and Burrow holds only the keys derived from it, in memory. You
+choose how the user gets the token back next time:
+
+| | How | Stored on the device |
+| --- | --- | --- |
+| Sign in every visit | A passkey prompt (`passkeyToken().get()`), or the user pastes the token | Nothing |
+| Stay signed in | Your page keeps the token itself, and the offline wrapper keeps a copy of the data | Whatever your page stores, plus an unencrypted copy of the data |
 
 ### How it compares
 
 | | `localStorage` | Accounts and a hosted database | Burrow |
 | --- | --- | --- | --- |
-| Survives clearing site data | No | Yes | Yes, if the user kept the storage token or a passkey backup |
+| Survives clearing site data | No | Yes | Yes, if the user kept the storage token or a passkey |
 | Same data on the user's other devices | No | Yes | Yes |
-| What the user has to do | Nothing | Sign up, sign in, reset passwords | Nothing at first; keep the token or make a passkey backup to add a device |
+| What the user has to do | Nothing | Sign up, sign in, reset passwords | Keep a token, or approve a passkey prompt |
 | What you have to run | Nothing | Authentication, a database, access rules | One free Firestore project for all your sites, set up once |
-| Who can read the data at rest | The device | You and your providers | Only the user's devices |
+| Who can read the data at rest | The device | You and your providers | Only devices with the token (and, with the offline wrapper, the device's unencrypted copy) |
 | Account data you hold | None | Emails, password hashes or OAuth ids | None |
-| Works offline | Yes | Depends on the SDK | Yes; changes sync when the network returns |
+| Works offline | Yes | Depends on the SDK | With the offline wrapper; changes sync when the network returns |
 | If the user loses access | The data is gone | Password reset | The data is gone: nobody can reset it |
 
 ### What else you get
 
-- **Local-first.** Reads and writes complete against a local cache at once, with or without a
-  network. Sync runs in the background and never blocks the UI.
-- **A familiar API.** `BurrowArea`, the object `burrow()` resolves to, mirrors `chrome.storage`;
-  its `storage` property is a synchronous drop-in for `localStorage`.
+- **One async interface.** The core and the offline wrapper both implement `BurrowStorage`, with
+  the argument shapes of `chrome.storage`'s `StorageArea`, so code written against one works
+  with the other.
 - **No bill.** On Firebase's free Spark plan the quotas are hard limits, so no amount of traffic
-  can run up a charge. What heavy use or abuse can cost you is availability: sync pauses until the
-  daily reset, and junk that fills the free storage stops writes until you clean it up (see
+  can run up a charge. What heavy use or abuse can cost you is availability: requests fail until
+  the daily reset, and junk that fills the free storage stops writes until you clean it up (see
   [limits](#limits-costs-and-browser-support)).
-- **Use renews content.** Client use coalesces a full renewal about every 30 days. An operator
-  may enable content-only cleanup after 395 days of server write inactivity. Expiry pauses sync
-  while preserving cached values and unsynced writes; token-access payloads are excluded. See
+- **Use renews content.** With the offline wrapper, client use coalesces a full renewal about
+  every 30 days. An operator may enable content-only cleanup after 395 days of server write
+  inactivity; expiry keeps the local copy and unsynced writes. See
   [retention](docs/retention.md) for the optional cleanup, costs and limits.
 - **A swappable store.** Firestore is one adapter behind a small `Backend` interface, and a
   conformance suite tells you when another adapter is right.
 
 **What Burrow is not:** multi-user or shared data, real-time collaboration, a file store, or an
 identity system. Two devices that change the same key are not merged: the later write wins.
-**Burrow cannot reset a user's data.** If the token is gone from every device and the user kept
-neither a copy nor a passkey backup, the data is unreachable. Burrow gives you an event to remind
-the user at a good moment.
+**Burrow cannot reset a user's data.** If every copy of the token is gone, and no passkey that
+gives it is left, the data is unreachable.
 
 ## Privacy: who can see what
 
-A user's data is readable only on a device that holds their storage token, by the code your site
-runs there. Everyone else in the chain handles ciphertext.
+A user's data is readable only where their storage token is, by the code your site runs there,
+and, if you use the offline wrapper, in that device's unencrypted copy. Everyone else in the chain
+handles ciphertext.
 
 | Who | Can see | Can do |
 | --- | --- | --- |
 | The user, on a device that holds the token | Everything | Read and write |
-| Scripts running on your page | Everything, exactly as with `localStorage` | Read and write |
+| Scripts running on your page | Everything your page can reach: an open store, the offline copy, the token if your page keeps it | Read and write |
+| Anyone who copies the browser profile | With the offline wrapper, the copy's keys and values; the token too if your page keeps it there | With the token: read and write, for good |
 | You, as owner of the Firestore project | Opaque ids, ciphertext, sizes and write times; request IP addresses too if you turn on data-access audit logs. No key names, values or user identities | Delete documents from the console, but not read or forge them |
 | Google, which hosts Firestore | The same, plus each request's IP address | The same |
 | Anyone with a copy of the database | Ciphertext they can neither decrypt nor attribute to a user | Nothing |
@@ -119,14 +138,14 @@ runs there. Everyone else in the chain handles ciphertext.
 | Anyone who reads your page's Firebase config | Nothing more | Create junk documents at unused ids, spending your free quota and storage |
 
 This protects users from the store and whoever runs it. It does not protect them from the site
-itself: your page's code holds the token, so users trust the code you serve, as they do with any
+itself: your page's code handles the token, so users trust the code you serve, as they do with any
 web app. For you as a developer, it means there is no account data to secure: no emails, no
 passwords, no user table. A breach of the store, or a request to hand its contents over, yields
 ciphertext.
 
 ### What a stored document looks like
 
-This is the document that `BurrowArea.set({ theme: "dark" })` produced against the in-memory
+This is the document that `store.set({ theme: "dark" })` produced against the in-memory
 backend, exactly as the operator of the store sees it:
 
 ```
@@ -163,9 +182,7 @@ has the full threat model.
 
 ### 1. Create the store, once
 
-Burrow works with no store at all: data then stays on the device, and `burrow()` warns once in the
-console. To sync across devices, create one Firebase project on the free Spark plan and reuse it
-for every site you build.
+Create one Firebase project on the free Spark plan and reuse it for every site you build.
 [docs/firestore-setup.md](https://github.com/Froussios/burrow-storage/blob/main/docs/firestore-setup.md#create-the-project)
 lists the console steps: create the project, create Firestore, deploy the security rules that
 ship with Burrow, and restrict the API key. To have a coding agent perform the steps, tell it:
@@ -190,19 +207,22 @@ pages, though not a script running outside a browser. Details, costs and quotas:
 <meta name="burrow-firestore" content='{"apiKey":"…","projectId":"…","appId":"…"}'>
 <script src="burrow.min.js"></script>
 <script>
-  Burrow.burrow({ app: "my-prototype" }).then(async (store) => {
+  // From a click, so the passkey prompt is allowed.
+  button.onclick = async () => {
+    const token = await Burrow.passkeyToken({ app: "my-prototype" }).get();
+    const backend = Burrow.readBackendConfig();
+    const store = await Burrow.burrow({ app: "my-prototype", backend, token });
     await store.set({ theme: "dark" });
-    const { theme } = await store.get("theme");
-  });
+  };
 </script>
 ```
 
-`burrow.min.js` defines the global `Burrow`. It does not inline the Firestore SDK: on first use it
-loads `burrow-firestore.js` from its own directory. Serve both files from your site and the page
-contacts no third-party script host and runs under `script-src 'self'` (move the inline script
-into a file of its own). If you load `burrow.min.js` from a CDN instead, the SDK file comes from
-that CDN too, and that second request carries no SRI hash. Each release attaches both files with
-their SRI hashes.
+`burrow.min.js` defines the global `Burrow`, with the core, `offline` and `passkeyToken`. It does
+not inline the Firestore SDK: on first use it loads `burrow-firestore.js` from its own directory.
+Serve both files from your site and the page contacts no third-party script host and runs under
+`script-src 'self'` (move the inline script into a file of its own). If you load `burrow.min.js`
+from a CDN instead, the SDK file comes from that CDN too, and that second request carries no SRI
+hash. Each release attaches both files with their SRI hashes.
 
 Pin the bundle with its Subresource Integrity hash, whether you load it from a CDN or your own
 site:
@@ -228,25 +248,24 @@ import { burrow } from "burrow-storage";
 
 const store = await burrow({
   app: "my-prototype",
-  firestore: { apiKey: "…", projectId: "your-project" },
+  backend: { type: "firestore", apiKey: "…", projectId: "your-project" },
+  token,
 });
 ```
 
 Use your own Firebase project; the owner's store is for the hosted demo only. `appId` is optional.
 The explicit `backend: new FirestoreBackend(config)` form from `burrow-storage/firestore` also
-works. Invalid remote configuration keeps local storage available with `status: "error"`;
-fix the config and reload the page to enable sync.
+works. The adapter and the SDK load on demand, so `burrow()` itself makes no network call.
 
-Generic page configuration selects an adapter by type:
+To keep the config in the page instead, use a meta tag and pass `readBackendConfig()`:
 
 ```html
 <meta name="burrow-backend"
       content='{"type":"firestore","apiKey":"…","projectId":"your-project"}'>
 ```
 
-With this tag (or `window.BURROW = { backend: { type: "firestore", … } }`) you can omit
-`backend` and `firestore`. The legacy `burrow-firestore` tag and `window.BURROW.firestore`
-also work. The adapter loads on demand. See
+`readBackendConfig()` also reads `window.BURROW = { backend: { type: "firestore", … } }`, the
+`burrow-firestore` tag and `window.BURROW.firestore`. See
 [backend configuration](https://github.com/Froussios/burrow-storage/blob/main/docs/extending.md#page-configuration)
 and the
 [backend support overview](https://github.com/Froussios/burrow-storage/blob/main/docs/backend-candidates.md#support-status)
@@ -255,23 +274,35 @@ for implemented adapters, candidates, rejected variants and their follow-up issu
 ### 3. Use it
 
 ```js
-await store.set({ theme: "dark", draft: "Dear diary" });   // durable locally before it resolves
-const { theme } = await store.get("theme");                 // from the cache, no network
+await store.set({ theme: "dark", draft: "Dear diary" });   // resolves once the store has it
+const { theme } = await store.get("theme");                 // reads the store
 const all = await store.get();                              // every key
 await store.remove("draft");
+```
 
-store.onChanged.addListener(({ changes, source }) => {
-  // source: "local" (written on this device, in this tab or another) or "remote" (pulled from the store)
+With the core alone, every call goes to the store and **rejects** if it cannot be reached; nothing
+is kept on the device. For offline use, wrap it:
+
+```js
+import { burrow } from "burrow-storage";
+import { offline } from "burrow-storage/offline";
+
+const local = await offline(await burrow({ app: "my-prototype", backend, token }));
+await local.set({ draft: "works offline" });                // stored on the device first
+
+local.onChanged.addListener(({ changes, source }) => {
+  // "local": written on this device (this tab or another); "remote": from the store
   if (changes.theme) applyTheme(changes.theme.newValue);
 });
-
-store.onStatus.addListener(({ status, error }) => {
+local.onStatus.addListener(({ status }) => {
   badge.textContent = status;                               // "idle" | "syncing" | "offline" | "error"
 });
 ```
 
-Writes never fail because the network did. If the store is unreachable, `status` becomes
-`"offline"`, the writes wait in the local cache, and sync resumes with backoff.
+The wrapper tries the store first and answers from its copy when the store is slow or
+unreachable. Its writes never fail because the network did: they wait in the copy and sync
+when the network returns. **The copy is not encrypted**; it relies on the device for protection,
+as `localStorage` does.
 
 ### Installing before the first release
 
@@ -294,117 +325,97 @@ Full reference with every signature and error:
 
 | Member | What it does |
 | --- | --- |
-| `burrow(config)` | Opens the store for one `app`. Resolves from the local cache, usually within a few milliseconds, with no user interaction. Calling it again with the same `app` on the same page returns the same instance. |
-| `get(keys?, { fresh? })` | `chrome.storage` shapes: nothing (all keys), `"key"`, `["a","b"]`, or `{ key: default }`. `fresh: true` fetches from the store first. |
-| `set(items)` | Any JSON values. Resolves once written locally. Non-JSON values (`Date`, `Map`, functions, `undefined`, `NaN`) are rejected with a `TypeError`. |
+| `burrow({ app, backend, token })` | Opens the store for one `app`. All three are required. Resolves with no network call and no user interaction. |
+| `generateToken()` | A fresh random storage token: 56 characters in groups of four. |
+| `get(keys?)` | `chrome.storage` shapes: nothing (all keys), `"key"`, `["a","b"]`, or `{ key: default }`. |
+| `set(items)` | Any JSON values. Non-JSON values (`Date`, `Map`, functions, `undefined`, `NaN`) reject with a `TypeError`. |
 | `remove(keys)`, `clear()` | Delete keys everywhere; a tombstone carries the delete to other devices. |
-| `getBytesInUse(keys?)` | Size of the keys and their JSON values, counted as `chrome.storage` counts it. |
-| `onChanged` | `{ changes: { key: { oldValue?, newValue? } }, source }`. Use `addListener(fn)`, or `addEventListener("changed", e => e.detail)`. |
-| `status`, `onStatus` | `"idle"`, `"syncing"`, `"offline"` or `"error"`; the event carries the last `BurrowError`. |
-| `token`, `onToken` | Where this device's storage token came from: `{ source, remembered, since }`. |
-| `exportToken()` | The storage token: 56 characters in groups of four. |
-| `link({ token, source?, replace?, discardLocal? })` | Adopt an existing token on this device: typed in, or returned by a backup such as a passkey. `source` labels it in `token.source`. |
-| `unlink({ replace?, discardLocal? })` | Forget the token on this device, like logging out, and close this instance. The cached data stays, in plaintext, until the next `burrow()` clears it. |
-| `syncNow()` | Run one sync pass now; rejects if it failed. |
-| `exportJSON()`, `importJSON(json)` | A plaintext export of the app's data, and its inverse. |
-| `inspect()` | A plain object for a debug panel. |
-| `storage` | The synchronous `Storage` facade. |
-| `passkeyBackup()` | From `burrow-storage/passkey`, optional: `save(token)` behind a passkey, `restore()` it on another device. |
+| `close()` | Drop the keys held in memory; later calls reject `closed`. |
+| `offline(store)` | From `burrow-storage/offline`: the same interface over an unencrypted local copy, plus the members below. |
+| `onChanged` | Offline wrapper: `{ changes: { key: { oldValue?, newValue? } }, source }`. Use `addListener(fn)`, or `addEventListener("changed", e => e.detail)`. |
+| `status`, `onStatus` | Offline wrapper: `"idle"`, `"syncing"`, `"offline"` or `"error"`; the event carries the last `BurrowError`. |
+| `syncNow()` | Offline wrapper: push unsynced writes and refresh the copy now; rejects if the store cannot be reached. |
+| `forget({ discardLocal? })` | Offline wrapper: delete this token's copy from the device and close. |
+| `passkeyToken({ app })` | From `burrow-storage/passkey`: `create()` a passkey and its token, or `get()` the token of an existing one. `available()` checks support without prompting. |
 
-Failures that Burrow detects reject with a `BurrowError` that carries a stable `code`:
-`bad-token`, `item-too-large`, `would-replace`, `would-orphan`, `unlinked`, `cancelled`, `prf-unsupported`,
-`decrypt-failed`, `conflict`, `quota` or `backend`. Invalid arguments reject with a `TypeError`, or
-throw one from the synchronous facade. Two calls can also pass on an error from below: `set()` when
-the browser refuses the local write (for example, its storage is full), and
-`passkeyBackup().save()` when the store fails.
+The core's calls reject when the store cannot be reached; the offline wrapper's data calls never
+do. Failures that Burrow detects reject with a `BurrowError` that carries a stable `code`:
+`bad-token`, `item-too-large`, `backend`, `quota`, `conflict`, `decrypt-failed`, `expired`,
+`would-orphan`, `closed`, `cancelled` or `prf-unsupported`. Invalid arguments reject with a
+`TypeError`. The offline wrapper's writes can also pass on the browser's own error when it refuses
+the local write (for example, its storage is full).
 
-## Reaching the data from another device
+## Signing in: where the token lives
 
-The first device generates the storage token on first use and remembers it. Another device gets
-the same token to `link()`; the store does not care how. Burrow supports two ways:
+Burrow never generates, recovers or remembers a token on its own. Your page gets one and passes
+it to `burrow()`; the two ways can be combined:
 
-| Way | First device | Other device |
+| Way | First time | Next time, or on another device |
 | --- | --- | --- |
-| Storage token | `BurrowArea.exportToken()`, shown to the user | `BurrowArea.link({ token })` with what they type |
-| Passkey backup | `PasskeyBackup.save(token)` | `PasskeyBackup.restore()`, then `BurrowArea.link({ token, source: "passkey" })` if a token is returned |
-
-On a device with existing app data, linking requires consent before retrying `would-replace`
-with `replace: true`. Independently, retry `would-orphan` with `discardLocal: true` only after
-consent to drop unsynced writes.
+| Passkey | `passkeyToken({ app }).create()` makes a passkey and returns its token | `passkeyToken({ app }).get()`: one prompt, the same token, nothing stored |
+| Storage token | `generateToken()`, shown to the user to keep | The user pastes it |
 
 - **Storage token.** 56 characters, such as
   `07DV-1XKY-2X98-DRCP-DJV6-FC2E-459V-AJTY-26K2-XJFQ-9BXZ-QRNF-X0F5-Z1XS` (made up; it fails its
   checksum). Case, spaces and hyphens are ignored, and `O`/`0` and `I`/`L`/`1` read the same. A
-  bad checksum rejects with `bad-token` before any network call. The natural place to keep it is a
-  password manager.
-- **Passkey backup.** `passkeyBackup()` from `burrow-storage/passkey` stores the token in a
-  *keyslot* document, encrypted under a key that only the passkey can derive (WebAuthn PRF), and
-  gives it back on another device with one prompt. Needs HTTPS or `localhost` and PRF support,
-  which still varies: `available()` says whether it can work, without prompting.
-  Different tokens have different passkey handles, so apps can use the same visible label.
-  Saving the same token again on the same site may replace its earlier passkey. Keep the token:
-  a failed save after creation can lose that token's earlier passkey route. If saving fails,
-  keep the token and retry; an earlier successful save does not prove the backup still works.
-  [Naming and replacement limits](https://github.com/Froussios/burrow-storage/blob/main/docs/api.md#passkey-backup).
+  bad checksum rejects with `bad-token` before any network call. The natural place to keep it is
+  a password manager.
+- **Passkey.** The passkey's PRF output, run through HKDF with the app id, is the token: the same
+  passkey gives the same token on every device where it is available, and each app its own token.
+  Nothing is stored, on the device or online. Needs HTTPS or `localhost` and PRF support, which
+  still varies by browser, authenticator and passkey provider: `available()` says whether it can
+  work, without prompting. Each `create()` is a new passkey and a new token. Losing the passkey
+  loses that way back to the data, so offer the token string too.
+  [Limits](https://github.com/Froussios/burrow-storage/blob/main/docs/sync-and-tokens.md#passkeys).
 
-Choose token recovery independently of content storage: another Firebase project, another
-database, or a token kept directly in a password manager. See
-[independent token and content storage](https://github.com/Froussios/burrow-storage/blob/main/docs/extending.md#independent-token-and-content-storage).
+How long the page keeps the token is your choice, and your responsibility:
 
-Burrow does not track whether the token is kept anywhere. `token.source === "generated"` means it
-was made on this device and exists nowhere else as far as Burrow knows: the moment to nudge the
-user to keep it
-([how](https://github.com/Froussios/burrow-storage/blob/main/docs/sync-and-tokens.md#what-to-show)).
+- **Sign in every visit.** Keep the token in memory only and use the core. A reload asks again.
+  Nothing about the user is on the device.
+- **Stay signed in.** Store the token yourself (the demo uses `localStorage`) and use the offline
+  wrapper. The page opens at once and works offline, but anyone who can read the browser profile
+  can read the copy and use the token, for good: tokens cannot be revoked. Say so to your users.
 
-Each `app` has its own token; pages that pass the same `app` share it. `link()` with a different
-token replaces this app's token, refills its cache from the store, and fires `onToken` and
-`onChanged`. When this app has live cached data, `link()` and `unlink()` reject with
-`would-replace`; confirm that the user has kept the token, then retry with `replace: true`.
-Unsynced writes have a separate guard: they are pushed first, and any that remain cause
-`would-orphan` unless `discardLocal: true` is also passed. Empty stores need no replacement
-confirmation, and linking the token already in use needs neither override. Other apps on the
-origin are not affected. The cache cannot establish whether a token has remote-only data.
+Each `app` derives its own keys from a token, so apps never see each other's data. The offline
+wrapper keeps one copy per app and token on the device; switching tokens never shows or drops
+another token's data.
 
-`burrow({ app, rememberDevice: false })` keeps the token in memory only, for shared computers.
-Anything written before `link()` belongs to a throwaway token.
+## Coming from localStorage
 
-## Replacing localStorage
+Burrow's interface is asynchronous, shaped like `chrome.storage` rather than Web Storage, because
+the core reads and writes over the network. The main differences from `localStorage`:
 
-`BurrowArea.storage` implements the Web Storage `Storage` interface synchronously, including
-named-property access. Writes are visible at once and persisted and synced in the background. The
-repository runs a sample app's own tests against both `localStorage` and `BurrowArea.storage`. The
-main differences:
+- Every call returns a promise; values are any JSON, not only strings.
+- No window `storage` event; the offline wrapper's `onChanged` reports changes from this device
+  and from the store.
+- Keys are per `app` and token, where `localStorage` is shared by the whole origin.
+- The data survives the device only if the token does; with the offline wrapper it also stays on
+  the device, unencrypted, like `localStorage`.
 
-- It exists only once `burrow()` has resolved, so start-up reads (for example, applying a theme
-  before first paint) wait for it.
-- No window `storage` event; `BurrowArea.onChanged` reports changes.
-- Keys are per `app`, where `localStorage` is shared by the whole origin.
-- Values written with `BurrowArea.set()` read back from `getItem` as their JSON text.
-
-The full comparison with Web Storage and `chrome.storage`:
+A synchronous Web Storage facade is not part of this release; it could return as an optional
+adapter. The full comparison with Web Storage and `chrome.storage`:
 [docs/storage-standards.md](https://github.com/Froussios/burrow-storage/blob/main/docs/storage-standards.md).
 
 ## Limits, costs and browser support
 
 | | |
 | --- | --- |
-| Item size | `maxItemBytes`: default 200 000 bytes of JSON per item, hard ceiling 749 000 |
+| Item size | What fits one Firestore document (1 MiB) once deflated and encrypted: always 749 000 bytes of JSON, more when it compresses |
 | Spark quotas | Per day, shared by all your sites: 50 000 reads, 20 000 writes, 20 000 deletes; 1 GiB stored in total |
-| Sync with nothing new | 1 read |
-| Pulling changes | 1 read, plus 1 per changed item |
-| Pushing *n* changed items | *n* + 1 writes and about *n* + 2 reads, because Firestore writes run in a transaction that reads first |
-| Polling | Every 30 s while the page is visible (configurable). A Firestore listener on the manifest also delivers changes as they happen. |
-| Capacity | At the default interval, a visible tab costs about 120 reads an hour, so the daily reads cover roughly 400 hours of open, visible tabs across all your sites |
-| Conflicts | Per key, the later write wins, by device clock corrected for skew. Values are never merged. |
-| Eviction | Safari deletes a site's IndexedDB, and with it the remembered token, after seven days of Safari use without the user interacting with the site. Other browsers may evict storage when the disk runs low; Burrow does not request persistent storage. The data stays in the store, reachable with the storage token or a passkey backup. |
-| Browsers | Tested on Chromium, Firefox and WebKit; aimed at the last two versions of Chrome, Edge, Firefox and Safari, iOS Safari and Android Chrome. Needs a secure context (HTTPS or `localhost`), because WebCrypto does. Without IndexedDB the cache is in memory and the token is not remembered. |
-| Bundle | `burrow.min.js` about 14 KB min+gzip (core 11.4 KB, held under a 12 KB budget in CI); `burrow-firestore.js` about 135 KB, loaded only when Firestore is used |
+| Reading one key | 1 read |
+| Reading every key | 1 read, plus 1 per item changed since this instance last read it (all of them the first time; the offline wrapper only fetches what its copy lacks) |
+| Writing *n* items | *n* + 1 writes and up to *n* + 2 reads, because Firestore writes run in a transaction that reads first |
+| Live updates | Offline wrapper only: a Firestore listener on the manifest, plus a refresh when the page becomes visible or the network returns. Nothing polls. |
+| Conflicts | Per key, the later write wins. A write made while the store answers counts as the latest; a write made offline competes with the time it was made. Values are never merged. |
+| Eviction | Safari deletes a site's IndexedDB, and with it the offline copy, after seven days of Safari use without the user interacting with the site. Other browsers may evict storage when the disk runs low; Burrow does not request persistent storage. The data stays in the store, reachable with the token. |
+| Browsers | Tested on Chromium, Firefox and WebKit; aimed at the last two versions of Chrome, Edge, Firefox and Safari, iOS Safari and Android Chrome. Needs a secure context (HTTPS or `localhost`), because WebCrypto does. Without IndexedDB the offline copy is in memory only. |
+| Bundle | Core about 6 KB min+gzip, core with the offline wrapper about 9.5 KB (12 KB budget in CI), passkey token under 1 KB more; `burrow.min.js` about 12 KB; `burrow-firestore.js` about 135 KB, loaded only when Firestore is used |
 
-Writes are debounced (1.5 s) and coalesced. Raise `syncIntervalMs` for sites with long-lived tabs.
-When a daily quota runs out, sync pauses until it resets and then resumes on its own. Stored bytes
-do not reset: anyone who reads your page's config can fill the 1 GiB with junk documents, which
-look like users' documents. Writes for every site on the project then fail until you clean up by
-hand.
+Every read through the core, and every read through the offline wrapper while the store answers,
+costs at least one request: read once and keep the result, or use the wrapper's `onChanged`.
+When a daily quota runs out, requests fail until it resets. Stored bytes do not reset: anyone who
+reads your page's config can fill the 1 GiB with junk documents, which look like users'
+documents. Writes for every site on the project then fail until you clean up by hand.
 [docs/firestore-setup.md](https://github.com/Froussios/burrow-storage/blob/main/docs/firestore-setup.md)
 has the full cost table and the abuse story.
 
@@ -419,28 +430,29 @@ is ciphertext under a key derived from it:
   as additional authenticated data.
 - **Writes:** a per-document hash chain of one-time HMAC write tokens, checked by the store's rules
   with SHA-256.
-- **On the device:** the token is wrapped with AES-KW under a non-extractable WebCrypto key that is
-  stored beside it in IndexedDB. That stops a script from exporting the token, but not someone
-  who copies the browser profile. Cached items are plaintext, as with `localStorage`.
-- **Leaving the device:** the token leaves only when the user carries it, as text, or inside a
-  passkey keyslot.
+- **On the device:** Burrow writes neither the token nor a key anywhere. The core keeps nothing
+  on disk; the offline wrapper keeps the data unencrypted, as `localStorage` does. A page that
+  keeps the token across visits keeps it however it chooses.
+- **Leaving the device:** Burrow never sends the token. A passkey reproduces it on another device
+  without it ever being stored online.
 
 Out of scope, as for `localStorage`: a malicious script on your own origin, and the code your site
 serves. Ship a strict CSP and use SRI for the script tag. Burrow needs no `eval`, no inline script
 and no third-party host, and the demo runs under `default-src 'none'`.
 [SECURITY.md](https://github.com/Froussios/burrow-storage/blob/main/SECURITY.md)
 has the derivation, the formats, the threat table, and the plain list of what Burrow does *not*
-protect against: copied browser profiles, junk filling the store, and timing metadata.
+protect against: the offline copy and any token your page keeps in a copied browser profile, junk
+filling the store, and timing metadata.
 
 ## Documentation
 
 | | |
 | --- | --- |
-| [docs/api.md](https://github.com/Froussios/burrow-storage/blob/main/docs/api.md) | Full API reference: config, methods, events, errors, types |
-| [docs/sync-and-tokens.md](https://github.com/Froussios/burrow-storage/blob/main/docs/sync-and-tokens.md) | Storage tokens, passkey backups, `rememberDevice`, what to show users |
+| [docs/api.md](https://github.com/Froussios/burrow-storage/blob/main/docs/api.md) | Full API reference: the core, the offline wrapper, the passkey token, errors, types |
+| [docs/sync-and-tokens.md](https://github.com/Froussios/burrow-storage/blob/main/docs/sync-and-tokens.md) | Storage tokens, passkeys, signing in every visit or staying signed in, offline sync, what to show users |
 | [docs/storage-standards.md](https://github.com/Froussios/burrow-storage/blob/main/docs/storage-standards.md) | Setting up, and how Burrow differs from Web Storage and `chrome.storage` |
 | [docs/firestore-setup.md](https://github.com/Froussios/burrow-storage/blob/main/docs/firestore-setup.md) | Creating and running the store: rules, costs, quotas, abuse |
-| [docs/extending.md](https://github.com/Froussios/burrow-storage/blob/main/docs/extending.md) | Writing a backend for another store, or another way to carry the token |
+| [docs/extending.md](https://github.com/Froussios/burrow-storage/blob/main/docs/extending.md) | Writing a backend for another store, or another way to keep the token |
 | [SECURITY.md](https://github.com/Froussios/burrow-storage/blob/main/SECURITY.md) | Cryptographic design and threat model |
 | [docs/architecture.md](https://github.com/Froussios/burrow-storage/blob/main/docs/architecture.md) | How the implementation fits together, for contributors |
 | [docs/decisions.md](https://github.com/Froussios/burrow-storage/blob/main/docs/decisions.md) | Decision log |

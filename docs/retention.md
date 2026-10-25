@@ -3,17 +3,22 @@
 A store operator may enable inactivity cleanup with the optional `burrow-reaper` tool. Burrow
 renews content when the app is used, but does not promise that every store runs cleanup or that
 all data disappears after a year. The operator must publish their retention policy to the app's
-users. This policy concerns **content**, independently of the store selected for token access
-(D-48, D-50).
+users. This policy concerns **content**: Burrow stores no token record anywhere (D-48, D-58).
 
 ## Client use renews content
 
-Opening an app, reading or writing its storage, using the synchronous facade, or calling
-`syncNow()` can request renewal when this device's last complete renewal is due. Requests
-coalesce per app/device. After a complete pass, the cache records a deadline 29–30 days later
-(the bounded jitter avoids synchronized requests). Already-open tabs consult the shared receipt
-under the sync lock; reloads retain it. A token switch resets ownership of that receipt. Polls
-and subscriptions alone do not schedule a new renewal after a successful receipt.
+Renewal belongs to the offline wrapper (`burrow-storage/offline`, D-59), which has somewhere to
+keep a deadline. Opening it, reading or writing through it, or calling `syncNow()` requests
+renewal when this device's last complete renewal for that app and token is due. Requests
+coalesce per app, token and device. After a complete renewal, the local copy records a deadline
+29–30 days later (the bounded jitter avoids synchronized requests). Already-open tabs consult the
+shared deadline under the sync lock; reloads retain it. Each token's copy has its own deadline.
+Subscriptions alone do not schedule a renewal.
+
+**The core alone does not renew.** It keeps nothing on disk, so it has no deadline to keep; its
+own writes refresh the server write time of the documents they write, and nothing else. In a
+store whose operator runs cleanup, content that a core-only app only reads can expire. Use the
+offline wrapper, or write periodically, if that matters.
 
 A due pass fetches every item still listed in the manifest, including retained deletion markers,
 then rewrites those items before rewriting the manifest. It preserves values, logical `ts`,
@@ -27,9 +32,9 @@ directory and receipt unchanged. Repeated retries cannot repair that condition w
 copy or operator restoration. It does not drop the key or claim a complete renewal.
 
 This uses the existing authenticated write-token chain. It increases read/write costs about
-once a month **per app and device in use**: one read and write per listed item plus the manifest,
-with extra reads on conflicts. Multiple devices renew independently, so monthly cost scales
-with devices times listed items; tabs sharing one device cache coalesce. The client's clock
+once a month **per app, token and device in use**: one read and write per listed item plus the
+manifest, with extra reads on conflicts. Multiple devices renew independently, so monthly cost
+scales with devices times listed items; tabs sharing one device's copy coalesce. The client's clock
 controls scheduling only; it is not trusted for cleanup
 eligibility. Offline or clock-skewed devices may miss a renewal, and the operator's cleanup
 schedule and the 395-day horizon provide no availability guarantee.
@@ -59,47 +64,41 @@ behavior; this PR's source package version is not proof of a deployed expiry-awa
 the deployed bundle/commit. The rules still permit legitimate writes from older token holders,
 so client rollout cannot enforce this gate against an uncontrolled old client.
 
-The core reports `onStatus` with `status: "error"` and `BurrowError("expired")` and pauses remote
-work. Local reads and writes keep working. It detects expiry before decryption or applying that
-pass's remote merges/pruning, and clears dirty flags only after manifest publication succeeds.
-A fresh single-item read returns the cached value while reporting expiry. Item and manifest
-expiry are independent; an expired item can stop a pass whose manifest is still live. Some
-independent item writes may already have committed before a later item/manifest expires; there
-is no cross-document transaction or rollback. Cached values and unsynced writes remain intact,
-and no full-success receipt is recorded.
+The core rejects the call with `BurrowError("expired")` when it meets a stub, before decrypting
+anything. The offline wrapper then reports `onStatus` with `status: "error"` and that error and
+pauses remote work for the instance; local reads and writes keep working against its copy, which
+it does not change on the way. A named `get()` of an expired key answers from the copy while
+reporting expiry. Item and manifest expiry are independent; an expired item can stop a sync
+whose manifest is still live. Some independent item writes may already have committed before a
+later item/manifest expires; there is no cross-document transaction or rollback. The copy's
+values and unsynced writes remain intact, and no renewal success is recorded.
 
 This also applies to retired keys: deletion can be pruned from the manifest after 30 days,
 leaving an unlisted item document that the operator may later replace with a stub. The rest
-of the account can remain live and renew normally. An ordinary `set()` on that key keeps the
-new value locally, but its next sync encounters the stub and pauses **all** remote work with
-`expired`. `get(key, { fresh: true })` likewise pauses and returns the cached value if present
-(or no value if absent). Every cached entry and dirty write stays intact. Neither a new
+of the account can remain live and renew normally. With the offline wrapper, an ordinary `set()`
+on that key keeps the new value locally, but its push encounters the stub and pauses **all**
+remote work with `expired`. A named `get()` likewise pauses and returns the local value if
+present (or no value if absent). Every local entry and unsynced write stays intact. With the
+core alone, the call rejects `expired`. Neither a new
 ordinary write nor an older queued write gains replacement authority because the key is
 unlisted; the minimal stub no longer has the deletion's logical timestamp/hash. With an
 unexpired old document, ordinary sync still compares logical versions, so a newer retained
 deletion can defeat an older offline write (D-46). Thirty-day pruning alone does not authorize
 replacing an expiry stub.
 
-Export local data/JSON and keep the storage token before choosing a fresh identity. Existing
-`link()`/`unlink()` rules require `replace: true` to leave live cached data, and independently
-reject orphaning dirty writes unless `discardLocal: true` is explicit. Linking the same expired token merely retries and pauses again while a stub remains.
-The backend does not migrate identities or recover tokens after loss of authenticating
-credentials.
+Read the local data with `get()` and save it, and keep the storage token, before choosing a
+fresh identity; then open the fresh token and write the data again. `forget()` refuses to drop
+unsynced writes unless `discardLocal: true` is explicit. Opening the same expired token merely
+retries and pauses again while a stub remains. The backend does not migrate identities or
+recover tokens.
 
-## Token-access data is excluded
+## Only content is stored
 
-Passkey keyslots contain the encrypted storage token. Keeping only `rev`/`next` would destroy
-access to that token even with a working authenticator. Keep the **full token-access payload**
-outside cleanup. `passkeyBackup().restore()` remains read-only; repeated `save()` creates a new
-credential and slot and can replace the same token's previous credential on that RP (D-56).
-Neither is an existing-slot renewal. Core does not contact, enumerate or manage the independently selected token backend.
-
-An opaque mixed collection cannot identify content versus keyslots. Choose a dedicated content
-collection/project when configuring content and token access. The reaper requires
-`--content-only` as the operator's explicit acknowledgment and refuses `--mixed` or a missing
-acknowledgment. It cannot verify that acknowledgment from encrypted data; do not use it on a
-mixed collection, on the token-access collection, or on the default collection until you have
-verified that it contains content only. The client adapter's current database is `(default)`.
+Burrow keeps no token-access documents: there are no keyslots (D-58), so a Burrow collection
+holds only content. Still point the reaper only at a collection you know holds Burrow content and
+nothing else of yours: it cannot classify encrypted data. It requires `--content-only` as the
+operator's explicit acknowledgment and refuses `--mixed` or a missing acknowledgment. The client
+adapter's current database is `(default)`.
 
 ## Optional owner cleanup
 
@@ -153,8 +152,8 @@ precondition is skipped without a blind retry. Malformed metadata is counted as 
 Output contains counts and fixed error codes, never ids, tokens, payloads or server messages.
 
 No Firestore TTL policy or billing change is enabled. TTL requires paid billing and has no free
-usage allowance. Ordinary scans/writes still consume quota; permanent stubs and token-access
-payloads still consume storage/index overhead, and scanning costs grow. Cleanup shrinks old
+usage allowance. Ordinary scans/writes still consume quota; permanent stubs still consume
+storage/index overhead, and scanning costs grow. Cleanup shrinks old
 ciphertext but does not solve ongoing junk writes, id squatting, permanent stub storage or the
 1 GiB limit. It cannot recover already erased ciphertext.
 

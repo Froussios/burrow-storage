@@ -1,5 +1,6 @@
-// §7 derivation. ENC-2: the v1 salts and info labels below are frozen public
-// contract.
+// §7 derivation. The salts and info labels below are the current
+// cryptographic contract (ENC-2, D-55): changes go with SECURITY.md and
+// test/vectors.json.
 import {
   b64url,
   concat,
@@ -11,9 +12,10 @@ import {
 } from "../bytes.js";
 
 export const SALT_V1 = "burrow/v1";
-export const SLOT_SALT_V1 = "burrow/slot/v1";
-/** Fixed library salt for the WebAuthn PRF evaluation (KP-5/6). */
-export const PRF_SALT_V1 = "burrow/prf/v1";
+/** Fixed library input for the WebAuthn PRF evaluation (D-58). */
+export const PRF_SALT = "burrow/prf-token/v1";
+/** HKDF salt turning a passkey's PRF output into an app's token (D-58). */
+export const PASSKEY_TOKEN_SALT = "burrow/passkey-token/v1";
 export const ID_LENGTH = 43;
 
 const HMAC = { name: "HMAC", hash: "SHA-256" } as const;
@@ -46,22 +48,6 @@ async function expandBits(
 ): Promise<Uint8Array<ArrayBuffer>> {
   return new Uint8Array(
     await subtle().deriveBits(hkdf(salt, info), ikm, length),
-  );
-}
-
-/**
- * Stable 16-byte WebAuthn user handle per decoded token and effective RP ID.
- * The v1 domain, NUL separator and output length are frozen (ENC-2).
- */
-export async function derivePasskeyUserHandle(
-  secret: Uint8Array,
-  rpId: string,
-): Promise<Uint8Array<ArrayBuffer>> {
-  return expandBits(
-    await hkdfBase(secret),
-    SALT_V1,
-    utf8("burrow/passkey-user/v1\0" + rpId),
-    128,
   );
 }
 
@@ -148,38 +134,14 @@ export async function commitment(
   return hex(await sha256(utf8(await token(macKey, id, n + 1))));
 }
 
-export interface SlotKeys {
-  readonly slotId: string;
-  /** Wraps the root secret (AES-256-GCM). */
-  readonly kek: CryptoKey;
-  /** Write chain for the keyslot document. */
-  readonly slotMac: CryptoKey;
-}
-
 /**
- * The passkey keyslot key set: PRF output plays the role of ikm (KP-5/6,
- * ENC-11).
+ * The 32-byte root secret of the token a passkey gives an app:
+ * HKDF-SHA256(prfOutput, salt "burrow/passkey-token/v1", info = app). The same
+ * credential gives each app its own token (D-58). The caller zeroises it.
  */
-export async function deriveSlotKeys(prfOutput: Uint8Array): Promise<SlotKeys> {
-  const ikm = await hkdfBase(prfOutput);
-  const kek = await subtle().deriveKey(
-    hkdf(SLOT_SALT_V1, utf8("kek")),
-    ikm,
-    { name: "AES-GCM", length: 256 },
-    false,
-    ["encrypt", "decrypt"],
-  );
-  const slotMac = await subtle().deriveKey(
-    hkdf(SLOT_SALT_V1, utf8("auth")),
-    ikm,
-    { ...HMAC, length: 256 },
-    false,
-    ["sign"],
-  );
-  const slotBits = await expandBits(ikm, SLOT_SALT_V1, utf8("slot"));
-  try {
-    return { slotId: idOf(await sha256(slotBits)), kek, slotMac };
-  } finally {
-    zeroise(slotBits);
-  }
+export async function derivePasskeySecret(
+  prfOutput: Uint8Array,
+  app: string,
+): Promise<Uint8Array<ArrayBuffer>> {
+  return expandBits(await hkdfBase(prfOutput), PASSKEY_TOKEN_SALT, utf8(app));
 }

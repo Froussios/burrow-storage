@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { deriveAppKeys, deriveSlotKeys } from "../../src/codec/derive.js";
-import { SecretHolder } from "../../src/secret.js";
+import { deriveAppKeys, derivePasskeySecret } from "../../src/codec/derive.js";
 
 // SEC-1: Uint8Array copies of key material are zeroised once imported into a
 // CryptoKey. Each test records every raw buffer handed to importKey and checks
@@ -39,24 +38,12 @@ describe("SEC-1 key material copies are zeroised after import", () => {
     expect(input).toEqual(secret());
   });
 
-  it("SEC-1 deriveSlotKeys zeroises its copy of the PRF output", async () => {
+  it("SEC-1 derivePasskeySecret zeroises its copy of the PRF output", async () => {
     const seen = recordImports();
     const input = secret();
-    await deriveSlotKeys(input);
+    await derivePasskeySecret(input, "app");
     expect(seen.length).toBeGreaterThanOrEqual(1);
     for (const b of seen) expect(allZero(b)).toBe(true);
     expect(input).toEqual(secret());
-  });
-
-  it("SEC-1 SecretHolder.wrap zeroises its copy of the root secret", async () => {
-    const seen = recordImports();
-    const input = secret();
-    const holder = await SecretHolder.wrap(input);
-    expect(seen.length).toBe(1);
-    expect(allZero(seen[0]!)).toBe(true);
-    expect(input).toEqual(secret());
-    expect(await holder.use(async (s) => Array.from(s))).toEqual(
-      Array.from(secret()),
-    );
   });
 });
