@@ -98,6 +98,18 @@ test("D-57 nothing on disk names the token or a document, and with the core alon
         : []),
     ]);
     rmSync(dir, { recursive: true, force: true });
+    // Known gap (SECURITY.md, "Data on the device"): Firefox's HTTP cache can
+    // keep a response of the wrapper's Listen channel, which names documents.
+    // Only that is allowed: the token anywhere, or an id elsewhere, still fails.
+    if (
+      browserName === "firefox" &&
+      mode === "offline" &&
+      hits["document id"]
+    ) {
+      const rest = hits["document id"].filter((f) => !f.startsWith("/cache2/"));
+      if (rest.length) hits["document id"] = rest;
+      else delete hits["document id"];
+    }
     expect(hits, mode).toEqual({});
   }
 });

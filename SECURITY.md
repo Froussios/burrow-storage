@@ -173,17 +173,25 @@ record in IndexedDB (`firebase-heartbeat-database`) with SDK version strings, da
 app name (which contains the project id) and the site's app id, the same for every user. It runs
 with its default in-memory cache, so it writes no documents to disk.
 
-**No document path reaches the disk.** A document's path (`burrow/<id>`) is a stable pseudonym:
-whoever finds one in a profile can link that device to the user's documents in the store, see
-when they change and how large they are, though not read them. The SDK sends paths only in
-request bodies (POST) and receives them in the streamed responses of its Listen channel; the
-URLs carry the project and database only. The browser tests (`test/e2e/browser.spec.ts`) check
-both layers in each engine: the core leaves no Burrow database, no Web Storage and no cookies,
-and no script-visible storage or file in the browser's own profile directory (HTTP cache,
-history, session restore) contains the token, a document id seen on the wire, or, with the core
-alone, a key name or value. They run under the Firestore emulator, whose response headers can
-differ from production; extensions, proxies and network logs outside the browser are not
-covered.
+**Document paths on disk.** A document's path (`burrow/<id>`) is a stable pseudonym: whoever
+finds one in a profile can link that device to the user's documents in the store, see when they
+change and how large they are, though not read them. The SDK sends paths only in request bodies
+(POST) and receives them in the streamed responses of its Listen channel; the URLs carry the
+project and database only. The core never opens a Listen channel, and no document path of its
+reaches the disk. The offline wrapper listens to the manifest, and **Firefox can keep a Listen
+response in its HTTP cache** (`cache2`): it names the user's documents and carries their
+encrypted envelopes. Such an entry can outlive `forget()` until Firefox clears it, and clearing
+the site's data removes it. Chromium and WebKit kept none in the same test. This was seen under
+the emulator, which sends `Cache-Control: private, max-age=0`; whether production's headers
+prevent it is not verified. Burrow cannot set those headers.
+
+The browser tests (`test/e2e/browser.spec.ts`) check both layers in each engine. The core leaves
+no Burrow database, no Web Storage and no cookies, and no script-visible storage or file in the
+browser's own profile directory (HTTP cache, history, session restore) contains the token, a
+document id seen on the wire, or a key name or value. With the offline wrapper, no file holds the
+token, and document ids appear only in Firefox's HTTP cache. They run under the Firestore
+emulator, whose response headers can differ from production; extensions, proxies and network
+logs outside the browser are not covered.
 
 **The offline wrapper keeps an unencrypted copy** (`burrow-storage/offline`). Items, their
 versions and the sync state of one app and one token live in an IndexedDB database named
@@ -194,7 +202,8 @@ written; the wrapper does not need them to read or write its copy, so it works o
 start with the token. Each token has its own copy, so switching tokens on a device never shows
 one identity's data under another or drops another identity's unsynced writes; copies of earlier
 identities stay on disk until the app calls `forget()` for them. `forget()` deletes the database;
-IndexedDB backups, logs and the file system may still hold old data, so it is not secure erasure.
+IndexedDB backups, logs, the browser's HTTP cache (above) and the file system may still hold old
+data, so it is not secure erasure.
 Encrypting the copy is deliberately not part of this design: any key that opens it without a
 prompt would have to sit beside it.
 

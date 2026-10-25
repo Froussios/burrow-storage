@@ -968,7 +968,8 @@ The owner chose these between alternatives on #82:
   elsewhere in the meantime wins. A pull never replaces a fresh write that is still on its way,
   and a background replay that sends it first stamps it fresh too. Between tabs this holds only
   for the tab that made the write. Deleting a key the copy does not show is a no-op offline, as
-  in chrome.storage. Online it is queued in the copy like any delete, invisible to `get()`, and
+  in chrome.storage; offline here includes the backoff after a remote failure, as for every
+  call. Online it is queued in the copy like any delete, invisible to `get()`, and
   dropped once the store answers that it has no such document. If that first push fails, the
   later replay writes a tombstone whether or not the store has the key. A queued delete of a key
   the copy does show is always recorded, so an older queued write elsewhere cannot bring the key

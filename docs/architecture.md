@@ -401,8 +401,8 @@ map simulate several devices; `failWith` makes every call fail, for tests.
   `invalid-argument` → `too-large`, everything else → `network`.
 - The SDK keeps a heartbeat record of its own in IndexedDB (`firebase-heartbeat-database`: SDK
   versions, dates, the Firebase app name and the app id); it holds nothing of the user's. The
-  SDK runs with its default in-memory cache, so documents and their paths stay off the disk
-  (SECURITY.md, "Data on the device").
+  SDK runs with its default in-memory cache, so it writes no documents to disk itself; Firefox's
+  HTTP cache can keep a Listen response, which names documents (§13).
 
 **Rules** (`firebase/firestore.rules`) are summarised in [firestore-setup.md](firestore-setup.md)
 and tested in `firebase/tests/rules.test.mjs` under the emulator.
@@ -440,7 +440,7 @@ the staged version on npm with 2FA and publishes the release (D-53).
 | Property (`test/property/merge.test.ts`) | `npm test` | Node, fast-check | merge convergence, tombstones, clock skew, offline periods, queued and network-first writes |
 | Conformance (`test/conformance/`) | `npm test` (memory, worker), `npm run test:firestore` (emulator), `npm run test:live` (your own project, never in CI) | Node | `backendConformance()` for every backend; core and wrapper over the emulator |
 | Rules (`firebase/tests/rules.test.mjs`) | `npm run test:rules` | `node --test` under the emulator (Java 21) | the rules matrix |
-| Browser (`test/e2e/*.spec.ts`) | `npm run test:e2e` | Playwright on Chromium, Firefox, WebKit, served by `scripts/serve.mjs` against the emulator | nothing of the core in the profile, no token or document id in the profile's files on disk, the wrapper's plaintext copy without the token, offline start and replay, tabs, apps, forget, expiry; the demo journeys in both modes; passkeys on Chromium via a CDP virtual authenticator with and without PRF |
+| Browser (`test/e2e/*.spec.ts`) | `npm run test:e2e` | Playwright on Chromium, Firefox, WebKit, served by `scripts/serve.mjs` against the emulator | nothing of the core in the profile, no token or document id in the profile's files on disk (except a Listen response in Firefox's HTTP cache, with the wrapper), the wrapper's plaintext copy without the token, offline start and replay, tabs, apps, forget, expiry; the demo journeys in both modes; passkeys on Chromium via a CDP virtual authenticator with and without PRF |
 | Demo smoke (`test/smoke/demo.spec.ts`) | `npm run test:smoke` | Playwright on Chromium, against the deployed demo (`BURROW_DEMO_URL`) and its live store, or against the assembled `site/` under the emulator | the page shows the expected commit, keeps its strict CSP, loads from its own origin and the store only, logs no console errors, asks how to sign in; two fresh contexts, one in each mode, sync both ways |
 
 Test titles cite the requirement and decision ids they verify. `npm run docs:check`
@@ -503,6 +503,10 @@ Things the code does not do that a reader of the interfaces might expect:
   has it in its copy as dirty and replays it on the next start; with the core alone it is lost.
 - Copies of tokens no longer used stay on the device until the app opens the wrapper with that
   token and calls `forget()`; there is no listing of them.
+- Firefox can keep a response of the offline wrapper's Listen channel in its HTTP cache. The
+  response names the user's documents and carries their encrypted envelopes, and it can outlive
+  `forget()` (SECURITY.md, "Data on the device"). Burrow cannot set the response headers that
+  would prevent it; the core never listens.
 - While offline, the Firebase SDK logs failed requests to the console and probes connectivity
   with an image request that a strict `img-src` refuses. Burrow cannot switch this off.
 - The passkey utility cannot tell "dismissed", "timed out" and "no passkey" apart: WebAuthn

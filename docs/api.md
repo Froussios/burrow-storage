@@ -136,7 +136,7 @@ ignored while offline; online it is kept as an unsynced delete until the store h
 | `status` | `"idle"`, `"syncing"`, `"offline"` or `"error"`; see below. |
 | `onStatus` | Fires on every change of `status` or its error. |
 | `syncNow()` | Pushes unsynced writes, renews content when due ([retention](retention.md)) and refreshes the whole copy. Unlike the data calls, it rejects with the `BurrowError` when the store cannot be reached or a pause is in force. |
-| `forget({ discardLocal? })` | Deletes this token's copy from the device and closes. It first tries to push unsynced writes; if some remain, it rejects `would-orphan` unless `discardLocal` is true. Other tabs with the same copy close too. The data stays in the store for the token. IndexedDB backups may still hold old data: it is not secure erasure. |
+| `forget({ discardLocal? })` | Deletes this token's copy from the device and closes. It first tries to push unsynced writes; if some remain, it rejects `would-orphan` unless `discardLocal` is true. A delete still on its way counts, even of a key `get()` never showed. Other tabs with the same copy close too. The data stays in the store for the token. IndexedDB backups may still hold old data: it is not secure erasure. |
 
 | `status` | Meaning |
 | --- | --- |
