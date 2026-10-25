@@ -22,6 +22,8 @@ const out = join(root, "site");
 const FILES = [
   ["demo", "demo.js"],
   ["demo", "demo.css"],
+  ["demo", "v2.js"],
+  ["demo", "v2.css"],
   ["demo", "favicon.svg"],
   ["dist", "burrow.min.js"],
   ["dist", "burrow-firestore.js"],
@@ -59,8 +61,6 @@ if (!/^https:\/\/[\w.-]+\/[\w.-]+\/[\w.-]+$/.test(repo))
   fail(`not a repository URL: ${repo}`);
 const built = new Date().toISOString().replace(/\.\d+Z$/, "Z");
 
-const html = readFileSync(join(root, "demo", "index.html"), "utf8");
-if (!FOOTER.test(html)) fail('demo/index.html has no <footer id="build">');
 const footer =
   `<footer id="build" class="build" data-commit="${commit}" data-built="${built}">` +
   `Build <a href="${repo}/commit/${commit}">${commit.slice(0, 7)}</a>, ` +
@@ -68,10 +68,14 @@ const footer =
 
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out);
-writeFileSync(
-  join(out, "index.html"),
-  html.replace(FOOTER, () => footer),
-);
+for (const page of ["index.html", "v2.html"]) {
+  const html = readFileSync(join(root, "demo", page), "utf8");
+  if (!FOOTER.test(html)) fail(`demo/${page} has no <footer id="build">`);
+  writeFileSync(
+    join(out, page),
+    html.replace(FOOTER, () => footer),
+  );
+}
 for (const [dir, f] of [
   ...FILES,
   ...OPTIONAL.filter(([d, f]) => existsSync(join(root, d, f))),

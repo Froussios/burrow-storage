@@ -148,3 +148,30 @@ test("two fresh browser contexts sync through the store, one signed in for every
 
   expect([...a.problems, ...b.problems]).toEqual([]);
 });
+
+test("demo v2 packages both scenario URLs, the index, and this build", async ({
+  browser,
+  baseURL,
+}) => {
+  const a = await device(browser, new URL(baseURL!).origin);
+  for (const scenario of ["offline", "core"]) {
+    await a.page.goto(`./v2.html?scenario=${scenario}`);
+    await expect(a.page.locator("body")).toHaveAttribute("data-ready", "true");
+    await expect(a.page.locator("body")).toHaveAttribute(
+      "data-scenario",
+      scenario,
+    );
+    await expect(a.page.locator("#build")).toHaveAttribute(
+      "data-commit",
+      COMMIT ?? /^[0-9a-f]{40}$/,
+    );
+    await expect(a.page.locator(".scenario-link")).toHaveCount(2);
+    await expect(a.page.locator('[aria-current="page"]')).toHaveAttribute(
+      "data-scenario",
+      scenario,
+    );
+    await expect(a.page.locator("#signin")).toBeVisible();
+    await expect(a.page.locator("#status")).toHaveText("locked");
+  }
+  expect(a.problems).toEqual([]);
+});

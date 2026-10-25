@@ -5,6 +5,43 @@ These journeys define what a person must be able to do on the Burrow demo page
 demo's design and its browser tests. The page shows the two ways an app can hold the storage
 token (D-57): **sign in on every visit** and **stay signed in**.
 
+## Demo v2: selectable scenarios
+
+`demo/v2.html?scenario=offline` and `demo/v2.html?scenario=core` open separate
+scenarios. The sidebar enumerates the registry in `demo/v2.js`; an absent scenario
+selects `offline`, and an unknown value shows the index without opening a store.
+The original page remains available. `demo:build` packages and stamps both pages.
+
+- **Offline wrapper** uses app `burrow-demo-v2-offline`, the same async editor over
+  `offline(core)`, and the page-owned localStorage record
+  `burrow-demo-v2-offline:token`. It is the stay-signed-in flow: both the retained
+  token and the offline content copy are plaintext.
+- **Remote core** uses app `burrow-demo-v2-core`, with the token in memory for the
+  visit. Reloading asks for the token or passkey again. Remote failures are shown
+  as failed saves, with confirmation before abandoning an unsaved edit.
+
+Both scenarios begin with an explicit token/passkey action. New random tokens and
+passkey-derived tokens are separate per scenario. Passkey creation labels include
+its scenario, and each creates a distinct credential; selecting an existing
+credential still derives a different token for each app. A deliberately reused
+pasted token cannot reveal the other scenario's content because document derivation
+also includes the app namespace. Nothing is shared with the original demo's app.
+
+Switching scenarios waits for pending editor writes to reach the selected store
+(or the offline copy). It does not sign out the other scenario or erase its data.
+Core memory custody means switching away still requires reopening on return.
+Signing out clears only the selected scenario's retained token and offline copy;
+remote content remains available with that scenario's token or passkey.
+
+The only storage-specific branches are initialization, offline status/change
+subscriptions and offline `forget()` on sign-out. Both scenarios use `get()` and
+`set()` through the same editor, export and theme code. More divergent scenarios
+should be called out when added, rather than duplicating the editor.
+
+`test/e2e/demo-v2.spec.ts` covers navigation, reloads, offline replay, remote
+namespace isolation, core failure behavior, and passkey separation. It uses the
+real crypto and a shared memory backend; it never contacts the live project.
+
 ## Terms
 
 - **Storage token** (or just **token**): the secret that owns a user's data. Whoever holds it can

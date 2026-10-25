@@ -16,6 +16,10 @@ stores a token anywhere. This is a breaking change throughout, made under the no
 
 ### Added
 
+- Demo v2 with URL-selectable offline/core scenarios, a scenario sidebar, isolated
+  token/passkey scopes and content, and a shared async editor. The original demo
+  remains available.
+
 - `generateToken()`: a fresh random storage token, for apps that keep their own.
 - `burrow-storage/offline` with `offline(store)`: the same interface as the core over a plaintext
   IndexedDB copy, one per app and token. Network first: calls try the store for up to 3 s and
