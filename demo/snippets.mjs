@@ -97,12 +97,14 @@ ${connect}`,
       description: "Uses the store returned by the chosen connection action.",
       code: `const theme = document.documentElement.dataset.theme === "dark"
   ? "light" : "dark";
+// Object property names are storage keys.
+// set() updates only the keys provided; other keys keep their values.
 await store.set({ theme });
 document.documentElement.dataset.theme = theme;`,
     },
     {
       id: "content",
-      title: "Read and save the draft",
+      title: "Read and save content",
       description: offline
         ? "Use the connected store. The offline wrapper keeps accepted writes in its plaintext copy and syncs later; remote failures are status."
         : "Use the connected store. Core reads/writes require the backend and reject on failure; there is no durable offline queue.",
@@ -115,7 +117,9 @@ document.getElementById("draft").value =
         },
         {
           label: "Save",
-          code: `await store.set({
+          code: `// Object property names are storage keys.
+// set() updates only the keys provided; other keys keep their values.
+await store.set({
   draft: document.getElementById("draft").value,
 });`,
         },
