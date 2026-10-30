@@ -28,6 +28,9 @@ stores a token anywhere. This is a breaking change throughout, made under the no
   in typing. Write examples explain property names as storage keys and updates
   to only the provided keys.
 
+- Demo editors wait for the initial content read before accepting edits, so a
+  delayed read cannot overwrite an immediately selected theme.
+
 - `generateToken()`: a fresh random storage token, for apps that keep their own.
 - `burrow-storage/offline` with `offline(store)`: the same interface as the core over a plaintext
   IndexedDB copy, one per app and token. Network first: calls try the store for up to 3 s and

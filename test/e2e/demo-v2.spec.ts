@@ -70,6 +70,45 @@ async function enter(page: Page, token: string, remember = false) {
   await expect(page.locator("#status")).toHaveText("synced");
 }
 
+test("initial reads finish before either demo accepts edits", async ({
+  context,
+  page,
+}) => {
+  const remote = await backend(context);
+  const get = remote.get.bind(remote);
+  for (const url of ["/demo/index.html", "/demo/v2.html?scenario=core"]) {
+    let release!: () => void;
+    let reading!: () => void;
+    const paused = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const requested = new Promise<void>((resolve) => {
+      reading = resolve;
+    });
+    remote.get = async (id) => {
+      reading();
+      await paused;
+      return get(id);
+    };
+    await page.goto(url);
+    await expect(page.locator("body")).toHaveAttribute("data-ready", "true");
+    await page.locator("#new-token").click();
+    await requested;
+    try {
+      if (url === "/demo/index.html")
+        await expect(page.locator("#app")).toBeHidden();
+      else await expect(page.locator("#theme")).toBeDisabled();
+    } finally {
+      release();
+    }
+    await expect(page.locator("#theme")).toBeVisible();
+    await expect(page.locator("#theme")).toBeEnabled();
+    await page.locator("#theme").click();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await expect(page.locator("#status")).toHaveText("synced");
+  }
+});
+
 test("scenario URLs enumerate every setup and reject unknown scenarios without opening storage", async ({
   context,
   page,

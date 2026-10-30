@@ -61,8 +61,9 @@ The write snippets explain that object property names are storage keys and that
 writes update only the provided keys, preserving other keys' values.
 
 The content and theme controls are always visible. They are disabled while setup
-is required, including after sign-out or a refused token, and enabled once the
-store opens. Token details appear only after setup. A remote failure after setup
+is required, including after sign-out or a refused token, and enabled after the
+initial content read finishes. The original demo also waits for that read before
+showing its editor. Token details appear only after setup. A remote failure after setup
 does not disable the editor. The sidebar contains the library scenarios without
 an original-demo link or promotional introduction.
 

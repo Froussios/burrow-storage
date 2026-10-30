@@ -213,11 +213,12 @@
       store = core;
     }
     session = { token, source, mode, since };
-    $("signin").hidden = true;
-    $("app").hidden = false;
     showToken();
     showStatus(mode === "once" ? store.status : "syncing");
     await refresh();
+    if (!store) return;
+    $("signin").hidden = true;
+    $("app").hidden = false;
   };
 
   const mode = () =>

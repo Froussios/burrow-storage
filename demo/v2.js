@@ -417,6 +417,10 @@
       }
     }
     session = { token, source, since, remembered, persistenceFailed };
+    showToken();
+    showStatus(scenario.offline ? store.status : "syncing");
+    await refresh();
+    if (!store) return;
     $("signin").hidden = true;
     $("workspace").disabled = false;
     $("workspace").removeAttribute("aria-describedby");
@@ -424,9 +428,6 @@
     $("autosave-hint").hidden = false;
     draft.setAttribute("aria-describedby", "autosave-hint");
     $("token-details").hidden = false;
-    showToken();
-    showStatus(scenario.offline ? store.status : "syncing");
-    await refresh();
   };
 
   // Passkey: the utility derives a token. The demo owns any persistence.
