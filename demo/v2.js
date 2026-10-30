@@ -291,7 +291,7 @@
         ? "This demo saved the token on this device. Keep a separate copy in case browser data is cleared."
         : source === "passkey" || source === "new passkey"
           ? "This demo has not stored your token. Use the passkey to get it again, or write the token down."
-          : "This demo has not stored your token. Write it down or save it in your password manager before leaving; otherwise you cannot reopen this data.";
+          : "This demo has not stored your token. Write it down or save it in your password manager before leaving; otherwise you cannot restore access to this data.";
     $("data-copy").textContent = scenario.offline
       ? "Encrypted in the store, plus an unencrypted content copy in this browser for offline use."
       : "Only in the store, encrypted. No persistent content copy on this device.";
@@ -317,7 +317,7 @@
     $("code").textContent = "";
     $("remember-new").checked = false;
     $("remember-returning").checked = false;
-    $("scenario-token").textContent = "Not opened";
+    $("scenario-token").textContent = "Not connected";
     hideTooltips();
     updateCustodyChoice();
     applyTheme("light");
@@ -391,7 +391,7 @@
             ? "No passkey was used. Try again, or use a storage token."
             : e.code === "bad-token"
               ? "That token is not right. Check it and try again."
-              : `Could not open your storage (${e.code ?? e.name}).`,
+              : `Could not connect to your storage (${e.code ?? e.name}).`,
       );
       return false;
     } finally {
@@ -568,7 +568,7 @@
         }
       } else
         say(
-          `Could not open your storage (${e?.code ?? e?.name}). Reload to try again.`,
+          `Could not connect to your storage (${e?.code ?? e?.name}). Reload to try again.`,
         );
     }
   } else locked();

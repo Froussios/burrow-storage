@@ -44,7 +44,7 @@
             </div>
             <div>
               <dt>Token on this device</dt>
-              <dd id="scenario-token">Not opened</dd>
+              <dd id="scenario-token">Not connected</dd>
             </div>
             <div>
               <dt>Without a connection</dt>
@@ -100,7 +100,7 @@
                   spellcheck="false"
                   placeholder="XXXX-XXXX-…"
                 />
-                <button type="submit">Open</button>
+                <button type="submit">Connect</button>
               </form>
               <div class="remember-option">
                 <label class="remember-choice" for="remember-returning">
@@ -127,9 +127,9 @@
                     role="tooltip"
                     hidden
                     >This demo saves this scenario's token, unencrypted, in
-                    localStorage so it can reopen next visit. The library does
-                    not store it. Anyone who can read your browser's files can
-                    use it. Keep a separate copy.</span
+                    localStorage so it can reconnect next visit. The library
+                    does not store it. Anyone who can read your browser's files
+                    can use it. Keep a separate copy.</span
                   >
                 </span>
               </div>
@@ -180,9 +180,9 @@
                     role="tooltip"
                     hidden
                     >This demo saves this scenario's token, unencrypted, in
-                    localStorage so it can reopen next visit. The library does
-                    not store it. Anyone who can read your browser's files can
-                    use it. Keep a separate copy.</span
+                    localStorage so it can reconnect next visit. The library
+                    does not store it. Anyone who can read your browser's files
+                    can use it. Keep a separate copy.</span
                   >
                 </span>
               </div>
@@ -211,8 +211,30 @@
                 Dark theme
               </button>
             </div>
-            <p id="workspace-hint" class="hint">
-              Open this space with a token or passkey to edit.
+            <p id="workspace-hint" class="setup-notice">
+              <svg
+                class="setup-notice-icon"
+                viewBox="0 0 24 24"
+                width="22"
+                height="22"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <path
+                  d="M12 3 1.5 21h21L12 3Z"
+                  fill="currentColor"
+                  stroke="currentColor"
+                  stroke-linejoin="round"
+                />
+                <path
+                  d="M12 9v5m0 3v.01"
+                  fill="none"
+                  stroke="#3c2e07"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                />
+              </svg>
+              <span>Connect with a token or passkey to edit.</span>
             </p>
             <textarea
               id="draft"

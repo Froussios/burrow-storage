@@ -7,6 +7,10 @@
   --tint: #e9eee4;
   --field: #fffefa;
   --warn: #965527;
+  --notice-bg: #fff8da;
+  --notice-border: #eed58a;
+  --notice-fg: #654b13;
+  --notice-icon: #eab308;
   color-scheme: light;
   font:
     16px/1.6 system-ui,
@@ -23,6 +27,10 @@
   --tint: #2d3c2b;
   --field: #222921;
   --warn: #edb27e;
+  --notice-bg: #332b14;
+  --notice-border: #6f5b24;
+  --notice-fg: #f4dda0;
+  --notice-icon: #facc15;
   color-scheme: dark;
 }
 * {
@@ -391,6 +399,23 @@ button:disabled {
   margin: 0;
   padding: 0 0 24px;
   min-width: 0;
+}
+.setup-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--notice-border);
+  border-radius: 6px;
+  background: var(--notice-bg);
+  color: var(--notice-fg);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.6;
+}
+.setup-notice-icon {
+  flex: none;
+  color: var(--notice-icon);
 }
 #workspace:disabled .row,
 #workspace:disabled textarea {
