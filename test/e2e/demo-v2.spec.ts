@@ -93,14 +93,13 @@ test("scenario URLs enumerate every setup and reject unknown scenarios without o
     "core",
   );
   await expect(page.locator("#signin")).toBeVisible();
-  await expect(page.locator("main #setup-code")).toBeHidden();
-  await page.locator("#setup-snippets > summary").click();
-  await expect(page.locator("main #setup-code")).toBeVisible();
-  await expect(page.locator("main #setup-code")).toContainText(
-    "burrow-demo-v2-core",
-  );
-  await page.locator("#setup-snippets > summary").click();
-  await expect(page.locator("main #setup-code")).toBeHidden();
+  const code = page.locator("main #snippet-passkey-get");
+  await expect(code.locator("code")).toBeHidden();
+  await code.locator("summary").click();
+  await expect(code.locator("code")).toBeVisible();
+  await expect(code.locator("code")).toContainText("burrow-demo-v2-core");
+  await code.locator("summary").click();
+  await expect(code.locator("code")).toBeHidden();
   await open(page, "does-not-exist");
   await expect(page.locator("#status")).toHaveText("unknown scenario");
   await expect(page.locator("#signin")).toBeHidden();
@@ -442,47 +441,61 @@ test("remembering help is available on focus, hover and tap, and can be dismisse
   await expect(page.locator("#draft")).toBeDisabled();
 });
 
-test("the code catalog shows token, passkey, restoration and content actions without running them", async ({
+test("each action has a short adjacent code example that does not execute", async ({
   context,
   page,
 }) => {
   const remote = await backend(context);
   for (const scenario of ["core", "offline"]) {
     await open(page, scenario);
-    await expect(page.locator("main #setup-code")).toBeHidden();
-    await page.locator("#setup-snippets > summary").click();
-    await expect(page.locator("main #setup-code")).toContainText(
-      "Burrow.readBackendConfig()",
-    );
-    await expect(page.locator("main #setup-code")).toContainText(
-      "async function connect",
-    );
-    if (scenario === "offline")
-      await expect(page.locator("main #setup-code")).toContainText(
-        "Burrow.offline(core)",
-      );
-    else
-      await expect(page.locator("main #setup-code")).not.toContainText(
-        "Burrow.offline",
-      );
+    const before = { ...remote.stats };
     const examples = [
       ["passkey-get", "passkey.get()"],
       ["passkey-create", "passkey.create()"],
-      ["paste-token", "connect(input.value"],
+      ["paste-token", "Burrow.burrow"],
       ["token-create", "Burrow.generateToken()"],
-      ["remember-token", "localStorage.setItem"],
-      ["token-restore", "localStorage.getItem"],
-      ["content", "store.set"],
-      ["export", "URL.createObjectURL"],
-      ["signout", "localStorage.removeItem"],
+      ["remember-returning", "localStorage.setItem"],
+      ["remember-new", "localStorage.setItem"],
+      ["theme", "store.set"],
+      ["content", "store.get"],
     ] as const;
     for (const [id, api] of examples) {
-      const example = page.locator(`#snippet-${id}`);
+      const example = page.locator(`main #snippet-${id}`);
+      await expect(example.locator("code").first()).toBeHidden();
+      await example.locator("summary").click();
+      await expect(example.locator("code").first()).toContainText(api);
+    }
+    await expect(
+      page.locator("#snippet-remember-returning code").nth(1),
+    ).toContainText("localStorage.getItem");
+    await expect(page.locator("#snippet-content code").nth(1)).toContainText(
+      "store.set",
+    );
+    await expect(page.locator("#remember-returning")).not.toBeChecked();
+    await expect(page.locator("#remember-new")).not.toBeChecked();
+    await expect(page.locator("#draft")).toBeDisabled();
+    expect(remote.stats).toEqual(before);
+    await expect(
+      page.locator("#token-form #snippet-paste-token"),
+    ).toBeVisible();
+    await expect(
+      page.locator(".action-line:has(#passkey-get) #snippet-passkey-get"),
+    ).toBeVisible();
+
+    await start(page);
+    await expect(page.locator("#message")).toContainText("Token created.");
+    const connected = { ...remote.stats };
+    for (const [id, api] of [
+      ["copy-token", "clipboard.writeText"],
+      ["export", "URL.createObjectURL"],
+      ["signout", "localStorage.removeItem"],
+    ] as const) {
+      const example = page.locator(`#token-details #snippet-${id}`);
       await expect(example.locator("code")).toBeHidden();
       await example.locator("summary").click();
       await expect(example.locator("code")).toContainText(api);
     }
-    await expect(page.locator("#draft")).toBeDisabled();
+    await expect(page.locator("#draft")).toBeEnabled();
+    expect(remote.stats).toEqual(connected);
   }
-  expect(remote.stats).toEqual({ gets: 0, puts: 0 });
 });

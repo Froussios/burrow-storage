@@ -225,7 +225,7 @@ for (const file of DOCS) {
 // action shares the declared context, while its store has the selected type.
 for (const offline of [false, true]) {
   const app = `burrow-demo-v2-${offline ? "offline" : "core"}`;
-  const { setup, actions } = demoSnippets({
+  const { actions } = demoSnippets({
     app,
     offline,
     title: offline ? "Remote + offline" : "Remote only",
@@ -240,24 +240,17 @@ for (const offline of [false, true]) {
 };`;
   const context = `${burrow}
 ${dom}
-declare const app: string;
-declare const keptKey: string;
-declare const passkey: import("burrow-storage/passkey").PasskeyToken;
 declare const store: import("burrow-storage").${offline ? "OfflineStorage" : "BurrowStorage"};
-declare let currentToken: string | null;
-declare let tokenSource: string | null;
-declare let pendingSave: Promise<void>;
-declare let unsaved: boolean;
-declare function connect(token: string, source?: string): Promise<void>;
-declare function rememberToken(remember: boolean): boolean;
+declare const session: { token: string; source: string };
 `;
-  for (const [id, body] of [
-    ["setup", `${burrow}\n${setup}`],
-    ...actions.map((action) => [
-      action.id,
-      `${context}\nasync function example() {\n${action.code}\n}`,
+  const examples = actions.flatMap((action) =>
+    (action.snippets ?? [{ code: action.code }]).map((snippet, index) => [
+      `${action.id}/${index + 1}`,
+      snippet.code,
     ]),
-  ]) {
+  );
+  for (const [id, code] of examples) {
+    const body = `${context}\nasync function example() {\n${code}\n}`;
     const name = `s${String(++n).padStart(2, "0")}.ts`;
     writeFileSync(join(out, "js", name), `${body}\nexport {};`);
     where[`js/${name}`] = `demo/${offline ? "offline" : "core"}/${id}`;

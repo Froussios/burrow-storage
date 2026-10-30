@@ -21,8 +21,8 @@ stores a token anywhere. This is a breaking change throughout, made under the no
   remains available. Core is first; an opt-in demo-owned token remembering choice
   works independently of the selected library setup. The draft stays visible
   before setup; grouped Returning user and New user flows have their own
-  remembering choices, with tooltip help. Full-width setup examples cover each
-  token/passkey, remembering/restoration, content, export and sign-out action;
+  remembering choices, with tooltip help. Short code disclosures sit next to each
+  token/passkey, remembering/restoration, editing, copy, export and sign-out action;
   `docs:check` verifies the displayed examples for both scenarios.
 
 - `generateToken()`: a fresh random storage token, for apps that keep their own.

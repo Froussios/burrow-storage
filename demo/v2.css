@@ -246,38 +246,73 @@ summary {
   color: var(--muted);
   font-size: 12px;
 }
-.setup {
-  padding: 14px 0;
-  margin-bottom: 24px;
+.action-line {
+  min-width: 0;
 }
-.setup summary {
-  color: var(--fg);
-  font-size: 14px;
-  font-weight: 600;
-}
-.snippet-heading {
-  font-size: 14px;
-  font-weight: 600;
-  margin: 20px 0 8px;
-}
-.action-snippet {
-  padding: 14px 0;
-}
-.action-snippet summary {
-  font-size: 13px;
-  font-weight: 500;
-}
-.setup .hint {
-  margin: 10px 0 14px;
-}
-.setup > .hint code {
-  font-family: ui-monospace, monospace;
-}
-.terminal-icon {
+.action-code {
   display: inline-block;
-  vertical-align: -0.3em;
-  margin: 0 0.45rem 0 0.3rem;
+  vertical-align: middle;
+  max-width: 100%;
+  border: 0;
+  padding: 0;
+  margin-left: 6px;
+}
+.action-code[open] {
+  display: block;
+  width: 100%;
+  margin: 10px 0 0;
+}
+.action-code summary {
+  color: var(--fg);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.action-code h4 {
+  font-size: 12px;
+  margin: 12px 0 6px;
+}
+.action-code .hint {
+  font-size: 12px;
+  margin: 10px 0;
+}
+.action-code .terminal-icon {
+  width: 16px;
+  height: 16px;
+  display: inline-block;
+  vertical-align: -0.25em;
   color: var(--accent);
+  margin-right: 3px;
+}
+.action-code pre {
+  margin: 10px 0 0;
+}
+.action-code pre code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 12px;
+}
+.row.wrap > .action-code {
+  flex: none;
+}
+.row.wrap > .action-code[open],
+.remember-option > .action-code[open] {
+  flex-basis: 100%;
+}
+.remember-option {
+  flex-wrap: wrap;
+}
+.remember-option > .action-code {
+  flex: none;
+}
+#workspace > .row {
+  flex-wrap: wrap;
+}
+#workspace > .row > .action-line:has(.action-code[open]) {
+  flex-basis: 100%;
+}
+#workspace > .action-code {
+  margin-top: 10px;
 }
 .scenario-explanation p {
   font-size: 12px;
@@ -377,7 +412,7 @@ button:disabled {
 }
 .remember-choice {
   display: flex;
-  flex: 1 1 auto;
+  flex: 1 1 0;
   align-items: center;
   gap: 8px;
   min-width: 0;
@@ -446,7 +481,7 @@ button:disabled {
   flex: none;
   color: var(--notice-icon);
 }
-#workspace:disabled .row,
+#workspace:disabled .row > div:first-child,
 #workspace:disabled textarea {
   opacity: 0.6;
 }
@@ -462,6 +497,9 @@ button:disabled {
 }
 #token-form {
   margin: 18px 0 0;
+}
+#token-form input {
+  flex-basis: 100%;
 }
 @media (max-width: 1000px) {
   .token-choices {

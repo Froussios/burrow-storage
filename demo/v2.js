@@ -71,25 +71,33 @@
   $("scenario-summary").textContent = scenario.summary;
   $("scenario-detail").textContent = scenario.detail;
   const { demoSnippets } = await import("./snippets.mjs");
-  const snippets = demoSnippets(scenario);
-  $("setup-code").textContent = snippets.setup;
-  for (const action of snippets.actions) {
+  const { actions } = demoSnippets(scenario);
+  for (const action of actions) {
+    const slot = document.querySelector(`[data-code="${action.id}"]`);
     const details = document.createElement("details");
     details.id = `snippet-${action.id}`;
-    details.className = "action-snippet";
+    details.className = "action-code";
     const summary = document.createElement("summary");
-    summary.textContent = action.title;
+    summary.setAttribute("aria-label", `Code for ${action.title}`);
+    summary.append($("code-icon").content.cloneNode(true), " Code");
     const description = document.createElement("p");
     description.className = "hint";
     description.textContent = action.description;
-    const pre = document.createElement("pre");
-    const code = document.createElement("code");
-    code.textContent = action.code;
-    pre.append(code);
-    details.append(summary, description, pre);
-    $("action-snippets").append(details);
+    details.append(summary, description);
+    for (const snippet of action.snippets ?? [{ code: action.code }]) {
+      if (snippet.label) {
+        const label = document.createElement("h4");
+        label.textContent = snippet.label;
+        details.append(label);
+      }
+      const pre = document.createElement("pre");
+      const code = document.createElement("code");
+      code.textContent = snippet.code;
+      pre.append(code);
+      details.append(pre);
+    }
+    slot.replaceWith(details);
   }
-  $("setup-snippets").hidden = false;
   for (const key of ["storage", "network"])
     $("scenario-" + key).textContent = scenario[key];
   const updateCustodyChoice = () => {

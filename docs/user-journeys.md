@@ -39,14 +39,13 @@ it in memory and explicitly tells the user to keep it themselves.
 
 The setup area has one enclosing box containing only the Returning user and
 New user sections, with a visible **OR** between them. The scenario explainer
-lives in the sidebar. Setup code stays in a separate collapsed disclosure in
-the full-width main content area, below the user setup box. Shared configuration
-and the connection helper are followed by separate, collapsed action snippets
-for passkey retrieval, token entry, passkey creation, random token creation,
-remembering, restoration on the next visit, draft reads/writes, export and
-sign-out. Snippets never contain the user's live token or content. The same
-examples are checked against the public declarations by `docs:check` for both
-library scenarios.
+lives in the sidebar. Each action has a collapsed terminal-icon **Code** disclosure directly beside
+its control. There is no central code catalog or shared setup file. Short
+examples show the API calls for passkey retrieval, manual connection, passkey
+creation, random tokens, remembering/restoration, theme, draft reads/writes,
+copying, export and sign-out. The remembering control's code includes separate
+save and next-visit restore fragments. Examples never contain live user tokens
+or content, and `docs:check` checks them against the public API for both scenarios.
 **Returning user**, with undertitle **Reconnect to your data**, groups **Get token
 from passkey** with the token-entry form. **New user**, with undertitle **Create a
 new token**, groups the two creation actions. Each action reads only its own
