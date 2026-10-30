@@ -255,6 +255,24 @@ summary {
   font-size: 14px;
   font-weight: 600;
 }
+.snippet-heading {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 20px 0 8px;
+}
+.action-snippet {
+  padding: 14px 0;
+}
+.action-snippet summary {
+  font-size: 13px;
+  font-weight: 500;
+}
+.setup .hint {
+  margin: 10px 0 14px;
+}
+.setup > .hint code {
+  font-family: ui-monospace, monospace;
+}
 .terminal-icon {
   display: inline-block;
   vertical-align: -0.3em;

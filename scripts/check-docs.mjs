@@ -12,6 +12,7 @@
 //     type of that name (a `declare class` listing only has to be a subset of
 //     the real class)
 import { spawnSync } from "node:child_process";
+import { demoSnippets } from "../demo/snippets.mjs";
 import {
   mkdirSync,
   mkdtempSync,
@@ -217,6 +218,49 @@ for (const file of DOCS) {
     const name = `s${String(++n).padStart(2, "0")}.ts`;
     writeFileSync(join(out, kind, name), code);
     where[`${kind}/${name}`] = `${file}:${line}`;
+  }
+}
+
+// Check the exact examples rendered by demo v2 against the public API. Each
+// action shares the declared context, while its store has the selected type.
+for (const offline of [false, true]) {
+  const app = `burrow-demo-v2-${offline ? "offline" : "core"}`;
+  const { setup, actions } = demoSnippets({
+    app,
+    offline,
+    title: offline ? "Remote + offline" : "Remote only",
+  });
+  const burrow = `declare const Burrow: typeof import("burrow-storage") & typeof import("burrow-storage/offline") & typeof import("burrow-storage/passkey");`;
+  // These literal IDs are the demo's input/textarea elements, rather than
+  // arbitrary HTMLElements. Keep the public storage API fully typed.
+  const dom = `declare const document: Omit<Document, "getElementById"> & {
+  getElementById(id: "draft"): HTMLTextAreaElement;
+  getElementById(id: "token-input" | "remember-new" | "remember-returning"): HTMLInputElement;
+  getElementById(id: string): HTMLElement;
+};`;
+  const context = `${burrow}
+${dom}
+declare const app: string;
+declare const keptKey: string;
+declare const passkey: import("burrow-storage/passkey").PasskeyToken;
+declare const store: import("burrow-storage").${offline ? "OfflineStorage" : "BurrowStorage"};
+declare let currentToken: string | null;
+declare let tokenSource: string | null;
+declare let pendingSave: Promise<void>;
+declare let unsaved: boolean;
+declare function connect(token: string, source?: string): Promise<void>;
+declare function rememberToken(remember: boolean): boolean;
+`;
+  for (const [id, body] of [
+    ["setup", `${burrow}\n${setup}`],
+    ...actions.map((action) => [
+      action.id,
+      `${context}\nasync function example() {\n${action.code}\n}`,
+    ]),
+  ]) {
+    const name = `s${String(++n).padStart(2, "0")}.ts`;
+    writeFileSync(join(out, "js", name), `${body}\nexport {};`);
+    where[`js/${name}`] = `demo/${offline ? "offline" : "core"}/${id}`;
   }
 }
 

@@ -17,8 +17,6 @@
         "The core library stores no content or token on disk. Network failures reject reads and writes; there is no durable offline queue. This demo can remember the token separately if you choose.",
       storage: "No persistent content copy",
       network: "Failed writes are reported",
-      setup:
-        'const store = await Burrow.burrow({ app: "burrow-demo-v2-core", backend, token });',
     },
     {
       id: "offline",
@@ -30,8 +28,6 @@
         "The offline wrapper keeps a plaintext content copy on this device and syncs changes when the store is reachable. Remembering the token is a separate option implemented by this demo.",
       storage: "Plaintext copy in IndexedDB",
       network: "Edits queue locally, then sync",
-      setup:
-        'const core = await Burrow.burrow({ app: "burrow-demo-v2-offline", backend, token });\nconst store = await Burrow.offline(core);',
     },
   ];
   const url = new URL(location.href);
@@ -74,7 +70,25 @@
   $("scenario-title").textContent = scenario.title;
   $("scenario-summary").textContent = scenario.summary;
   $("scenario-detail").textContent = scenario.detail;
-  $("setup-code").textContent = scenario.setup;
+  const { demoSnippets } = await import("./snippets.mjs");
+  const snippets = demoSnippets(scenario);
+  $("setup-code").textContent = snippets.setup;
+  for (const action of snippets.actions) {
+    const details = document.createElement("details");
+    details.id = `snippet-${action.id}`;
+    details.className = "action-snippet";
+    const summary = document.createElement("summary");
+    summary.textContent = action.title;
+    const description = document.createElement("p");
+    description.className = "hint";
+    description.textContent = action.description;
+    const pre = document.createElement("pre");
+    const code = document.createElement("code");
+    code.textContent = action.code;
+    pre.append(code);
+    details.append(summary, description, pre);
+    $("action-snippets").append(details);
+  }
   $("setup-snippets").hidden = false;
   for (const key of ["storage", "network"])
     $("scenario-" + key).textContent = scenario[key];

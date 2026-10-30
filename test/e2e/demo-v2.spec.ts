@@ -94,12 +94,12 @@ test("scenario URLs enumerate every setup and reject unknown scenarios without o
   );
   await expect(page.locator("#signin")).toBeVisible();
   await expect(page.locator("main #setup-code")).toBeHidden();
-  await page.locator(".setup summary").click();
+  await page.locator("#setup-snippets > summary").click();
   await expect(page.locator("main #setup-code")).toBeVisible();
   await expect(page.locator("main #setup-code")).toContainText(
     "burrow-demo-v2-core",
   );
-  await page.locator(".setup summary").click();
+  await page.locator("#setup-snippets > summary").click();
   await expect(page.locator("main #setup-code")).toBeHidden();
   await open(page, "does-not-exist");
   await expect(page.locator("#status")).toHaveText("unknown scenario");
@@ -440,4 +440,49 @@ test("remembering help is available on focus, hover and tap, and can be dismisse
   await expect(tooltip).toBeVisible();
   await expect(page.locator("#remember-returning")).not.toBeChecked();
   await expect(page.locator("#draft")).toBeDisabled();
+});
+
+test("the code catalog shows token, passkey, restoration and content actions without running them", async ({
+  context,
+  page,
+}) => {
+  const remote = await backend(context);
+  for (const scenario of ["core", "offline"]) {
+    await open(page, scenario);
+    await expect(page.locator("main #setup-code")).toBeHidden();
+    await page.locator("#setup-snippets > summary").click();
+    await expect(page.locator("main #setup-code")).toContainText(
+      "Burrow.readBackendConfig()",
+    );
+    await expect(page.locator("main #setup-code")).toContainText(
+      "async function connect",
+    );
+    if (scenario === "offline")
+      await expect(page.locator("main #setup-code")).toContainText(
+        "Burrow.offline(core)",
+      );
+    else
+      await expect(page.locator("main #setup-code")).not.toContainText(
+        "Burrow.offline",
+      );
+    const examples = [
+      ["passkey-get", "passkey.get()"],
+      ["passkey-create", "passkey.create()"],
+      ["paste-token", "connect(input.value"],
+      ["token-create", "Burrow.generateToken()"],
+      ["remember-token", "localStorage.setItem"],
+      ["token-restore", "localStorage.getItem"],
+      ["content", "store.set"],
+      ["export", "URL.createObjectURL"],
+      ["signout", "localStorage.removeItem"],
+    ] as const;
+    for (const [id, api] of examples) {
+      const example = page.locator(`#snippet-${id}`);
+      await expect(example.locator("code")).toBeHidden();
+      await example.locator("summary").click();
+      await expect(example.locator("code")).toContainText(api);
+    }
+    await expect(page.locator("#draft")).toBeDisabled();
+  }
+  expect(remote.stats).toEqual({ gets: 0, puts: 0 });
 });
