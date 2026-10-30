@@ -27,7 +27,6 @@
           ><img src="favicon.svg" alt="" width="30" height="30" /> Burrow
           <span>v2</span></a
         >
-        <p class="sidebar-intro">One demo.<br />Different ways to Burrow.</p>
         <nav aria-label="Demo scenarios">
           <p class="eyebrow">Scenarios</p>
           <div id="scenarios"></div>
@@ -40,7 +39,6 @@
             the other space intact.</small
           >
         </div>
-        <a class="previous" href="index.html">Original demo ↗</a>
       </aside>
       <main id="main">
         <header>
@@ -64,8 +62,8 @@
               <dd id="scenario-storage"></dd>
             </div>
             <div>
-              <dt>Token storage · demo option</dt>
-              <dd id="scenario-token"></dd>
+              <dt>Token on this device</dt>
+              <dd id="scenario-token">Not opened</dd>
             </div>
             <div>
               <dt>Without a connection</dt>
@@ -83,30 +81,11 @@
           </details>
         </section>
 
-        <section id="signin" aria-labelledby="h-signin" hidden>
-          <p class="eyebrow">Get started</p>
-          <h2 id="h-signin">Open this space</h2>
-          <p id="signin-hint" class="hint"></p>
-          <fieldset class="custody-choice">
-            <legend>Token storage · demo option</legend>
-            <label class="remember-choice">
-              <input
-                id="remember-token"
-                type="checkbox"
-                aria-describedby="remember-hint"
-              />
-              Remember token on this device
-            </label>
-            <p id="remember-hint" class="hint">
-              Off by default. When selected, this demo saves the token
-              unencrypted in this browser's localStorage and reopens it on your
-              next visit. Anyone who can read the browser's files can use it.
-              This is demo code, independent of either library setup.
-            </p>
-          </fieldset>
+        <div id="signin" hidden>
           <div class="token-choices">
             <section class="token-choice" aria-labelledby="h-existing-token">
-              <h3 id="h-existing-token">Use an existing token</h3>
+              <h2 id="h-existing-token">Returning user</h2>
+              <p class="undertitle">Use an existing token</p>
               <button id="passkey-get" type="button">
                 Get token from passkey
               </button>
@@ -120,9 +99,42 @@
                 />
                 <button type="submit">Open</button>
               </form>
+              <div class="remember-option">
+                <label class="remember-choice" for="remember-returning">
+                  <input
+                    id="remember-returning"
+                    type="checkbox"
+                    aria-describedby="remember-returning-hint"
+                  />
+                  Remember token on this device
+                </label>
+                <span class="remember-help">
+                  <button
+                    type="button"
+                    class="tooltip-trigger"
+                    aria-label="About remembering a token for returning users"
+                    aria-describedby="remember-returning-hint"
+                    aria-expanded="false"
+                  >
+                    ?
+                  </button>
+                  <span
+                    id="remember-returning-hint"
+                    class="tooltip-content"
+                    role="tooltip"
+                    hidden
+                    >This demo saves this scenario's token, unencrypted, in
+                    localStorage so it can reopen next visit. The library does
+                    not store it. Anyone who can read your browser's files can
+                    use it. Keep a separate copy.</span
+                  >
+                </span>
+              </div>
             </section>
+            <span class="choice-separator">OR</span>
             <section class="token-choice" aria-labelledby="h-new-token">
-              <h3 id="h-new-token">Create a new token</h3>
+              <h2 id="h-new-token">New user</h2>
+              <p class="undertitle">Create a new token</p>
               <div class="creation-choice">
                 <button id="passkey-create" type="button">
                   Create passkey and token
@@ -141,30 +153,69 @@
                 </button>
                 <p id="token-only-hint" class="hint"></p>
               </div>
+              <div class="remember-option">
+                <label class="remember-choice" for="remember-new">
+                  <input
+                    id="remember-new"
+                    type="checkbox"
+                    aria-describedby="remember-new-hint"
+                  />
+                  Remember token on this device
+                </label>
+                <span class="remember-help">
+                  <button
+                    type="button"
+                    class="tooltip-trigger"
+                    aria-label="About remembering a token for new users"
+                    aria-describedby="remember-new-hint"
+                    aria-expanded="false"
+                  >
+                    ?
+                  </button>
+                  <span
+                    id="remember-new-hint"
+                    class="tooltip-content"
+                    role="tooltip"
+                    hidden
+                    >This demo saves this scenario's token, unencrypted, in
+                    localStorage so it can reopen next visit. The library does
+                    not store it. Anyone who can read your browser's files can
+                    use it. Keep a separate copy.</span
+                  >
+                </span>
+              </div>
             </section>
           </div>
-        </section>
+        </div>
 
-        <div id="app" hidden>
-          <section aria-labelledby="h-draft">
+        <div id="app">
+          <fieldset
+            id="workspace"
+            aria-labelledby="h-draft"
+            aria-describedby="workspace-hint"
+            disabled
+          >
             <div class="row">
               <div>
                 <p class="eyebrow">Your workspace</p>
-                <h2 id="h-draft">A little room for ideas</h2>
+                <h2 id="h-draft">Draft</h2>
               </div>
               <button id="theme" type="button" aria-pressed="false">
                 Dark theme
               </button>
             </div>
+            <p id="workspace-hint" class="hint">
+              Open this space with a token or passkey to edit.
+            </p>
             <textarea
               id="draft"
               rows="9"
               placeholder="An idea, a plan, a note to your future self…"
               aria-label="Draft"
             ></textarea>
-          </section>
+          </fieldset>
 
-          <section aria-labelledby="h-token">
+          <section id="token-details" aria-labelledby="h-token" hidden>
             <h2 id="h-token">Your key to this space</h2>
             <p class="warn">
               Burrow cannot reset your data. Keep your storage token, or your

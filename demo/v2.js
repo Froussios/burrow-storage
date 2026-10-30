@@ -77,20 +77,43 @@
   $("setup-code").textContent = scenario.setup;
   for (const key of ["storage", "network"])
     $("scenario-" + key).textContent = scenario[key];
-  $("signin-hint").textContent = scenario.offline
-    ? "The offline wrapper keeps a plaintext content copy in this browser. You still need a token or passkey to reopen it."
-    : "Reads and writes go directly to the encrypted remote store. The core library keeps no content on disk.";
   const updateCustodyChoice = () => {
-    const remember = $("remember-token").checked;
-    $("scenario-token").textContent = remember
-      ? "Saved by this demo on this device"
-      : "In memory for this visit";
-    $("token-only-hint").textContent = remember
+    $("token-only-hint").textContent = $("remember-new").checked
       ? "No passkey is created. This demo will save the token on this device because remembering is selected. Keep a separate copy: clearing browser data removes it."
       : "No passkey is created, and this demo will not store the token. Write it down or save it in your password manager before leaving.";
   };
-  $("remember-token").addEventListener("change", updateCustodyChoice);
+  $("remember-new").addEventListener("change", updateCustodyChoice);
   updateCustodyChoice();
+
+  // Tooltip help supports pointer, keyboard, and touch without changing the
+  // remembering choice. Escape and outside clicks dismiss it.
+  const tooltipHelp = [...document.querySelectorAll(".remember-help")];
+  const setTooltip = (help, visible) => {
+    help.querySelector('[role="tooltip"]').hidden = !visible;
+    help.querySelector("button").setAttribute("aria-expanded", String(visible));
+  };
+  const hideTooltips = () => {
+    for (const help of tooltipHelp) setTooltip(help, false);
+  };
+  for (const help of tooltipHelp) {
+    const trigger = help.querySelector("button");
+    help.addEventListener("pointerenter", () => setTooltip(help, true));
+    help.addEventListener("pointerleave", () => {
+      if (document.activeElement !== trigger) setTooltip(help, false);
+    });
+    trigger.addEventListener("focus", () => setTooltip(help, true));
+    trigger.addEventListener("blur", () => {
+      if (!help.matches(":hover")) setTooltip(help, false);
+    });
+    trigger.addEventListener("click", () => setTooltip(help, true));
+  }
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") hideTooltips();
+  });
+  document.addEventListener("click", (e) => {
+    if (!(e.target instanceof Element) || !e.target.closest(".remember-help"))
+      hideTooltips();
+  });
   const APP = scenario.app;
   // Token custody is an explicit demo choice, scoped to this scenario.
   const KEPT = `${APP}:token`;
@@ -284,11 +307,17 @@
     typing = undefined;
     store = null;
     session = null;
-    $("app").hidden = true;
+    $("workspace").disabled = true;
+    $("workspace").setAttribute("aria-describedby", "workspace-hint");
+    $("workspace-hint").hidden = false;
+    $("token-details").hidden = true;
     $("signin").hidden = false;
     draft.value = "";
     $("code").textContent = "";
-    $("remember-token").checked = false;
+    $("remember-new").checked = false;
+    $("remember-returning").checked = false;
+    $("scenario-token").textContent = "Not opened";
+    hideTooltips();
     updateCustodyChoice();
     applyTheme("light");
     showStatus("locked");
@@ -331,9 +360,11 @@
       }
     }
     session = { token, source, since, remembered, persistenceFailed };
-    $("remember-token").checked = remembered;
     $("signin").hidden = true;
-    $("app").hidden = false;
+    $("workspace").disabled = false;
+    $("workspace").removeAttribute("aria-describedby");
+    $("workspace-hint").hidden = true;
+    $("token-details").hidden = false;
     showToken();
     showStatus(scenario.offline ? store.status : "syncing");
     await refresh();
@@ -342,8 +373,9 @@
   // Passkey: the utility derives a token. The demo owns any persistence.
   const NO_PASSKEY =
     "This browser cannot use passkeys for this. Use a storage token instead.";
-  const signin = async (get, source) => {
-    const remember = $("remember-token").checked;
+  const signin = async (get, source, rememberId) => {
+    const remember = $(rememberId).checked;
+    hideTooltips();
     for (const b of document.querySelectorAll("#signin button, #signin input"))
       b.disabled = true;
     try {
@@ -370,18 +402,18 @@
   };
   $("passkey-get").addEventListener("click", async () => {
     if (!(await passkey.available())) return say(NO_PASSKEY);
-    if (await signin(() => passkey.get(), "passkey"))
+    if (await signin(() => passkey.get(), "passkey", "remember-returning"))
       say("Signed in with your passkey.");
   });
   $("passkey-create").addEventListener("click", async () => {
     if (!(await passkey.available())) return say(NO_PASSKEY);
-    if (await signin(() => passkey.create(), "new passkey"))
+    if (await signin(() => passkey.create(), "new passkey", "remember-new"))
       say(
         "Passkey and token created. On another device with this passkey, choose “Get token from passkey”.",
       );
   });
   $("new-token").addEventListener("click", async () => {
-    if (await signin(() => Burrow.generateToken(), "generated"))
+    if (await signin(() => Burrow.generateToken(), "generated", "remember-new"))
       say(
         session.remembered
           ? "Token created and saved on this device by the demo. Keep a separate copy."
@@ -390,7 +422,13 @@
   });
   $("token-form").addEventListener("submit", async (e) => {
     e.preventDefault();
-    if (await signin(async () => $("token-input").value, "pasted")) {
+    if (
+      await signin(
+        async () => $("token-input").value,
+        "pasted",
+        "remember-returning",
+      )
+    ) {
       $("token-input").value = "";
       say("Your data is here.");
     }

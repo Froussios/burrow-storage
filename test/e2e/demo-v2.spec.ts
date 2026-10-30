@@ -55,17 +55,18 @@ async function open(page: Page, scenario = "offline") {
 }
 
 async function start(page: Page, remember = false) {
-  await page.locator("#remember-token").setChecked(remember);
+  await page.locator("#remember-new").setChecked(remember);
   await page.locator("#new-token").click();
   await expect(page.locator("#code")).toHaveText(TOKEN);
   await expect(page.locator("#status")).toHaveText("synced");
   return (await page.locator("#code").textContent())!;
 }
 
-async function enter(page: Page, token: string) {
+async function enter(page: Page, token: string, remember = false) {
+  await page.locator("#remember-returning").setChecked(remember);
   await page.locator("#token-input").fill(token);
   await page.locator("#token-form button").click();
-  await expect(page.locator("#app")).toBeVisible();
+  await expect(page.locator("#draft")).toBeEnabled();
   await expect(page.locator("#status")).toHaveText("synced");
 }
 
@@ -86,7 +87,7 @@ test("scenario URLs enumerate every setup and reject unknown scenarios without o
     "data-scenario",
     "core",
   );
-  await expect(page.locator("#remember-token")).not.toBeChecked();
+  await expect(page.locator("#remember-new")).not.toBeChecked();
   await expect(page.locator('[aria-current="page"]')).toHaveAttribute(
     "data-scenario",
     "core",
@@ -282,7 +283,7 @@ test("core can remember the token as a demo option without persisting content", 
   expect(JSON.parse(await profileDump(page)).localStorage).toEqual({});
   await page.reload();
   await expect(page.locator("#signin")).toBeVisible();
-  await expect(page.locator("#remember-token")).not.toBeChecked();
+  await expect(page.locator("#remember-new")).not.toBeChecked();
 });
 
 test("offline content can persist without remembering the token; a token is required to reopen it", async ({
@@ -291,7 +292,7 @@ test("offline content can persist without remembering the token; a token is requ
 }) => {
   const remote = await backend(context);
   await open(page);
-  await expect(page.locator("#remember-token")).not.toBeChecked();
+  await expect(page.locator("#remember-new")).not.toBeChecked();
   await expect(page.locator("#token-only-hint")).toContainText(
     "will not store the token",
   );
@@ -306,7 +307,8 @@ test("offline content can persist without remembering the token; a token is requ
   remote.failWith = "network";
   await page.reload();
   await expect(page.locator("#signin")).toBeVisible();
-  await expect(page.locator("#app")).toBeHidden();
+  await expect(page.locator("#draft")).toBeVisible();
+  await expect(page.locator("#draft")).toBeDisabled();
   await page.locator("#token-input").fill(token);
   await page.locator("#token-form button").click();
   await expect(page.locator("#draft")).toHaveValue(
@@ -335,4 +337,94 @@ test("a failed demo token save stays in memory and tells the user to keep it", a
   expect(JSON.parse(await profileDump(page)).localStorage).toEqual({});
   await page.reload();
   await expect(page.locator("#signin")).toBeVisible();
+});
+
+test("the workspace stays visible and disabled until setup, and becomes disabled again after sign-out", async ({
+  context,
+  page,
+}) => {
+  const remote = await backend(context);
+  await open(page, "core");
+  await expect(page.locator("#draft")).toBeVisible();
+  await expect(page.locator("#draft")).toBeDisabled();
+  await expect(page.locator("#theme")).toBeDisabled();
+  await expect(page.locator("#token-details")).toBeHidden();
+  expect(remote.stats).toEqual({ gets: 0, puts: 0 });
+  await page.locator("#token-input").fill("invalid");
+  await page.locator("#token-form button").click();
+  await expect(page.locator("#message")).toContainText(
+    "That token is not right",
+  );
+  await expect(page.locator("#draft")).toBeDisabled();
+  await start(page);
+  await expect(page.locator("#draft")).toBeEnabled();
+  await page.locator("#draft").fill("working draft");
+  await expect(page.locator("#status")).toHaveText("synced");
+  await page.locator("#signout").click();
+  await expect(page.locator("#draft")).toBeVisible();
+  await expect(page.locator("#draft")).toBeDisabled();
+  await expect(page.locator("#draft")).toHaveValue("");
+  await expect(page.locator("#theme")).toBeDisabled();
+});
+
+test("new and returning users have independent remembering choices", async ({
+  context,
+  page,
+}) => {
+  await backend(context);
+  await open(page, "core");
+  await expect(
+    page.getByRole("heading", { name: "Returning user", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "New user", exact: true }),
+  ).toBeVisible();
+  await expect(page.locator(".choice-separator")).toHaveText("OR");
+  await page.locator("#remember-returning").check();
+  // The checked returning choice must not save a newly generated token.
+  const token = await start(page);
+  expect(JSON.parse(await profileDump(page)).localStorage).toEqual({});
+  await page.locator("#signout").click();
+  await page.locator("#remember-new").check();
+  // The checked new-user choice must not save a pasted token.
+  await enter(page, token);
+  expect(JSON.parse(await profileDump(page)).localStorage).toEqual({});
+  await page.locator("#signout").click();
+  await enter(page, token, true);
+  expect(
+    JSON.parse(
+      JSON.parse(await profileDump(page)).localStorage[
+        "burrow-demo-v2-core:token"
+      ],
+    ).token,
+  ).toBe(token);
+  await page.reload();
+  await expect(page.locator("#draft")).toBeEnabled();
+  await expect(page.locator("#code")).toHaveText(token);
+});
+
+test("remembering help is available on focus, hover and tap, and can be dismissed", async ({
+  context,
+  page,
+}) => {
+  await backend(context);
+  await open(page, "core");
+  const trigger = page.getByRole("button", {
+    name: "About remembering a token for returning users",
+  });
+  const tooltip = page.locator("#remember-returning-hint");
+  await expect(tooltip).toBeHidden();
+  await trigger.focus();
+  await expect(tooltip).toBeVisible();
+  await expect(tooltip).toContainText("unencrypted");
+  await page.keyboard.press("Escape");
+  await expect(tooltip).toBeHidden();
+  await trigger.click();
+  await expect(tooltip).toBeVisible();
+  await page.locator("#scenario-title").click();
+  await expect(tooltip).toBeHidden();
+  await trigger.hover();
+  await expect(tooltip).toBeVisible();
+  await expect(page.locator("#remember-returning")).not.toBeChecked();
+  await expect(page.locator("#draft")).toBeDisabled();
 });

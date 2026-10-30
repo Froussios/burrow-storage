@@ -21,7 +21,10 @@ the index without opening a store. The original page remains available.
   that copy still requires its token; caching content does not remember a token.
 
 Token custody is a separate **demo option**, independent of library selection.
-**Remember token on this device** is unchecked by default in both scenarios.
+Each of the **Returning user** and **New user** cards has its own **Remember token
+on this device** checkbox, unchecked by default in both library scenarios. The
+explanation is in a tooltip accessible by hover, focus or tap; Escape and outside
+clicks dismiss it.
 When unchecked, the token stays in memory for the visit. The user must keep it
 or obtain it again from their passkey to reopen the scenario. **Create token
 only** explicitly tells the user that no passkey is created and the demo will not
@@ -34,10 +37,17 @@ token. The page describes that anyone who can read the browser's files can use
 the token, and tells the user to keep a separate copy. A failed token save leaves
 it in memory and explicitly tells the user to keep it themselves.
 
-The sign-in panel groups **Get token from passkey** with the token-entry form
-under **Use an existing token**. **Create passkey and token** and **Create token
-only** are grouped under **Create a new token**. All actions have equal button
-styling. The remembering choice applies to either group.
+The setup area has two independent cards with a visible **OR** between them.
+**Returning user**, with undertitle **Use an existing token**, groups **Get token
+from passkey** with the token-entry form. **New user**, with undertitle **Create a
+new token**, groups the two creation actions. Each action reads only its own
+card's remembering choice. All actions have equal button styling.
+
+The draft and theme controls are always visible. They are disabled while setup
+is required, including after sign-out or a refused token, and enabled once the
+store opens. Token details appear only after setup. A remote failure after setup
+does not disable the editor. The sidebar contains the library scenarios without
+an original-demo link or promotional introduction.
 
 New random tokens and passkey-derived tokens are separate per scenario. Passkey
 creation labels include the scenario; selecting an existing credential still
