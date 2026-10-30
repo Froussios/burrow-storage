@@ -13,41 +13,6 @@ const store = ${connectedStore};`;
   const passkey = `const passkey = Burrow.passkeyToken({
   app: ${quotedApp},
 });`;
-  const remember = (flow) => ({
-    id: `remember-${flow}`,
-    title: "Remember token on this device",
-    description:
-      "Demo-owned storage after connecting. The in-memory session holds the token. Saving can fail; keep the token and report the failure.",
-    snippets: [
-      {
-        label: "Save after opting in",
-        code: `const key = ${key};
-if (document.getElementById("remember-${flow}").checked) {
-  localStorage.setItem(key, JSON.stringify({
-    token: session.token,
-    source: session.source,
-    since: Date.now(),
-  }));
-}`,
-      },
-      {
-        label: "Restore on the next visit",
-        code: `const key = ${key};
-let saved;
-try {
-  saved = JSON.parse(localStorage.getItem(key) ?? "null");
-} catch { saved = null; }
-if (saved?.token) {
-  const core = await Burrow.burrow({
-    app: ${quotedApp},
-    backend: Burrow.readBackendConfig(),
-    token: saved.token,
-  });
-  const store = ${connectedStore};
-}`,
-      },
-    ],
-  });
   const actions = [
     {
       id: "passkey-get",
@@ -89,20 +54,20 @@ ${connect}`,
       code: `const token = await Burrow.generateToken();
 ${connect}`,
     },
-    remember("returning"),
-    remember("new"),
     {
       id: "theme",
       title: "Change the theme",
       description: "Uses the store returned by the chosen connection action.",
       code: `const theme = document.documentElement.dataset.theme === "dark"
   ? "light" : "dark";
+// Object property names are storage keys.
+// set() updates only the keys provided; other keys keep their values.
 await store.set({ theme });
 document.documentElement.dataset.theme = theme;`,
     },
     {
       id: "content",
-      title: "Read and save the draft",
+      title: "Read and save content",
       description: offline
         ? "Use the connected store. The offline wrapper keeps accepted writes in its plaintext copy and syncs later; remote failures are status."
         : "Use the connected store. Core reads/writes require the backend and reject on failure; there is no durable offline queue.",
@@ -115,34 +80,13 @@ document.getElementById("draft").value =
         },
         {
           label: "Save",
-          code: `await store.set({
+          code: `// Object property names are storage keys.
+// set() updates only the keys provided; other keys keep their values.
+await store.set({
   draft: document.getElementById("draft").value,
 });`,
         },
       ],
-    },
-    {
-      id: "copy-token",
-      title: "Copy the token",
-      description:
-        "The token comes from the demo's in-memory session. Report clipboard failures so the user can copy it manually.",
-      code: `await navigator.clipboard.writeText(session.token);`,
-    },
-    {
-      id: "export",
-      title: "Export JSON",
-      description: "Export content, not the token. Handle a failed store read.",
-      code: `const items = await store.get();
-const blob = new Blob([JSON.stringify({
-  burrow: 1, app: ${quotedApp}, items,
-  exportedAt: new Date().toISOString(),
-}, null, 2)], { type: "application/json" });
-const link = Object.assign(document.createElement("a"), {
-  href: URL.createObjectURL(blob),
-  download: "burrow-demo.json",
-});
-link.click();
-URL.revokeObjectURL(link.href);`,
     },
     {
       id: "signout",

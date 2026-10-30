@@ -70,6 +70,45 @@ async function enter(page: Page, token: string, remember = false) {
   await expect(page.locator("#status")).toHaveText("synced");
 }
 
+test("initial reads finish before either demo accepts edits", async ({
+  context,
+  page,
+}) => {
+  const remote = await backend(context);
+  const get = remote.get.bind(remote);
+  for (const url of ["/demo/index.html", "/demo/v2.html?scenario=core"]) {
+    let release!: () => void;
+    let reading!: () => void;
+    const paused = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const requested = new Promise<void>((resolve) => {
+      reading = resolve;
+    });
+    remote.get = async (id) => {
+      reading();
+      await paused;
+      return get(id);
+    };
+    await page.goto(url);
+    await expect(page.locator("body")).toHaveAttribute("data-ready", "true");
+    await page.locator("#new-token").click();
+    await requested;
+    try {
+      if (url === "/demo/index.html")
+        await expect(page.locator("#app")).toBeHidden();
+      else await expect(page.locator("#theme")).toBeDisabled();
+    } finally {
+      release();
+    }
+    await expect(page.locator("#theme")).toBeVisible();
+    await expect(page.locator("#theme")).toBeEnabled();
+    await page.locator("#theme").click();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await expect(page.locator("#status")).toHaveText("synced");
+  }
+});
+
 test("scenario URLs enumerate every setup and reject unknown scenarios without opening storage", async ({
   context,
   page,
@@ -359,6 +398,7 @@ test("the workspace stays visible and disabled until setup, and becomes disabled
   await expect(page.locator("#draft")).toBeDisabled();
   await expect(page.locator("#theme")).toBeDisabled();
   await expect(page.locator("#token-details")).toBeHidden();
+  await expect(page.locator("#autosave-hint")).toBeHidden();
   expect(remote.stats).toEqual({ gets: 0, puts: 0 });
   await page.locator("#token-input").fill("invalid");
   await page.locator("#token-form button").click();
@@ -368,6 +408,11 @@ test("the workspace stays visible and disabled until setup, and becomes disabled
   await expect(page.locator("#draft")).toBeDisabled();
   await start(page);
   await expect(page.locator("#draft")).toBeEnabled();
+  await expect(page.locator("#autosave-hint")).toBeVisible();
+  await expect(page.locator("#draft")).toHaveAttribute(
+    "aria-describedby",
+    "autosave-hint",
+  );
   await page.locator("#draft").fill("working draft");
   await expect(page.locator("#status")).toHaveText("synced");
   await page.locator("#signout").click();
@@ -375,6 +420,11 @@ test("the workspace stays visible and disabled until setup, and becomes disabled
   await expect(page.locator("#draft")).toBeDisabled();
   await expect(page.locator("#draft")).toHaveValue("");
   await expect(page.locator("#theme")).toBeDisabled();
+  await expect(page.locator("#autosave-hint")).toBeHidden();
+  await expect(page.locator("#draft")).not.toHaveAttribute(
+    "aria-describedby",
+    "autosave-hint",
+  );
 });
 
 test("new and returning users have independent remembering choices", async ({
@@ -449,7 +499,7 @@ test("remembering help is available on focus, hover and tap, and can be dismisse
   await expect(page.locator("#draft")).toBeDisabled();
 });
 
-test("each action has a short adjacent code example that does not execute", async ({
+test("library actions have short adjacent code examples that do not execute", async ({
   context,
   page,
 }) => {
@@ -462,8 +512,6 @@ test("each action has a short adjacent code example that does not execute", asyn
       ["passkey-create", "passkey.create()"],
       ["paste-token", "Burrow.burrow"],
       ["token-create", "Burrow.generateToken()"],
-      ["remember-returning", "localStorage.setItem"],
-      ["remember-new", "localStorage.setItem"],
       ["theme", "store.set"],
       ["content", "store.get"],
     ] as const;
@@ -473,9 +521,6 @@ test("each action has a short adjacent code example that does not execute", asyn
       await example.locator("summary").click();
       await expect(example.locator("code").first()).toContainText(api);
     }
-    await expect(
-      page.locator("#snippet-remember-returning code").nth(1),
-    ).toContainText("localStorage.getItem");
     await expect(page.locator("#snippet-content code").nth(1)).toContainText(
       "store.set",
     );
@@ -493,16 +538,12 @@ test("each action has a short adjacent code example that does not execute", asyn
     await start(page);
     await expect(page.locator("#message")).toContainText("Token created.");
     const connected = { ...remote.stats };
-    for (const [id, api] of [
-      ["copy-token", "clipboard.writeText"],
-      ["export", "URL.createObjectURL"],
-      ["signout", "localStorage.removeItem"],
-    ] as const) {
-      const example = page.locator(`#token-details #snippet-${id}`);
-      await expect(example.locator("code")).toBeHidden();
-      await example.locator("summary").click();
-      await expect(example.locator("code")).toContainText(api);
-    }
+    const signout = page.locator("#token-details #snippet-signout");
+    await expect(signout.locator("code")).toBeHidden();
+    await signout.locator("summary").click();
+    await expect(signout.locator("code")).toContainText(
+      "localStorage.removeItem",
+    );
     await expect(page.locator("#draft")).toBeEnabled();
     expect(remote.stats).toEqual(connected);
   }

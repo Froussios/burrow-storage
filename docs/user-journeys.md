@@ -40,12 +40,12 @@ it in memory and explicitly tells the user to keep it themselves.
 
 The setup area has one enclosing box containing only the Returning user and
 New user sections, with a visible **OR** between them. The scenario explainer
-lives in the sidebar. Each action has a collapsed terminal-icon **Code** disclosure directly beside
-its control. There is no central code catalog or shared setup file. Short
+lives in the sidebar. Library actions have a collapsed terminal-icon **Code**
+disclosure directly beside their controls. There is no central code catalog or shared setup file. Short
 examples show the API calls for passkey retrieval, manual connection, passkey
-creation, random tokens, remembering/restoration, theme, draft reads/writes,
-copying, export and sign-out. The remembering control's code includes separate
-save and next-visit restore fragments. Examples never contain live user tokens
+creation, random tokens, theme, content reads/writes and sign-out.
+Remember token on this device, Copy token and Export JSON have no snippets;
+remembering still has tooltip help. Examples never contain live user tokens
 or content, and `docs:check` type-checks the displayed examples against the public
 API for both scenarios. These focused examples omit the demo's surrounding UI,
 session management and error reporting; they are not copies of its full handlers.
@@ -54,9 +54,16 @@ from passkey** with the token-entry form. **New user**, with undertitle **Create
 new token**, groups the two creation actions. Each action reads only its own
 card's remembering choice. All actions have equal button styling.
 
-The draft and theme controls are always visible. They are disabled while setup
-is required, including after sign-out or a refused token, and enabled once the
-store opens. Token details appear only after setup. A remote failure after setup
+The editor is labelled **Content**: it is saved text, with no draft-to-published
+step. Once connected, it explains that content saves automatically after a short
+pause in typing.
+The write snippets explain that object property names are storage keys and that
+writes update only the provided keys, preserving other keys' values.
+
+The content and theme controls are always visible. They are disabled while setup
+is required, including after sign-out or a refused token, and enabled after the
+initial content read finishes. The original demo also waits for that read before
+showing its editor. Token details appear only after setup. A remote failure after setup
 does not disable the editor. The sidebar contains the library scenarios without
 an original-demo link or promotional introduction.
 
