@@ -51,10 +51,9 @@
               <dd id="scenario-network"></dd>
             </div>
           </dl>
-          <details class="setup">
-            <summary>Setup code</summary>
-            <p id="scenario-detail"></p>
-            <pre><code id="setup-code"></code></pre>
+          <details class="scenario-explanation">
+            <summary>About this scenario</summary>
+            <p id="scenario-detail" class="hint"></p>
             <p class="hint">
               Both scenarios use the same async storage API and editor. Passkey
               tokens are derived separately for each scenario's app namespace.
@@ -190,6 +189,11 @@
             </section>
           </div>
         </div>
+
+        <details id="setup-snippets" class="setup" hidden>
+          <summary>Setup code</summary>
+          <pre><code id="setup-code"></code></pre>
+        </details>
 
         <div id="app">
           <fieldset

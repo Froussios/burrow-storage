@@ -93,14 +93,14 @@ test("scenario URLs enumerate every setup and reject unknown scenarios without o
     "core",
   );
   await expect(page.locator("#signin")).toBeVisible();
-  await expect(page.locator("#setup-code")).toBeHidden();
+  await expect(page.locator("main #setup-code")).toBeHidden();
   await page.locator(".setup summary").click();
-  await expect(page.locator("#setup-code")).toBeVisible();
-  await expect(page.locator("#setup-code")).toContainText(
+  await expect(page.locator("main #setup-code")).toBeVisible();
+  await expect(page.locator("main #setup-code")).toContainText(
     "burrow-demo-v2-core",
   );
   await page.locator(".setup summary").click();
-  await expect(page.locator("#setup-code")).toBeHidden();
+  await expect(page.locator("main #setup-code")).toBeHidden();
   await open(page, "does-not-exist");
   await expect(page.locator("#status")).toHaveText("unknown scenario");
   await expect(page.locator("#signin")).toBeHidden();

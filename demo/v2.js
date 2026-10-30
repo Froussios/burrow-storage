@@ -75,6 +75,7 @@
   $("scenario-summary").textContent = scenario.summary;
   $("scenario-detail").textContent = scenario.detail;
   $("setup-code").textContent = scenario.setup;
+  $("setup-snippets").hidden = false;
   for (const key of ["storage", "network"])
     $("scenario-" + key).textContent = scenario[key];
   const updateCustodyChoice = () => {
