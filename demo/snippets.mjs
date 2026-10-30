@@ -13,41 +13,6 @@ const store = ${connectedStore};`;
   const passkey = `const passkey = Burrow.passkeyToken({
   app: ${quotedApp},
 });`;
-  const remember = (flow) => ({
-    id: `remember-${flow}`,
-    title: "Remember token on this device",
-    description:
-      "Demo-owned storage after connecting. The in-memory session holds the token. Saving can fail; keep the token and report the failure.",
-    snippets: [
-      {
-        label: "Save after opting in",
-        code: `const key = ${key};
-if (document.getElementById("remember-${flow}").checked) {
-  localStorage.setItem(key, JSON.stringify({
-    token: session.token,
-    source: session.source,
-    since: Date.now(),
-  }));
-}`,
-      },
-      {
-        label: "Restore on the next visit",
-        code: `const key = ${key};
-let saved;
-try {
-  saved = JSON.parse(localStorage.getItem(key) ?? "null");
-} catch { saved = null; }
-if (saved?.token) {
-  const core = await Burrow.burrow({
-    app: ${quotedApp},
-    backend: Burrow.readBackendConfig(),
-    token: saved.token,
-  });
-  const store = ${connectedStore};
-}`,
-      },
-    ],
-  });
   const actions = [
     {
       id: "passkey-get",
@@ -89,8 +54,6 @@ ${connect}`,
       code: `const token = await Burrow.generateToken();
 ${connect}`,
     },
-    remember("returning"),
-    remember("new"),
     {
       id: "theme",
       title: "Change the theme",

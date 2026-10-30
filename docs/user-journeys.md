@@ -40,13 +40,12 @@ it in memory and explicitly tells the user to keep it themselves.
 
 The setup area has one enclosing box containing only the Returning user and
 New user sections, with a visible **OR** between them. The scenario explainer
-lives in the sidebar. Library actions have a collapsed terminal-icon **Code** disclosure directly beside
-its control. There is no central code catalog or shared setup file. Short
+lives in the sidebar. Library actions have a collapsed terminal-icon **Code**
+disclosure directly beside their controls. There is no central code catalog or shared setup file. Short
 examples show the API calls for passkey retrieval, manual connection, passkey
-creation, random tokens, remembering/restoration, theme, draft reads/writes
-and sign-out. Copy token and Export JSON remain plain actions without snippets.
-The remembering control's code includes separate
-save and next-visit restore fragments. Examples never contain live user tokens
+creation, random tokens, theme, content reads/writes and sign-out.
+Remember token on this device, Copy token and Export JSON have no snippets;
+remembering still has tooltip help. Examples never contain live user tokens
 or content, and `docs:check` type-checks the displayed examples against the public
 API for both scenarios. These focused examples omit the demo's surrounding UI,
 session management and error reporting; they are not copies of its full handlers.

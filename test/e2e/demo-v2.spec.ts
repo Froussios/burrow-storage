@@ -462,8 +462,6 @@ test("library actions have short adjacent code examples that do not execute", as
       ["passkey-create", "passkey.create()"],
       ["paste-token", "Burrow.burrow"],
       ["token-create", "Burrow.generateToken()"],
-      ["remember-returning", "localStorage.setItem"],
-      ["remember-new", "localStorage.setItem"],
       ["theme", "store.set"],
       ["content", "store.get"],
     ] as const;
@@ -473,9 +471,6 @@ test("library actions have short adjacent code examples that do not execute", as
       await example.locator("summary").click();
       await expect(example.locator("code").first()).toContainText(api);
     }
-    await expect(
-      page.locator("#snippet-remember-returning code").nth(1),
-    ).toContainText("localStorage.getItem");
     await expect(page.locator("#snippet-content code").nth(1)).toContainText(
       "store.set",
     );
