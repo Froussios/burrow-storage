@@ -11,6 +11,15 @@
   --notice-border: #eed58a;
   --notice-fg: #654b13;
   --notice-icon: #eab308;
+  --code-bg: #f3f5f0;
+  --code-border: #c7cfc0;
+  --code-fg: #253126;
+  --syntax-keyword: #7442a6;
+  --syntax-string: #2a653f;
+  --syntax-number: #93531a;
+  --syntax-api: #215f91;
+  --syntax-call: #795016;
+  --syntax-comment: #626e61;
   color-scheme: light;
   font:
     16px/1.6 system-ui,
@@ -31,6 +40,15 @@
   --notice-border: #6f5b24;
   --notice-fg: #f4dda0;
   --notice-icon: #facc15;
+  --code-bg: #182018;
+  --code-border: #4d5c47;
+  --code-fg: #e3e9dc;
+  --syntax-keyword: #c3a2ef;
+  --syntax-string: #a5cea5;
+  --syntax-number: #e5b282;
+  --syntax-api: #8dbde2;
+  --syntax-call: #e7d299;
+  --syntax-comment: #9eaf97;
   color-scheme: dark;
 }
 * {
@@ -286,11 +304,42 @@ summary {
 }
 .action-code pre {
   margin: 10px 0 0;
+  border: 1px solid var(--code-border);
+  border-radius: 7px;
+  background: var(--code-bg);
 }
 .action-code pre code {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  padding: 12px;
+  padding: 14px;
+  color: var(--code-fg);
+  background: transparent;
+  font:
+    12px/1.7 ui-monospace,
+    "SFMono-Regular",
+    Menlo,
+    Consolas,
+    monospace;
+}
+.syntax-keyword,
+.syntax-literal {
+  color: var(--syntax-keyword);
+}
+.syntax-string {
+  color: var(--syntax-string);
+}
+.syntax-number {
+  color: var(--syntax-number);
+}
+.syntax-api {
+  color: var(--syntax-api);
+}
+.syntax-call {
+  color: var(--syntax-call);
+}
+.syntax-comment {
+  color: var(--syntax-comment);
+  font-style: italic;
 }
 .row.wrap > .action-code {
   flex: none;

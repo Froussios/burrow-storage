@@ -71,6 +71,27 @@
   $("scenario-summary").textContent = scenario.summary;
   $("scenario-detail").textContent = scenario.detail;
   const { demoSnippets } = await import("./snippets.mjs");
+  // Highlight only presentation tokens; build DOM text nodes so copying code
+  // preserves the exact example and code-like HTML never becomes markup.
+  const syntaxTokens =
+    /(?<comment>\/\/[^\n]*|\/\*[\s\S]*?\*\/)|(?<string>"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)|(?<keyword>\b(?:async|await|const|let|if|else|try|catch|throw|new|return|typeof|function|for|of)\b)|(?<literal>\b(?:true|false|null|undefined)\b)|(?<number>\b\d+(?:\.\d+)?\b)|(?<api>\b(?:Burrow|JSON|Date|URL|Blob|Error|Promise|document|navigator|localStorage)\b)|(?<call>\b[A-Za-z_$][\w$]*(?=\s*\())/g;
+  const highlightCode = (element, source) => {
+    let offset = 0;
+    for (const match of source.matchAll(syntaxTokens)) {
+      element.append(
+        document.createTextNode(source.slice(offset, match.index)),
+      );
+      const token = document.createElement("span");
+      const kind = Object.keys(match.groups).find(
+        (name) => match.groups[name] !== undefined,
+      );
+      token.className = `syntax-${kind}`;
+      token.textContent = match[0];
+      element.append(token);
+      offset = match.index + match[0].length;
+    }
+    element.append(document.createTextNode(source.slice(offset)));
+  };
   const { actions } = demoSnippets(scenario);
   for (const action of actions) {
     const slot = document.querySelector(`[data-code="${action.id}"]`);
@@ -92,7 +113,8 @@
       }
       const pre = document.createElement("pre");
       const code = document.createElement("code");
-      code.textContent = snippet.code;
+      code.className = "language-javascript";
+      highlightCode(code, snippet.code);
       pre.append(code);
       details.append(pre);
     }
