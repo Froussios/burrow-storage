@@ -122,29 +122,6 @@ document.getElementById("draft").value =
       ],
     },
     {
-      id: "copy-token",
-      title: "Copy the token",
-      description:
-        "The token comes from the demo's in-memory session. Report clipboard failures so the user can copy it manually.",
-      code: `await navigator.clipboard.writeText(session.token);`,
-    },
-    {
-      id: "export",
-      title: "Export JSON",
-      description: "Export content, not the token. Handle a failed store read.",
-      code: `const items = await store.get();
-const blob = new Blob([JSON.stringify({
-  burrow: 1, app: ${quotedApp}, items,
-  exportedAt: new Date().toISOString(),
-}, null, 2)], { type: "application/json" });
-const link = Object.assign(document.createElement("a"), {
-  href: URL.createObjectURL(blob),
-  download: "burrow-demo.json",
-});
-link.click();
-URL.revokeObjectURL(link.href);`,
-    },
-    {
       id: "signout",
       title: "Sign out",
       description:

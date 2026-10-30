@@ -449,7 +449,7 @@ test("remembering help is available on focus, hover and tap, and can be dismisse
   await expect(page.locator("#draft")).toBeDisabled();
 });
 
-test("each action has a short adjacent code example that does not execute", async ({
+test("library actions have short adjacent code examples that do not execute", async ({
   context,
   page,
 }) => {
@@ -493,16 +493,12 @@ test("each action has a short adjacent code example that does not execute", asyn
     await start(page);
     await expect(page.locator("#message")).toContainText("Token created.");
     const connected = { ...remote.stats };
-    for (const [id, api] of [
-      ["copy-token", "clipboard.writeText"],
-      ["export", "URL.createObjectURL"],
-      ["signout", "localStorage.removeItem"],
-    ] as const) {
-      const example = page.locator(`#token-details #snippet-${id}`);
-      await expect(example.locator("code")).toBeHidden();
-      await example.locator("summary").click();
-      await expect(example.locator("code")).toContainText(api);
-    }
+    const signout = page.locator("#token-details #snippet-signout");
+    await expect(signout.locator("code")).toBeHidden();
+    await signout.locator("summary").click();
+    await expect(signout.locator("code")).toContainText(
+      "localStorage.removeItem",
+    );
     await expect(page.locator("#draft")).toBeEnabled();
     expect(remote.stats).toEqual(connected);
   }

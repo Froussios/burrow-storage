@@ -234,11 +234,15 @@
               </svg>
               <span>Connect with a token or passkey to edit.</span>
             </p>
+            <p id="autosave-hint" class="hint">
+              Your draft saves automatically after a short pause in typing.
+            </p>
             <textarea
               id="draft"
               rows="9"
               placeholder="An idea, a plan, a note to your future self…"
               aria-label="Draft"
+              aria-describedby="autosave-hint"
             ></textarea>
             <span data-code="content"></span>
           </fieldset>
@@ -261,9 +265,7 @@
             </dl>
             <div class="row wrap">
               <button id="copy-token" type="button">Copy token</button>
-              <span data-code="copy-token"></span>
               <button id="export" type="button">Export JSON</button>
-              <span data-code="export"></span>
               <button id="signout" type="button">Sign out</button>
               <span data-code="signout"></span>
             </div>

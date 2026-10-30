@@ -22,8 +22,9 @@ stores a token anywhere. This is a breaking change throughout, made under the no
   works independently of the selected library setup. The draft stays visible
   before setup; grouped Returning user and New user flows have their own
   remembering choices, with tooltip help. Short code disclosures sit next to each
-  token/passkey, remembering/restoration, editing, copy, export and sign-out action;
-  `docs:check` verifies the displayed examples for both scenarios.
+  token/passkey, remembering/restoration, editing and sign-out action;
+  `docs:check` verifies the displayed examples for both scenarios. The draft
+  explains that it saves automatically after a short pause in typing.
 
 - `generateToken()`: a fresh random storage token, for apps that keep their own.
 - `burrow-storage/offline` with `offline(store)`: the same interface as the core over a plaintext
