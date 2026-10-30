@@ -55,10 +55,12 @@ new token**, groups the two creation actions. Each action reads only its own
 card's remembering choice. All actions have equal button styling.
 
 The editor is labelled **Content**: it is saved text, with no draft-to-published
-step. It explains that content saves automatically after a short pause in typing.
+step. Once connected, it explains that content saves automatically after a short
+pause in typing.
 The write snippets explain that object property names are storage keys and that
 writes update only the provided keys, preserving other keys' values.
-The draft and theme controls are always visible. They are disabled while setup
+
+The content and theme controls are always visible. They are disabled while setup
 is required, including after sign-out or a refused token, and enabled once the
 store opens. Token details appear only after setup. A remote failure after setup
 does not disable the editor. The sidebar contains the library scenarios without

@@ -359,6 +359,7 @@ test("the workspace stays visible and disabled until setup, and becomes disabled
   await expect(page.locator("#draft")).toBeDisabled();
   await expect(page.locator("#theme")).toBeDisabled();
   await expect(page.locator("#token-details")).toBeHidden();
+  await expect(page.locator("#autosave-hint")).toBeHidden();
   expect(remote.stats).toEqual({ gets: 0, puts: 0 });
   await page.locator("#token-input").fill("invalid");
   await page.locator("#token-form button").click();
@@ -368,6 +369,11 @@ test("the workspace stays visible and disabled until setup, and becomes disabled
   await expect(page.locator("#draft")).toBeDisabled();
   await start(page);
   await expect(page.locator("#draft")).toBeEnabled();
+  await expect(page.locator("#autosave-hint")).toBeVisible();
+  await expect(page.locator("#draft")).toHaveAttribute(
+    "aria-describedby",
+    "autosave-hint",
+  );
   await page.locator("#draft").fill("working draft");
   await expect(page.locator("#status")).toHaveText("synced");
   await page.locator("#signout").click();
@@ -375,6 +381,11 @@ test("the workspace stays visible and disabled until setup, and becomes disabled
   await expect(page.locator("#draft")).toBeDisabled();
   await expect(page.locator("#draft")).toHaveValue("");
   await expect(page.locator("#theme")).toBeDisabled();
+  await expect(page.locator("#autosave-hint")).toBeHidden();
+  await expect(page.locator("#draft")).not.toHaveAttribute(
+    "aria-describedby",
+    "autosave-hint",
+  );
 });
 
 test("new and returning users have independent remembering choices", async ({

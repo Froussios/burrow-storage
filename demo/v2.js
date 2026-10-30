@@ -365,6 +365,8 @@
     $("workspace").disabled = true;
     $("workspace").setAttribute("aria-describedby", "workspace-hint");
     $("workspace-hint").hidden = false;
+    $("autosave-hint").hidden = true;
+    draft.removeAttribute("aria-describedby");
     $("token-details").hidden = true;
     $("signin").hidden = false;
     draft.value = "";
@@ -419,6 +421,8 @@
     $("workspace").disabled = false;
     $("workspace").removeAttribute("aria-describedby");
     $("workspace-hint").hidden = true;
+    $("autosave-hint").hidden = false;
+    draft.setAttribute("aria-describedby", "autosave-hint");
     $("token-details").hidden = false;
     showToken();
     showStatus(scenario.offline ? store.status : "syncing");

@@ -235,13 +235,12 @@ for (const offline of [false, true]) {
   // arbitrary HTMLElements. Keep the public storage API fully typed.
   const dom = `declare const document: Omit<Document, "getElementById"> & {
   getElementById(id: "draft"): HTMLTextAreaElement;
-  getElementById(id: "token-input" | "remember-new" | "remember-returning"): HTMLInputElement;
+  getElementById(id: "token-input"): HTMLInputElement;
   getElementById(id: string): HTMLElement;
 };`;
   const context = `${burrow}
 ${dom}
 declare const store: import("burrow-storage").${offline ? "OfflineStorage" : "BurrowStorage"};
-declare const session: { token: string; source: string };
 `;
   const examples = actions.flatMap((action) =>
     (action.snippets ?? [{ code: action.code }]).map((snippet, index) => [
