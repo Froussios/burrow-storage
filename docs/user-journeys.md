@@ -41,7 +41,7 @@ The setup area has one enclosing box containing only the Returning user and
 New user sections, with a visible **OR** between them. The scenario explainer
 lives in the sidebar. Setup code stays in a separate collapsed disclosure in
 the full-width main content area, below the user setup box.
-**Returning user**, with undertitle **Use an existing token**, groups **Get token
+**Returning user**, with undertitle **Reconnect to your data**, groups **Get token
 from passkey** with the token-entry form. **New user**, with undertitle **Create a
 new token**, groups the two creation actions. Each action reads only its own
 card's remembering choice. All actions have equal button styling.
