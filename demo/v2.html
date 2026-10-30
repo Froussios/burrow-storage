@@ -27,11 +27,39 @@
           ><img src="favicon.svg" alt="" width="30" height="30" /> Burrow
           <span>v2</span></a
         >
-        <p class="sidebar-intro">One demo.<br />Different ways to Burrow.</p>
         <nav aria-label="Demo scenarios">
           <p class="eyebrow">Scenarios</p>
           <div id="scenarios"></div>
         </nav>
+        <section
+          id="scenario-config"
+          class="scenario-config"
+          aria-labelledby="h-scenario-details"
+        >
+          <h2 id="h-scenario-details" class="eyebrow">Scenario details</h2>
+          <dl class="scenario-facts">
+            <div>
+              <dt>Content on this device</dt>
+              <dd id="scenario-storage"></dd>
+            </div>
+            <div>
+              <dt>Token on this device</dt>
+              <dd id="scenario-token">Not connected</dd>
+            </div>
+            <div>
+              <dt>Without a connection</dt>
+              <dd id="scenario-network"></dd>
+            </div>
+          </dl>
+          <details class="scenario-explanation">
+            <summary>About this scenario</summary>
+            <p id="scenario-detail" class="hint"></p>
+            <p class="hint">
+              Both scenarios use the same async storage API and editor. Passkey
+              tokens are derived separately for each scenario's app namespace.
+            </p>
+          </details>
+        </section>
         <div class="sidebar-note">
           <span class="isolation-mark" aria-hidden="true">◎</span>
           <p>Separate spaces</p>
@@ -40,7 +68,6 @@
             the other space intact.</small
           >
         </div>
-        <a class="previous" href="index.html">Original demo ↗</a>
       </aside>
       <main id="main">
         <header>
@@ -53,80 +80,69 @@
           <h1 id="scenario-title">Choose a scenario</h1>
           <p id="scenario-summary" class="lede"></p>
         </header>
-        <section
-          id="scenario-config"
-          class="scenario-config"
-          aria-label="Scenario setup"
-        >
-          <dl class="scenario-facts">
-            <div>
-              <dt>Content on this device</dt>
-              <dd id="scenario-storage"></dd>
-            </div>
-            <div>
-              <dt>Token storage · demo option</dt>
-              <dd id="scenario-token"></dd>
-            </div>
-            <div>
-              <dt>Without a connection</dt>
-              <dd id="scenario-network"></dd>
-            </div>
-          </dl>
-          <details class="setup">
-            <summary>How this scenario is set up</summary>
-            <p id="scenario-detail"></p>
-            <pre><code id="setup-code"></code></pre>
-            <p class="hint">
-              Both scenarios use the same async storage API and editor. Passkey
-              tokens are derived separately for each scenario's app namespace.
-            </p>
-          </details>
-        </section>
-
-        <section id="signin" aria-labelledby="h-signin" hidden>
-          <p class="eyebrow">Get started</p>
-          <h2 id="h-signin">Open this space</h2>
-          <p id="signin-hint" class="hint"></p>
-          <fieldset class="custody-choice">
-            <legend>Token storage · demo option</legend>
-            <label class="remember-choice">
-              <input
-                id="remember-token"
-                type="checkbox"
-                aria-describedby="remember-hint"
-              />
-              Remember token on this device
-            </label>
-            <p id="remember-hint" class="hint">
-              Off by default. When selected, this demo saves the token
-              unencrypted in this browser's localStorage and reopens it on your
-              next visit. Anyone who can read the browser's files can use it.
-              This is demo code, independent of either library setup.
-            </p>
-          </fieldset>
-          <div class="token-choices">
+        <div id="signin" hidden>
+          <div
+            class="token-choices"
+            role="group"
+            aria-label="Returning user or New user"
+          >
             <section class="token-choice" aria-labelledby="h-existing-token">
-              <h3 id="h-existing-token">Use an existing token</h3>
-              <button id="passkey-get" type="button">
-                Get token from passkey
-              </button>
+              <h2 id="h-existing-token">Returning user</h2>
+              <p class="undertitle">Reconnect to your data</p>
+              <div class="action-line">
+                <button id="passkey-get" type="button">
+                  Get token from passkey
+                </button>
+                <span data-code="passkey-get"></span>
+              </div>
               <form id="token-form" class="row wrap">
-                <label for="token-input">Or enter a storage token</label>
+                <label for="token-input">Or paste a token you saved</label>
                 <input
                   id="token-input"
                   autocomplete="off"
                   spellcheck="false"
                   placeholder="XXXX-XXXX-…"
                 />
-                <button type="submit">Open</button>
+                <button type="submit">Connect</button>
+                <span data-code="paste-token"></span>
               </form>
+              <div class="remember-option">
+                <label class="remember-choice" for="remember-returning">
+                  <input
+                    id="remember-returning"
+                    type="checkbox"
+                    aria-describedby="remember-returning-hint"
+                  />
+                  Remember token on this device
+                </label>
+                <span class="remember-help">
+                  <button
+                    type="button"
+                    class="tooltip-trigger"
+                    aria-label="About remembering a token for returning users"
+                    aria-describedby="remember-returning-hint"
+                    aria-expanded="false"
+                  >
+                    ?
+                  </button>
+                  <span
+                    id="remember-returning-hint"
+                    class="tooltip-content"
+                    role="tooltip"
+                    hidden
+                  ></span>
+                </span>
+                <span data-code="remember-returning"></span>
+              </div>
             </section>
             <section class="token-choice" aria-labelledby="h-new-token">
-              <h3 id="h-new-token">Create a new token</h3>
+              <h2 id="h-new-token">New user</h2>
+              <p class="undertitle">Create a new token</p>
               <div class="creation-choice">
                 <button id="passkey-create" type="button">
                   Create passkey and token
                 </button>
+                <span data-code="passkey-create"></span>
                 <p class="hint">
                   Create a passkey that can reproduce this scenario's token.
                 </p>
@@ -139,32 +155,95 @@
                 >
                   Create token only
                 </button>
+                <span data-code="token-create"></span>
                 <p id="token-only-hint" class="hint"></p>
+              </div>
+              <div class="remember-option">
+                <label class="remember-choice" for="remember-new">
+                  <input
+                    id="remember-new"
+                    type="checkbox"
+                    aria-describedby="remember-new-hint"
+                  />
+                  Remember token on this device
+                </label>
+                <span class="remember-help">
+                  <button
+                    type="button"
+                    class="tooltip-trigger"
+                    aria-label="About remembering a token for new users"
+                    aria-describedby="remember-new-hint"
+                    aria-expanded="false"
+                  >
+                    ?
+                  </button>
+                  <span
+                    id="remember-new-hint"
+                    class="tooltip-content"
+                    role="tooltip"
+                    hidden
+                  ></span>
+                </span>
+                <span data-code="remember-new"></span>
               </div>
             </section>
           </div>
-        </section>
+        </div>
 
-        <div id="app" hidden>
-          <section aria-labelledby="h-draft">
+        <div id="app">
+          <fieldset
+            id="workspace"
+            aria-labelledby="h-draft"
+            aria-describedby="workspace-hint"
+            disabled
+          >
             <div class="row">
               <div>
                 <p class="eyebrow">Your workspace</p>
-                <h2 id="h-draft">A little room for ideas</h2>
+                <h2 id="h-draft">Draft</h2>
               </div>
-              <button id="theme" type="button" aria-pressed="false">
-                Dark theme
-              </button>
+              <div class="action-line">
+                <button id="theme" type="button" aria-pressed="false">
+                  Dark theme
+                </button>
+                <span data-code="theme"></span>
+              </div>
             </div>
+            <p id="workspace-hint" class="setup-notice">
+              <svg
+                class="setup-notice-icon"
+                viewBox="0 0 24 24"
+                width="22"
+                height="22"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <path
+                  d="M12 3 1.5 21h21L12 3Z"
+                  fill="currentColor"
+                  stroke="currentColor"
+                  stroke-linejoin="round"
+                />
+                <path
+                  d="M12 9v5m0 3v.01"
+                  fill="none"
+                  stroke="#3c2e07"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                />
+              </svg>
+              <span>Connect with a token or passkey to edit.</span>
+            </p>
             <textarea
               id="draft"
               rows="9"
               placeholder="An idea, a plan, a note to your future self…"
               aria-label="Draft"
             ></textarea>
-          </section>
+            <span data-code="content"></span>
+          </fieldset>
 
-          <section aria-labelledby="h-token">
+          <section id="token-details" aria-labelledby="h-token" hidden>
             <h2 id="h-token">Your key to this space</h2>
             <p class="warn">
               Burrow cannot reset your data. Keep your storage token, or your
@@ -182,8 +261,11 @@
             </dl>
             <div class="row wrap">
               <button id="copy-token" type="button">Copy token</button>
+              <span data-code="copy-token"></span>
               <button id="export" type="button">Export JSON</button>
+              <span data-code="export"></span>
               <button id="signout" type="button">Sign out</button>
+              <span data-code="signout"></span>
             </div>
           </section>
         </div>
@@ -199,5 +281,27 @@
         <footer id="build" class="build">Local build, not deployed</footer>
       </main>
     </div>
+    <template id="remember-help-content">
+      This demo saves this scenario's token, unencrypted, in localStorage so it
+      can reconnect next visit. The library does not store it. Anyone who can
+      read your browser's files can use it. Keep a separate copy.
+    </template>
+    <template id="code-icon">
+      <svg
+        class="terminal-icon"
+        viewBox="0 0 24 24"
+        width="21"
+        height="21"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <rect x="2" y="3" width="20" height="18" rx="3" />
+        <path d="m6 8 4 4-4 4m7 0h5" /></svg
+    ></template>
   </body>
 </html>

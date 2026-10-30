@@ -23,6 +23,7 @@ const FILES = [
   ["demo", "demo.js"],
   ["demo", "demo.css"],
   ["demo", "v2.js"],
+  ["demo", "snippets.mjs"],
   ["demo", "v2.css"],
   ["demo", "favicon.svg"],
   ["dist", "burrow.min.js"],

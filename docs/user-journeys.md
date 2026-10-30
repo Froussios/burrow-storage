@@ -9,19 +9,23 @@ token (D-57): **sign in on every visit** and **stay signed in**.
 
 `demo/v2.html?scenario=core` and `demo/v2.html?scenario=offline` open separate
 scenarios. The sidebar lists **Remote only** (the core) first, followed by
-**Offline wrapper**. An absent scenario selects `core`; an unknown value shows
-the index without opening a store. The original page remains available.
+**Remote + offline**. An absent scenario selects `core`; an unknown value shows
+the index without opening a store. The original page remains at `demo/index.html`
+(the deployed site's root URL).
 `demo:build` packages and stamps both pages.
 
 - **Remote only / Core lib, backed by Firebase** uses app `burrow-demo-v2-core`.
   It keeps no persistent content copy. Remote failures are shown as failed saves,
   with confirmation before abandoning an unsaved edit.
-- **Offline wrapper** uses app `burrow-demo-v2-offline` and the same async editor
+- **Remote + offline** uses app `burrow-demo-v2-offline` and the same async editor
   over `offline(core)`. It keeps a plaintext content copy in IndexedDB. Reopening
   that copy still requires its token; caching content does not remember a token.
 
 Token custody is a separate **demo option**, independent of library selection.
-**Remember token on this device** is unchecked by default in both scenarios.
+Each of the **Returning user** and **New user** cards has its own **Remember token
+on this device** checkbox, unchecked by default in both library scenarios. The
+explanation is in a tooltip accessible by hover, focus or tap; a second tap,
+Escape and outside clicks dismiss it.
 When unchecked, the token stays in memory for the visit. The user must keep it
 or obtain it again from their passkey to reopen the scenario. **Create token
 only** explicitly tells the user that no passkey is created and the demo will not
@@ -34,10 +38,27 @@ token. The page describes that anyone who can read the browser's files can use
 the token, and tells the user to keep a separate copy. A failed token save leaves
 it in memory and explicitly tells the user to keep it themselves.
 
-The sign-in panel groups **Get token from passkey** with the token-entry form
-under **Use an existing token**. **Create passkey and token** and **Create token
-only** are grouped under **Create a new token**. All actions have equal button
-styling. The remembering choice applies to either group.
+The setup area has one enclosing box containing only the Returning user and
+New user sections, with a visible **OR** between them. The scenario explainer
+lives in the sidebar. Each action has a collapsed terminal-icon **Code** disclosure directly beside
+its control. There is no central code catalog or shared setup file. Short
+examples show the API calls for passkey retrieval, manual connection, passkey
+creation, random tokens, remembering/restoration, theme, draft reads/writes,
+copying, export and sign-out. The remembering control's code includes separate
+save and next-visit restore fragments. Examples never contain live user tokens
+or content, and `docs:check` type-checks the displayed examples against the public
+API for both scenarios. These focused examples omit the demo's surrounding UI,
+session management and error reporting; they are not copies of its full handlers.
+**Returning user**, with undertitle **Reconnect to your data**, groups **Get token
+from passkey** with the token-entry form. **New user**, with undertitle **Create a
+new token**, groups the two creation actions. Each action reads only its own
+card's remembering choice. All actions have equal button styling.
+
+The draft and theme controls are always visible. They are disabled while setup
+is required, including after sign-out or a refused token, and enabled once the
+store opens. Token details appear only after setup. A remote failure after setup
+does not disable the editor. The sidebar contains the library scenarios without
+an original-demo link or promotional introduction.
 
 New random tokens and passkey-derived tokens are separate per scenario. Passkey
 creation labels include the scenario; selecting an existing credential still

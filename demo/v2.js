@@ -17,12 +17,10 @@
         "The core library stores no content or token on disk. Network failures reject reads and writes; there is no durable offline queue. This demo can remember the token separately if you choose.",
       storage: "No persistent content copy",
       network: "Failed writes are reported",
-      setup:
-        'const store = await Burrow.burrow({ app: "burrow-demo-v2-core", backend, token });',
     },
     {
       id: "offline",
-      title: "Offline wrapper",
+      title: "Remote + offline",
       app: "burrow-demo-v2-offline",
       offline: true,
       summary: "Keep working when the network goes away.",
@@ -30,8 +28,6 @@
         "The offline wrapper keeps a plaintext content copy on this device and syncs changes when the store is reachable. Remembering the token is a separate option implemented by this demo.",
       storage: "Plaintext copy in IndexedDB",
       network: "Edits queue locally, then sync",
-      setup:
-        'const core = await Burrow.burrow({ app: "burrow-demo-v2-offline", backend, token });\nconst store = await Burrow.offline(core);',
     },
   ];
   const url = new URL(location.href);
@@ -74,23 +70,105 @@
   $("scenario-title").textContent = scenario.title;
   $("scenario-summary").textContent = scenario.summary;
   $("scenario-detail").textContent = scenario.detail;
-  $("setup-code").textContent = scenario.setup;
+  const { demoSnippets } = await import("./snippets.mjs");
+  // Highlight only presentation tokens; build DOM text nodes so copying code
+  // preserves the exact example and code-like HTML never becomes markup.
+  const syntaxTokens =
+    /(?<comment>\/\/[^\n]*|\/\*[\s\S]*?\*\/)|(?<string>"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)|(?<keyword>\b(?:async|await|const|let|if|else|try|catch|throw|new|return|typeof|function|for|of)\b)|(?<literal>\b(?:true|false|null|undefined)\b)|(?<number>\b\d+(?:\.\d+)?\b)|(?<api>\b(?:Burrow|JSON|Date|URL|Blob|Error|Promise|document|navigator|localStorage)\b)|(?<call>\b[A-Za-z_$][\w$]*(?=\s*\())/g;
+  const highlightCode = (element, source) => {
+    let offset = 0;
+    for (const match of source.matchAll(syntaxTokens)) {
+      element.append(
+        document.createTextNode(source.slice(offset, match.index)),
+      );
+      const token = document.createElement("span");
+      const kind = Object.keys(match.groups).find(
+        (name) => match.groups[name] !== undefined,
+      );
+      token.className = `syntax-${kind}`;
+      token.textContent = match[0];
+      element.append(token);
+      offset = match.index + match[0].length;
+    }
+    element.append(document.createTextNode(source.slice(offset)));
+  };
+  const { actions } = demoSnippets(scenario);
+  for (const action of actions) {
+    const slot = document.querySelector(`[data-code="${action.id}"]`);
+    const details = document.createElement("details");
+    details.id = `snippet-${action.id}`;
+    details.className = "action-code";
+    const summary = document.createElement("summary");
+    summary.setAttribute("aria-label", `Code for ${action.title}`);
+    summary.append($("code-icon").content.cloneNode(true), " Code");
+    const description = document.createElement("p");
+    description.className = "hint";
+    description.textContent = action.description;
+    details.append(summary, description);
+    for (const snippet of action.snippets ?? [{ code: action.code }]) {
+      if (snippet.label) {
+        const label = document.createElement("h4");
+        label.textContent = snippet.label;
+        details.append(label);
+      }
+      const pre = document.createElement("pre");
+      const code = document.createElement("code");
+      code.className = "language-javascript";
+      highlightCode(code, snippet.code);
+      pre.append(code);
+      details.append(pre);
+    }
+    slot.replaceWith(details);
+  }
   for (const key of ["storage", "network"])
     $("scenario-" + key).textContent = scenario[key];
-  $("signin-hint").textContent = scenario.offline
-    ? "The offline wrapper keeps a plaintext content copy in this browser. You still need a token or passkey to reopen it."
-    : "Reads and writes go directly to the encrypted remote store. The core library keeps no content on disk.";
   const updateCustodyChoice = () => {
-    const remember = $("remember-token").checked;
-    $("scenario-token").textContent = remember
-      ? "Saved by this demo on this device"
-      : "In memory for this visit";
-    $("token-only-hint").textContent = remember
+    $("token-only-hint").textContent = $("remember-new").checked
       ? "No passkey is created. This demo will save the token on this device because remembering is selected. Keep a separate copy: clearing browser data removes it."
       : "No passkey is created, and this demo will not store the token. Write it down or save it in your password manager before leaving.";
   };
-  $("remember-token").addEventListener("change", updateCustodyChoice);
+  $("remember-new").addEventListener("change", updateCustodyChoice);
   updateCustodyChoice();
+
+  // Tooltip help supports pointer, keyboard, and touch without changing the
+  // remembering choice. A second tap, Escape and outside clicks dismiss it.
+  const tooltipHelp = [...document.querySelectorAll(".remember-help")];
+  const pinnedTooltips = new Set();
+  const setTooltip = (help, visible) => {
+    help.querySelector('[role="tooltip"]').hidden = !visible;
+    help.querySelector("button").setAttribute("aria-expanded", String(visible));
+    if (!visible) pinnedTooltips.delete(help);
+  };
+  const hideTooltips = () => {
+    for (const help of tooltipHelp) setTooltip(help, false);
+  };
+  for (const help of tooltipHelp) {
+    help
+      .querySelector('[role="tooltip"]')
+      .append($("remember-help-content").content.cloneNode(true));
+    const trigger = help.querySelector("button");
+    help.addEventListener("pointerenter", () => setTooltip(help, true));
+    help.addEventListener("pointerleave", () => {
+      if (document.activeElement !== trigger) setTooltip(help, false);
+    });
+    trigger.addEventListener("focus", () => setTooltip(help, true));
+    trigger.addEventListener("blur", () => {
+      if (!help.matches(":hover")) setTooltip(help, false);
+    });
+    trigger.addEventListener("click", () => {
+      // Focus/hover can already show the hint before the first click.
+      const visible = !pinnedTooltips.has(help);
+      if (visible) pinnedTooltips.add(help);
+      setTooltip(help, visible);
+    });
+  }
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") hideTooltips();
+  });
+  document.addEventListener("click", (e) => {
+    if (!(e.target instanceof Element) || !e.target.closest(".remember-help"))
+      hideTooltips();
+  });
   const APP = scenario.app;
   // Token custody is an explicit demo choice, scoped to this scenario.
   const KEPT = `${APP}:token`;
@@ -267,7 +345,7 @@
         ? "This demo saved the token on this device. Keep a separate copy in case browser data is cleared."
         : source === "passkey" || source === "new passkey"
           ? "This demo has not stored your token. Use the passkey to get it again, or write the token down."
-          : "This demo has not stored your token. Write it down or save it in your password manager before leaving; otherwise you cannot reopen this data.";
+          : "This demo has not stored your token. Write it down or save it in your password manager before leaving; otherwise you cannot restore access to this data.";
     $("data-copy").textContent = scenario.offline
       ? "Encrypted in the store, plus an unencrypted content copy in this browser for offline use."
       : "Only in the store, encrypted. No persistent content copy on this device.";
@@ -284,11 +362,17 @@
     typing = undefined;
     store = null;
     session = null;
-    $("app").hidden = true;
+    $("workspace").disabled = true;
+    $("workspace").setAttribute("aria-describedby", "workspace-hint");
+    $("workspace-hint").hidden = false;
+    $("token-details").hidden = true;
     $("signin").hidden = false;
     draft.value = "";
     $("code").textContent = "";
-    $("remember-token").checked = false;
+    $("remember-new").checked = false;
+    $("remember-returning").checked = false;
+    $("scenario-token").textContent = "Not connected";
+    hideTooltips();
     updateCustodyChoice();
     applyTheme("light");
     showStatus("locked");
@@ -331,9 +415,11 @@
       }
     }
     session = { token, source, since, remembered, persistenceFailed };
-    $("remember-token").checked = remembered;
     $("signin").hidden = true;
-    $("app").hidden = false;
+    $("workspace").disabled = false;
+    $("workspace").removeAttribute("aria-describedby");
+    $("workspace-hint").hidden = true;
+    $("token-details").hidden = false;
     showToken();
     showStatus(scenario.offline ? store.status : "syncing");
     await refresh();
@@ -342,8 +428,9 @@
   // Passkey: the utility derives a token. The demo owns any persistence.
   const NO_PASSKEY =
     "This browser cannot use passkeys for this. Use a storage token instead.";
-  const signin = async (get, source) => {
-    const remember = $("remember-token").checked;
+  const signin = async (get, source, rememberId) => {
+    const remember = $(rememberId).checked;
+    hideTooltips();
     for (const b of document.querySelectorAll("#signin button, #signin input"))
       b.disabled = true;
     try {
@@ -358,7 +445,7 @@
             ? "No passkey was used. Try again, or use a storage token."
             : e.code === "bad-token"
               ? "That token is not right. Check it and try again."
-              : `Could not open your storage (${e.code ?? e.name}).`,
+              : `Could not connect to your storage (${e.code ?? e.name}).`,
       );
       return false;
     } finally {
@@ -370,18 +457,18 @@
   };
   $("passkey-get").addEventListener("click", async () => {
     if (!(await passkey.available())) return say(NO_PASSKEY);
-    if (await signin(() => passkey.get(), "passkey"))
+    if (await signin(() => passkey.get(), "passkey", "remember-returning"))
       say("Signed in with your passkey.");
   });
   $("passkey-create").addEventListener("click", async () => {
     if (!(await passkey.available())) return say(NO_PASSKEY);
-    if (await signin(() => passkey.create(), "new passkey"))
+    if (await signin(() => passkey.create(), "new passkey", "remember-new"))
       say(
         "Passkey and token created. On another device with this passkey, choose “Get token from passkey”.",
       );
   });
   $("new-token").addEventListener("click", async () => {
-    if (await signin(() => Burrow.generateToken(), "generated"))
+    if (await signin(() => Burrow.generateToken(), "generated", "remember-new"))
       say(
         session.remembered
           ? "Token created and saved on this device by the demo. Keep a separate copy."
@@ -390,7 +477,13 @@
   });
   $("token-form").addEventListener("submit", async (e) => {
     e.preventDefault();
-    if (await signin(async () => $("token-input").value, "pasted")) {
+    if (
+      await signin(
+        async () => $("token-input").value,
+        "pasted",
+        "remember-returning",
+      )
+    ) {
       $("token-input").value = "";
       say("Your data is here.");
     }
@@ -529,7 +622,7 @@
         }
       } else
         say(
-          `Could not open your storage (${e?.code ?? e?.name}). Reload to try again.`,
+          `Could not connect to your storage (${e?.code ?? e?.name}). Reload to try again.`,
         );
     }
   } else locked();
