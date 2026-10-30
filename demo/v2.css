@@ -613,7 +613,8 @@ textarea::placeholder {
 #app section {
   padding-bottom: 24px;
 }
-#app section + section {
+#app section + section,
+#workspace + section {
   padding-top: 24px;
   border-top: 1px solid var(--line);
 }

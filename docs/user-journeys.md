@@ -10,7 +10,8 @@ token (D-57): **sign in on every visit** and **stay signed in**.
 `demo/v2.html?scenario=core` and `demo/v2.html?scenario=offline` open separate
 scenarios. The sidebar lists **Remote only** (the core) first, followed by
 **Remote + offline**. An absent scenario selects `core`; an unknown value shows
-the index without opening a store. The original page remains available.
+the index without opening a store. The original page remains at `demo/index.html`
+(the deployed site's root URL).
 `demo:build` packages and stamps both pages.
 
 - **Remote only / Core lib, backed by Firebase** uses app `burrow-demo-v2-core`.
@@ -23,8 +24,8 @@ the index without opening a store. The original page remains available.
 Token custody is a separate **demo option**, independent of library selection.
 Each of the **Returning user** and **New user** cards has its own **Remember token
 on this device** checkbox, unchecked by default in both library scenarios. The
-explanation is in a tooltip accessible by hover, focus or tap; Escape and outside
-clicks dismiss it.
+explanation is in a tooltip accessible by hover, focus or tap; a second tap,
+Escape and outside clicks dismiss it.
 When unchecked, the token stays in memory for the visit. The user must keep it
 or obtain it again from their passkey to reopen the scenario. **Create token
 only** explicitly tells the user that no passkey is created and the demo will not
@@ -45,7 +46,9 @@ examples show the API calls for passkey retrieval, manual connection, passkey
 creation, random tokens, remembering/restoration, theme, draft reads/writes,
 copying, export and sign-out. The remembering control's code includes separate
 save and next-visit restore fragments. Examples never contain live user tokens
-or content, and `docs:check` checks them against the public API for both scenarios.
+or content, and `docs:check` type-checks the displayed examples against the public
+API for both scenarios. These focused examples omit the demo's surrounding UI,
+session management and error reporting; they are not copies of its full handlers.
 **Returning user**, with undertitle **Reconnect to your data**, groups **Get token
 from passkey** with the token-entry form. **New user**, with undertitle **Create a
 new token**, groups the two creation actions. Each action reads only its own

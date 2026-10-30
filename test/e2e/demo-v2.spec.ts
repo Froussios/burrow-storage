@@ -152,6 +152,7 @@ test("offline writes survive a reload without a backend, then reach another devi
   remote.failWith = "network";
   await page.locator("#draft").fill("queued while offline");
   await expect(page.locator("#status")).toHaveText("offline");
+  await expect(page.locator("#draft")).toBeEnabled();
   await page.reload();
   await expect(page.locator("#draft")).toHaveValue("queued while offline");
   await expect(page.locator("#code")).toHaveText(token);
@@ -206,6 +207,8 @@ test("core reports a refused write, keeps nothing on disk, and asks before aband
   await expect(page.locator("#message")).toHaveText(
     "Not saved: the store could not be reached (backend).",
   );
+  await expect(page.locator("#draft")).toBeEnabled();
+  await expect(page.locator("#draft")).toHaveValue("not saved");
   const dump = await profileDump(page);
   expect(JSON.parse(dump).localStorage).toEqual({});
   expect(databases(dump)).toEqual([]);
@@ -431,6 +434,11 @@ test("remembering help is available on focus, hover and tap, and can be dismisse
   await expect(tooltip).toContainText("unencrypted");
   await page.keyboard.press("Escape");
   await expect(tooltip).toBeHidden();
+  await trigger.click();
+  await expect(tooltip).toBeVisible();
+  await trigger.click();
+  await expect(tooltip).toBeHidden();
+  await expect(trigger).toHaveAttribute("aria-expanded", "false");
   await trigger.click();
   await expect(tooltip).toBeVisible();
   await page.locator("#scenario-title").click();

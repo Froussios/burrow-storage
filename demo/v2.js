@@ -131,16 +131,21 @@
   updateCustodyChoice();
 
   // Tooltip help supports pointer, keyboard, and touch without changing the
-  // remembering choice. Escape and outside clicks dismiss it.
+  // remembering choice. A second tap, Escape and outside clicks dismiss it.
   const tooltipHelp = [...document.querySelectorAll(".remember-help")];
+  const pinnedTooltips = new Set();
   const setTooltip = (help, visible) => {
     help.querySelector('[role="tooltip"]').hidden = !visible;
     help.querySelector("button").setAttribute("aria-expanded", String(visible));
+    if (!visible) pinnedTooltips.delete(help);
   };
   const hideTooltips = () => {
     for (const help of tooltipHelp) setTooltip(help, false);
   };
   for (const help of tooltipHelp) {
+    help
+      .querySelector('[role="tooltip"]')
+      .append($("remember-help-content").content.cloneNode(true));
     const trigger = help.querySelector("button");
     help.addEventListener("pointerenter", () => setTooltip(help, true));
     help.addEventListener("pointerleave", () => {
@@ -150,7 +155,12 @@
     trigger.addEventListener("blur", () => {
       if (!help.matches(":hover")) setTooltip(help, false);
     });
-    trigger.addEventListener("click", () => setTooltip(help, true));
+    trigger.addEventListener("click", () => {
+      // Focus/hover can already show the hint before the first click.
+      const visible = !pinnedTooltips.has(help);
+      if (visible) pinnedTooltips.add(help);
+      setTooltip(help, visible);
+    });
   }
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") hideTooltips();
