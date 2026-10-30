@@ -1,6 +1,6 @@
 # Burrow
 
-[Demo v2: remote only](https://froussios.github.io/burrow-storage/v2.html?scenario=core) · [Offline wrapper](https://froussios.github.io/burrow-storage/v2.html?scenario=offline)
+[Demo v2: remote only](https://froussios.github.io/burrow-storage/v2.html?scenario=core) · [Remote + offline](https://froussios.github.io/burrow-storage/v2.html?scenario=offline)
 
 
 **Per-user data for static sites that follows the user to their other devices. No login. No

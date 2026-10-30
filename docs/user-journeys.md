@@ -9,14 +9,14 @@ token (D-57): **sign in on every visit** and **stay signed in**.
 
 `demo/v2.html?scenario=core` and `demo/v2.html?scenario=offline` open separate
 scenarios. The sidebar lists **Remote only** (the core) first, followed by
-**Offline wrapper**. An absent scenario selects `core`; an unknown value shows
+**Remote + offline**. An absent scenario selects `core`; an unknown value shows
 the index without opening a store. The original page remains available.
 `demo:build` packages and stamps both pages.
 
 - **Remote only / Core lib, backed by Firebase** uses app `burrow-demo-v2-core`.
   It keeps no persistent content copy. Remote failures are shown as failed saves,
   with confirmation before abandoning an unsaved edit.
-- **Offline wrapper** uses app `burrow-demo-v2-offline` and the same async editor
+- **Remote + offline** uses app `burrow-demo-v2-offline` and the same async editor
   over `offline(core)`. It keeps a plaintext content copy in IndexedDB. Reopening
   that copy still requires its token; caching content does not remember a token.
 

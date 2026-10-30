@@ -22,7 +22,7 @@
     },
     {
       id: "offline",
-      title: "Offline wrapper",
+      title: "Remote + offline",
       app: "burrow-demo-v2-offline",
       offline: true,
       summary: "Keep working when the network goes away.",
