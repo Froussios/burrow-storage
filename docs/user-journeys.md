@@ -37,7 +37,10 @@ token. The page describes that anyone who can read the browser's files can use
 the token, and tells the user to keep a separate copy. A failed token save leaves
 it in memory and explicitly tells the user to keep it themselves.
 
-The setup area has two independent cards with a visible **OR** between them.
+The setup area has one enclosing box containing only the Returning user and
+New user sections, with a visible **OR** between them. The scenario explainer
+lives in the sidebar, and its setup code stays in a collapsed disclosure on
+the page.
 **Returning user**, with undertitle **Use an existing token**, groups **Get token
 from passkey** with the token-entry form. **New user**, with undertitle **Create a
 new token**, groups the two creation actions. Each action reads only its own

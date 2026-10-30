@@ -206,17 +206,17 @@ p {
   border-color: var(--warn);
 }
 .scenario-config {
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  margin-bottom: 32px;
-  overflow: hidden;
+  border-top: 1px solid var(--line);
+  margin-top: 26px;
+  padding-top: 22px;
+  min-width: 0;
 }
 .scenario-facts {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 20px;
-  padding: 20px 22px;
-  margin: 0;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  margin: 0 0 20px;
+  padding: 0;
 }
 dt {
   color: var(--muted);
@@ -239,10 +239,10 @@ summary {
   font-size: 12px;
 }
 .setup {
-  padding: 12px 22px;
+  padding: 14px 0 0;
 }
 .setup p {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--muted);
 }
 pre {
@@ -251,6 +251,8 @@ pre {
   color: var(--muted);
 }
 pre code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   display: block;
   font-size: 11px;
   padding: 14px;
@@ -258,6 +260,10 @@ pre code {
   background: var(--field);
 }
 #signin {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--field);
+  padding: 22px;
   margin-bottom: 30px;
 }
 .hint {
@@ -285,16 +291,35 @@ button:disabled {
   gap: 8px;
 }
 .token-choices {
+  position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 38px;
   align-items: stretch;
 }
-.token-choice {
-  border: 1px solid var(--line);
+.token-choices::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--line);
+}
+.token-choices::after {
+  content: "OR";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
   background: var(--field);
-  border-radius: 10px;
-  padding: 22px;
+  padding: 8px 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+}
+.token-choice {
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -306,14 +331,6 @@ button:disabled {
   color: var(--muted);
   font-size: 13px;
   margin: 4px 0 20px;
-}
-.choice-separator {
-  align-self: center;
-  justify-self: center;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 650;
-  letter-spacing: 0.1em;
 }
 .remember-option {
   display: flex;
@@ -396,6 +413,29 @@ button:disabled {
 @media (max-width: 1000px) {
   .token-choices {
     grid-template-columns: 1fr;
+    gap: 28px;
+  }
+  .token-choices::before,
+  .token-choices::after {
+    display: none;
+  }
+  .token-choice + .token-choice {
+    position: relative;
+    border-top: 1px solid var(--line);
+    padding-top: 28px;
+  }
+  .token-choice + .token-choice::before {
+    content: "OR";
+    position: absolute;
+    left: 50%;
+    top: 0;
+    transform: translate(-50%, -50%);
+    padding: 4px 8px;
+    background: var(--field);
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 650;
+    letter-spacing: 0.1em;
   }
 }
 label {
@@ -560,7 +600,7 @@ textarea::placeholder {
   .scenario-facts dd {
     text-align: right;
   }
-  .token-choice {
+  #signin {
     padding: 20px;
   }
   .brand {

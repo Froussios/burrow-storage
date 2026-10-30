@@ -20,7 +20,7 @@ stores a token anywhere. This is a breaking change throughout, made under the no
   token/passkey scopes and content, and a shared async editor. The original demo
   remains available. Core is first; an opt-in demo-owned token remembering choice
   works independently of the selected library setup. The draft stays visible
-  before setup; separate Returning user and New user cards have their own
+  before setup; grouped Returning user and New user flows have their own
   remembering choices, with tooltip help.
 
 - `generateToken()`: a fresh random storage token, for apps that keep their own.

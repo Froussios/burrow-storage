@@ -31,6 +31,36 @@
           <p class="eyebrow">Scenarios</p>
           <div id="scenarios"></div>
         </nav>
+        <section
+          id="scenario-config"
+          class="scenario-config"
+          aria-labelledby="h-scenario-details"
+        >
+          <h2 id="h-scenario-details" class="eyebrow">Scenario details</h2>
+          <dl class="scenario-facts">
+            <div>
+              <dt>Content on this device</dt>
+              <dd id="scenario-storage"></dd>
+            </div>
+            <div>
+              <dt>Token on this device</dt>
+              <dd id="scenario-token">Not opened</dd>
+            </div>
+            <div>
+              <dt>Without a connection</dt>
+              <dd id="scenario-network"></dd>
+            </div>
+          </dl>
+          <details class="setup">
+            <summary>Setup code</summary>
+            <p id="scenario-detail"></p>
+            <pre><code id="setup-code"></code></pre>
+            <p class="hint">
+              Both scenarios use the same async storage API and editor. Passkey
+              tokens are derived separately for each scenario's app namespace.
+            </p>
+          </details>
+        </section>
         <div class="sidebar-note">
           <span class="isolation-mark" aria-hidden="true">◎</span>
           <p>Separate spaces</p>
@@ -51,38 +81,12 @@
           <h1 id="scenario-title">Choose a scenario</h1>
           <p id="scenario-summary" class="lede"></p>
         </header>
-        <section
-          id="scenario-config"
-          class="scenario-config"
-          aria-label="Scenario setup"
-        >
-          <dl class="scenario-facts">
-            <div>
-              <dt>Content on this device</dt>
-              <dd id="scenario-storage"></dd>
-            </div>
-            <div>
-              <dt>Token on this device</dt>
-              <dd id="scenario-token">Not opened</dd>
-            </div>
-            <div>
-              <dt>Without a connection</dt>
-              <dd id="scenario-network"></dd>
-            </div>
-          </dl>
-          <details class="setup">
-            <summary>How this scenario is set up</summary>
-            <p id="scenario-detail"></p>
-            <pre><code id="setup-code"></code></pre>
-            <p class="hint">
-              Both scenarios use the same async storage API and editor. Passkey
-              tokens are derived separately for each scenario's app namespace.
-            </p>
-          </details>
-        </section>
-
         <div id="signin" hidden>
-          <div class="token-choices">
+          <div
+            class="token-choices"
+            role="group"
+            aria-label="Returning user or New user"
+          >
             <section class="token-choice" aria-labelledby="h-existing-token">
               <h2 id="h-existing-token">Returning user</h2>
               <p class="undertitle">Use an existing token</p>
@@ -131,7 +135,6 @@
                 </span>
               </div>
             </section>
-            <span class="choice-separator">OR</span>
             <section class="token-choice" aria-labelledby="h-new-token">
               <h2 id="h-new-token">New user</h2>
               <p class="undertitle">Create a new token</p>

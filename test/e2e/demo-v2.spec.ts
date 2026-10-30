@@ -93,6 +93,14 @@ test("scenario URLs enumerate every setup and reject unknown scenarios without o
     "core",
   );
   await expect(page.locator("#signin")).toBeVisible();
+  await expect(page.locator("#setup-code")).toBeHidden();
+  await page.locator(".setup summary").click();
+  await expect(page.locator("#setup-code")).toBeVisible();
+  await expect(page.locator("#setup-code")).toContainText(
+    "burrow-demo-v2-core",
+  );
+  await page.locator(".setup summary").click();
+  await expect(page.locator("#setup-code")).toBeHidden();
   await open(page, "does-not-exist");
   await expect(page.locator("#status")).toHaveText("unknown scenario");
   await expect(page.locator("#signin")).toBeHidden();
@@ -379,7 +387,12 @@ test("new and returning users have independent remembering choices", async ({
   await expect(
     page.getByRole("heading", { name: "New user", exact: true }),
   ).toBeVisible();
-  await expect(page.locator(".choice-separator")).toHaveText("OR");
+  await expect(
+    page.getByRole("group", {
+      name: "Returning user or New user",
+      exact: true,
+    }),
+  ).toBeVisible();
   await page.locator("#remember-returning").check();
   // The checked returning choice must not save a newly generated token.
   const token = await start(page);
