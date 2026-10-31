@@ -14,6 +14,21 @@ the index without opening a store. The original page remains at `demo/index.html
 (the deployed site's root URL).
 `demo:build` packages and stamps both pages.
 
+The header links to [an introduction to Burrow](overview.md), so visitors arriving
+directly at the demo can see what the library provides.
+
+The editor shows **Last cloud read** and **Last cloud save** for this connection,
+using the device's clock. These are successful encrypted-document requests,
+including initial reads and background offline replay; local-copy reads, queued
+edits and failed requests do not advance them. An empty cloud response still
+counts as a confirmed read. They reset on reconnect or sign-out and are not a
+server modification time or a promise that every pending edit has synced; the
+status badge reports pending work. The demo observes its backend without changing
+the library API or storing timestamps with user content. Cached subscription
+notifications alone do not count as cloud reads.
+The supplied Firestore demo setup is instrumented; a custom backend needs
+equivalent demo-side request observation.
+
 - **Remote only / Core lib, backed by Firebase** uses app `burrow-demo-v2-core`.
   It keeps no persistent content copy. Remote failures are shown as failed saves,
   with confirmation before abandoning an unsaved edit.

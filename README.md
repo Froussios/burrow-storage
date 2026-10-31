@@ -3,8 +3,13 @@
 [Demo v2: remote only](https://froussios.github.io/burrow-storage/v2.html?scenario=core) · [Remote + offline](https://froussios.github.io/burrow-storage/v2.html?scenario=offline)
 
 
-**Per-user data for static sites that follows the user to their other devices. No login. No
-server to write or run. Nothing readable in the store.**
+Give your static site personal data that follows people from one device to the
+next, without building an account system or running your own server. Burrow turns
+a few `get`/`set` calls into encrypted cloud storage, unlocked with a storage token
+or a passkey-derived token. Start with the core, and add optional offline support
+when you want people to keep working through a lost connection.
+
+[See what Burrow does](docs/overview.md) and try it with your own content in the demo.
 
 **[Try the live demo](https://froussios.github.io/burrow-storage/)**: start with a new token or a
 passkey, type something, then open the page on another device and sign in the same way.

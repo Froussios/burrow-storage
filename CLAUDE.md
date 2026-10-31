@@ -13,6 +13,7 @@ claimed the name). The repository is public. The documentation set is current wi
 | Read | For |
 | --- | --- |
 | `README.md` | What Burrow is, why, quick start, the API in one page |
+| `docs/overview.md` | Short introduction for people arriving directly at the demo |
 | `docs/api.md` | The public contract, member by member; `src/types.ts` is the source of truth |
 | `docs/retention.md`, `docs/sync-and-tokens.md`, `docs/storage-standards.md`, `docs/firestore-setup.md`, `docs/extending.md` | User guides |
 | `SECURITY.md` | The cryptographic design (normative) and threat model |

@@ -79,6 +79,12 @@
           </div>
           <h1 id="scenario-title">Choose a scenario</h1>
           <p id="scenario-summary" class="lede"></p>
+          <p class="demo-about">
+            <a
+              href="https://github.com/Froussios/burrow-storage/blob/main/docs/overview.md"
+              >What is Burrow?</a
+            >
+          </p>
         </header>
         <div id="signin" hidden>
           <div
@@ -241,6 +247,21 @@
               placeholder="An idea, a plan, a note to your future self…"
               aria-label="Content"
             ></textarea>
+            <dl class="cloud-freshness" aria-label="Cloud activity">
+              <div>
+                <dt>Last cloud read</dt>
+                <dd><time id="cloud-read">Not yet this connection</time></dd>
+              </div>
+              <div>
+                <dt>Last cloud save</dt>
+                <dd><time id="cloud-save">Not yet this connection</time></dd>
+              </div>
+            </dl>
+            <p class="hint">
+              Confirmed cloud activity in this connection. Offline edits update
+              these times after they sync. Check the status above for pending
+              changes.
+            </p>
             <span data-code="content"></span>
           </fieldset>
 

@@ -30,7 +30,8 @@ async function backend(context: BrowserContext, remote = new MemoryBackend()) {
       body:
         (await response.text()) +
         `
-Burrow.registerBackend("demo-v2-test", () => ({
+Burrow.registerBackend("demo-v2-test", async (config) => {
+const backend = {
   id: "demo-v2-test",
   capabilities: { writeAuth: true, subscribe: false },
   async get(...args) {
@@ -42,7 +43,12 @@ Burrow.registerBackend("demo-v2-test", () => ({
     const result = await window.demoRemote("put", args);
     if (result.error) throw new Burrow.BackendError(result.error);
   }
-}));
+};
+if (!config.confirmed) return backend;
+window.demoConfirmed = config.confirmed;
+const { observeCloud } = await import("/demo/cloud-freshness.mjs");
+return observeCloud(backend, config.confirmed);
+});
 window.BURROW = { backend: { type: "demo-v2-test" } };`,
     });
   });
@@ -107,6 +113,118 @@ test("initial reads finish before either demo accepts edits", async ({
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
     await expect(page.locator("#status")).toHaveText("synced");
   }
+});
+
+test("cloud freshness records successful requests and resets on sign-out", async ({
+  context,
+  page,
+}) => {
+  const remote = await backend(context);
+  const at = Date.now();
+  const clock = async (offset: number) =>
+    page.clock.setFixedTime(new Date(at + offset));
+  const timestamp = (offset: number) => new Date(at + offset).toISOString();
+  const read = page.locator("#cloud-read");
+  const saved = page.locator("#cloud-save");
+  await clock(0);
+  await open(page, "core");
+  await expect(read).not.toHaveAttribute("datetime", /.+/);
+  await expect(saved).not.toHaveAttribute("datetime", /.+/);
+  await start(page);
+  await expect(read).toHaveAttribute("datetime", timestamp(0));
+  await expect(saved).not.toHaveAttribute("datetime", /.+/);
+  await clock(1_000);
+  await page.locator("#draft").fill("confirmed remotely");
+  await expect(page.locator("#status")).toHaveText("synced");
+  await expect(saved).toHaveAttribute("datetime", timestamp(1_000));
+  const lastRead = await read.getAttribute("datetime");
+  remote.failWith = "network";
+  await clock(2_000);
+  await page.locator("#draft").fill("not yet remote");
+  await expect(page.locator("#message")).toContainText("Not saved");
+  await expect(saved).toHaveAttribute("datetime", timestamp(1_000));
+  await expect(read).toHaveAttribute("datetime", lastRead!);
+  remote.failWith = null;
+  await clock(3_000);
+  await page.evaluate(() =>
+    document.dispatchEvent(new Event("visibilitychange")),
+  );
+  await expect(read).toHaveAttribute("datetime", timestamp(3_000));
+  await page.locator("#draft").fill("retry reaches the cloud");
+  await expect(page.locator("#status")).toHaveText("synced");
+  await page.locator("#signout").click();
+  await expect(read).not.toHaveAttribute("datetime", /.+/);
+  await expect(saved).not.toHaveAttribute("datetime", /.+/);
+});
+
+test("late confirmations from a signed-out connection cannot change the new connection's times", async ({
+  context,
+  page,
+}) => {
+  await backend(context);
+  await open(page, "core");
+  await start(page);
+  await page.evaluate(() => {
+    const fixture = window as unknown as {
+      demoConfirmed: (kind: string, at: number) => void;
+      oldConfirmation: (kind: string, at: number) => void;
+    };
+    fixture.oldConfirmation = fixture.demoConfirmed;
+  });
+  await page.locator("#signout").click();
+  await start(page);
+  const before = await page.locator("#cloud-read").getAttribute("datetime");
+  await page.evaluate(() => {
+    const fixture = window as unknown as {
+      oldConfirmation: (kind: string, at: number) => void;
+    };
+    // Model an earlier backend request completing after reconnection.
+    fixture.oldConfirmation("read", Date.now() + 60_000);
+    fixture.oldConfirmation("save", Date.now() + 60_000);
+  });
+  await expect(page.locator("#cloud-read")).toHaveAttribute(
+    "datetime",
+    before!,
+  );
+  await expect(page.locator("#cloud-save")).not.toHaveAttribute(
+    "datetime",
+    /.+/,
+  );
+});
+
+test("offline edits leave cloud times unchanged until background replay succeeds", async ({
+  context,
+  page,
+}) => {
+  const remote = await backend(context);
+  const at = Date.now();
+  await page.clock.setFixedTime(new Date(at));
+  await open(page);
+  await start(page);
+  await page.locator("#draft").fill("already in the cloud");
+  const saved = page.locator("#cloud-save");
+  const read = page.locator("#cloud-read");
+  await expect(saved).toHaveAttribute("datetime", new Date(at).toISOString());
+  await expect(page.locator("#status")).toHaveText("synced");
+  const lastRead = await read.getAttribute("datetime");
+  remote.failWith = "network";
+  await page.clock.setFixedTime(new Date(at + 1_000));
+  await page.locator("#draft").fill("waiting on this device");
+  await expect(page.locator("#status")).toHaveText("offline");
+  await expect(saved).toHaveAttribute("datetime", new Date(at).toISOString());
+  await expect(read).toHaveAttribute("datetime", lastRead!);
+  remote.failWith = null;
+  await page.clock.setFixedTime(new Date(at + 2_000));
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect(page.locator("#status")).toHaveText("synced");
+  await expect(saved).toHaveAttribute(
+    "datetime",
+    new Date(at + 2_000).toISOString(),
+  );
+  await expect(read).toHaveAttribute(
+    "datetime",
+    new Date(at + 2_000).toISOString(),
+  );
 });
 
 test("scenario URLs enumerate every setup and reject unknown scenarios without opening storage", async ({
@@ -195,6 +313,14 @@ test("offline writes survive a reload without a backend, then reach another devi
   await page.reload();
   await expect(page.locator("#draft")).toHaveValue("queued while offline");
   await expect(page.locator("#code")).toHaveText(token);
+  await expect(page.locator("#cloud-read")).not.toHaveAttribute(
+    "datetime",
+    /.+/,
+  );
+  await expect(page.locator("#cloud-save")).not.toHaveAttribute(
+    "datetime",
+    /.+/,
+  );
   remote.failWith = null;
   // Reopening triggers sync without waiting for the retry timer.
   await page.reload();

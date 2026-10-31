@@ -172,6 +172,20 @@ test("demo v2 packages both scenario URLs, the index, and this build", async ({
     );
     await expect(a.page.locator("#signin")).toBeVisible();
     await expect(a.page.locator("#status")).toHaveText("locked");
+    await a.page.locator("#new-token").click();
+    await expect(a.page.locator("#draft")).toBeEnabled();
+    await expect(a.page.locator("#cloud-read")).toHaveAttribute(
+      "datetime",
+      /^\d{4}-\d\d-\d\dT/,
+    );
+    await a.page.locator("#draft").fill("Cloud freshness smoke check");
+    await expect(a.page.locator("#cloud-save")).toHaveAttribute(
+      "datetime",
+      /^\d{4}-\d\d-\d\dT/,
+    );
+    await expect(a.page.locator("#status")).toHaveText("synced");
+    await a.page.locator("#signout").click();
+    await expect(a.page.locator("#status")).toHaveText("locked");
   }
   expect(a.problems).toEqual([]);
 });

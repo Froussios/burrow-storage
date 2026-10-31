@@ -172,7 +172,44 @@
   const APP = scenario.app;
   // Token custody is an explicit demo choice, scoped to this scenario.
   const KEPT = `${APP}:token`;
-  const backend = Burrow.readBackendConfig();
+  const backendConfig = Burrow.readBackendConfig();
+  const { observeCloud } = await import("./cloud-freshness.mjs");
+  Burrow.registerBackend("demo-firestore", (config) =>
+    observeCloud(new Burrow.FirestoreBackend(config), config.confirmed),
+  );
+  let connection = 0;
+  const resetFreshness = () => {
+    connection++;
+    for (const kind of ["read", "save"]) {
+      const time = $("cloud-" + kind);
+      time.removeAttribute("datetime");
+      time.removeAttribute("title");
+      time.textContent = "Not yet this connection";
+    }
+  };
+  const observedBackend = () => {
+    resetFreshness();
+    if (!backendConfig) return backendConfig;
+    const current = connection;
+    return {
+      ...backendConfig,
+      type:
+        backendConfig?.type === "firestore"
+          ? "demo-firestore"
+          : backendConfig?.type,
+      confirmed(kind, at) {
+        if (current !== connection) return;
+        const date = new Date(at);
+        const time = $("cloud-" + kind);
+        time.dateTime = date.toISOString();
+        time.title = date.toISOString();
+        time.textContent = date.toLocaleString(undefined, {
+          dateStyle: "medium",
+          timeStyle: "medium",
+        });
+      },
+    };
+  };
   const passkey = Burrow.passkeyToken({
     app: APP,
     userName: APP,
@@ -356,6 +393,7 @@
 
   /** Show the sign-in choices; nothing is open. */
   const locked = () => {
+    resetFreshness();
     failedKeys.clear();
     if (typing) saving--;
     clearTimeout(typing);
@@ -385,7 +423,11 @@
    * controls the demo-owned token record for either library setup.
    */
   const open = async (input, source, remember, since) => {
-    const core = await Burrow.burrow({ app: APP, backend, token: input });
+    const core = await Burrow.burrow({
+      app: APP,
+      backend: observedBackend(),
+      token: input,
+    });
     const token = canonical(input);
     store?.close();
     if (scenario.offline) {

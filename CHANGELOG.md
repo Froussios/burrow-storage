@@ -16,6 +16,11 @@ stores a token anywhere. This is a breaking change throughout, made under the no
 
 ### Added
 
+- Demo v2 cloud read/save timestamps for confirmed requests in the current
+  connection, including background sync without counting local-only work. A
+  linked introduction and README paragraph explain what Burrow brings to a
+  static site.
+
 - Demo v2 with URL-selectable offline/core scenarios, a scenario sidebar, isolated
   token/passkey scopes and content, and a shared async editor. The original demo
   remains available. Core is first; an opt-in demo-owned token remembering choice
