@@ -2,12 +2,11 @@
 
 [Demo v2: remote only](https://froussios.github.io/burrow-storage/v2.html?scenario=core) · [Remote + offline](https://froussios.github.io/burrow-storage/v2.html?scenario=offline)
 
-
-Give your static site personal data that follows people from one device to the
-next, without building an account system or running your own server. Burrow turns
-a few `get`/`set` calls into encrypted cloud storage, unlocked with a storage token
-or a passkey-derived token. Start with the core, and add optional offline support
-when you want people to keep working through a lost connection.
+Burrow gives static apps encrypted, user-scoped storage spaces across devices
+without maintaining server-side user records or app registrations. Access travels
+through the user's password manager as a synced passkey or a saved storage token.
+The browser derives each app's storage addresses and keys locally, so one shared
+backend serves independent users and apps using opaque encrypted documents.
 
 [See what Burrow does](docs/overview.md) and try it with your own content in the demo.
 
