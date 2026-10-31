@@ -45,6 +45,7 @@ const backend = {
   }
 };
 if (!config.confirmed) return backend;
+window.demoConfirmed = config.confirmed;
 const { observeCloud } = await import("/demo/cloud-freshness.mjs");
 return observeCloud(backend, config.confirmed);
 });
@@ -154,6 +155,41 @@ test("cloud freshness records successful requests and resets on sign-out", async
   await page.locator("#signout").click();
   await expect(read).not.toHaveAttribute("datetime", /.+/);
   await expect(saved).not.toHaveAttribute("datetime", /.+/);
+});
+
+test("late confirmations from a signed-out connection cannot change the new connection's times", async ({
+  context,
+  page,
+}) => {
+  await backend(context);
+  await open(page, "core");
+  await start(page);
+  await page.evaluate(() => {
+    const fixture = window as unknown as {
+      demoConfirmed: (kind: string, at: number) => void;
+      oldConfirmation: (kind: string, at: number) => void;
+    };
+    fixture.oldConfirmation = fixture.demoConfirmed;
+  });
+  await page.locator("#signout").click();
+  await start(page);
+  const before = await page.locator("#cloud-read").getAttribute("datetime");
+  await page.evaluate(() => {
+    const fixture = window as unknown as {
+      oldConfirmation: (kind: string, at: number) => void;
+    };
+    // Model an earlier backend request completing after reconnection.
+    fixture.oldConfirmation("read", Date.now() + 60_000);
+    fixture.oldConfirmation("save", Date.now() + 60_000);
+  });
+  await expect(page.locator("#cloud-read")).toHaveAttribute(
+    "datetime",
+    before!,
+  );
+  await expect(page.locator("#cloud-save")).not.toHaveAttribute(
+    "datetime",
+    /.+/,
+  );
 });
 
 test("offline edits leave cloud times unchanged until background replay succeeds", async ({

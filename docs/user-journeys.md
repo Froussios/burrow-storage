@@ -26,6 +26,8 @@ server modification time or a promise that every pending edit has synced; the
 status badge reports pending work. The demo observes its backend without changing
 the library API or storing timestamps with user content. Cached subscription
 notifications alone do not count as cloud reads.
+The supplied Firestore demo setup is instrumented; a custom backend needs
+equivalent demo-side request observation.
 
 - **Remote only / Core lib, backed by Firebase** uses app `burrow-demo-v2-core`.
   It keeps no persistent content copy. Remote failures are shown as failed saves,

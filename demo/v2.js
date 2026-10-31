@@ -189,6 +189,7 @@
   };
   const observedBackend = () => {
     resetFreshness();
+    if (!backendConfig) return backendConfig;
     const current = connection;
     return {
       ...backendConfig,
