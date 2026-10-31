@@ -2,11 +2,12 @@
 
 [Demo v2: remote only](https://froussios.github.io/burrow-storage/v2.html?scenario=core) · [Remote + offline](https://froussios.github.io/burrow-storage/v2.html?scenario=offline)
 
-Burrow gives static apps encrypted, user-scoped storage spaces across devices
-without maintaining server-side user records or app registrations. Access travels
-through the user's password manager as a synced passkey or a saved storage token.
-The browser derives each app's storage addresses and keys locally, so one shared
-backend serves independent users and apps using opaque encrypted documents.
+Burrow gives static apps encrypted, user-scoped storage spaces without maintaining
+server-side user records or app registrations. Access can follow users across
+devices through their password manager, as a synced passkey or a saved storage
+token; Burrow never stores the token. The browser derives each app's addresses and
+keys locally, so your shared backend serves independent users and apps, storing
+encrypted documents under opaque IDs.
 
 [See what Burrow does](docs/overview.md) and try it with your own content in the demo.
 
