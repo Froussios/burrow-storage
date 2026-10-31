@@ -24,6 +24,7 @@ const FILES = [
   ["demo", "demo.css"],
   ["demo", "v2.js"],
   ["demo", "snippets.mjs"],
+  ["demo", "cloud-freshness.mjs"],
   ["demo", "v2.css"],
   ["demo", "favicon.svg"],
   ["dist", "burrow.min.js"],
