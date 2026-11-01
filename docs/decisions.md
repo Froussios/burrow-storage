@@ -1074,3 +1074,16 @@ content copy, but deliberately retains timestamp history. A browser profile can
 therefore reveal that an opaque space was used here, and when, even after sign-out.
 The fingerprint cannot grant access to that space. Clearing site data removes
 the history. This is demo-owned metadata, not another library storage mode.
+
+### D-63 The scenario demo is the project's main demo
+
+The scenario UI replaces the previous demo at `demo/index.html` and the public
+root URL. Its script and stylesheet are now `demo.js` and `demo.css`; there is no
+separate older implementation. The build emits `v2.html` from that same HTML
+source so previously shared links reach the promoted page.
+
+Remote only remains the default and Remote + offline remains the second scenario.
+The existing app namespaces are retained so the scenario spaces, tokens, passkeys
+and cloud-time history continue to refer to their existing data. Token remembering
+stays independent of library selection. README links and deployment smoke tests
+use the main URL, and the main browser suite covers both scenarios.

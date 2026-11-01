@@ -7,5 +7,5 @@ token) stay on the client side; neither Burrow nor your app stores them on its
 backend. The user's password manager controls credential syncing across devices,
 and syncs only when the user has chosen to enable it.
 
-[Try Burrow](https://froussios.github.io/burrow-storage/v2.html?scenario=core) ·
+[Try Burrow](https://froussios.github.io/burrow-storage/?scenario=core) ·
 [Set up your Firestore project](../README.md#quick-start) · [API reference](api.md)

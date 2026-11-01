@@ -16,6 +16,10 @@ stores a token anywhere. This is a breaking change throughout, made under the no
 
 ### Added
 
+- Promote the scenario-based demo to the project's main demo, replacing the
+  older page. The root URL selects Remote only by default and links to every
+  scenario; existing `v2.html` links serve the same generated page.
+
 - The demo retains confirmed cloud read/save times on the device, separately for
   each storage space. Reconnected sessions label those times “not from this
   session” until a new cloud confirmation arrives. The overview and README
@@ -23,14 +27,12 @@ stores a token anywhere. This is a breaking change throughout, made under the no
   storage tokens (master keys), and password-manager-controlled credential
   syncing enabled by the user.
 
-- Demo v2 cloud read/save timestamps for confirmed requests in the current
-  connection, including background sync without counting local-only work. A
+- Demo cloud read/save timestamps for confirmed requests, including background sync without counting local-only work. A
   linked introduction and README paragraph explain what Burrow brings to a
   static site.
 
-- Demo v2 with URL-selectable offline/core scenarios, a scenario sidebar, isolated
-  token/passkey scopes and content, and a shared async editor. The original demo
-  remains available. Core is first; an opt-in demo-owned token remembering choice
+- URL-selectable offline/core scenarios, a scenario sidebar, isolated
+  token/passkey scopes and content, and a shared async editor. Core is first; an opt-in demo-owned token remembering choice
   works independently of the selected library setup. The draft stays visible
   before setup; grouped Returning user and New user flows have their own
   remembering choices, with tooltip help. Short code disclosures sit next to each
@@ -40,7 +42,7 @@ stores a token anywhere. This is a breaking change throughout, made under the no
   in typing. Write examples explain property names as storage keys and updates
   to only the provided keys.
 
-- Demo editors wait for the initial content read before accepting edits, so a
+- Both demo scenarios wait for the initial content read before accepting edits, so a
   delayed read cannot overwrite an immediately selected theme.
 
 - `generateToken()`: a fresh random storage token, for apps that keep their own.

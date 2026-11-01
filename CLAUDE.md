@@ -168,7 +168,7 @@ src/
 test/                   unit/, property/, conformance/, e2e/, smoke/, support/, vectors.json, setup.ts
 firebase/               SETUP-AGENT.md, firestore.rules, firebase.json, README.md, tests/ (rules tests, own package.json)
 scripts/                burrow-setup.mjs, burrow-reaper.mjs (bins), emulator.mjs, serve.mjs, build-demo.mjs, size.mjs, sri.mjs, gen-vectors.mjs, check-docs.mjs
-demo/                   index.html, demo.js, demo.css, favicon.svg, burrow.config.example.html
+demo/                   index.html, demo.js, demo.css, snippets.mjs, cloud-freshness.mjs, favicon.svg, burrow.config.example.html
 docs/                   guides, api, architecture, decisions, user-journeys, history/
 ```
 

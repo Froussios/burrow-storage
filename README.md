@@ -1,6 +1,6 @@
 # Burrow
 
-[Demo v2: remote only](https://froussios.github.io/burrow-storage/v2.html?scenario=core) · [Remote + offline](https://froussios.github.io/burrow-storage/v2.html?scenario=offline)
+[Demo: remote only](https://froussios.github.io/burrow-storage/?scenario=core) · [Remote + offline](https://froussios.github.io/burrow-storage/?scenario=offline)
 
 Burrow gives static apps encrypted, user-scoped storage spaces without
 maintaining server-side user records or app registrations. User content is
@@ -43,9 +43,9 @@ Burrow comes in three independent parts:
 - **Status:** pre-release. Everything below is implemented and tested in Chromium, Firefox and
   WebKit (passkeys in Chromium only, with a virtual authenticator), but nothing is on npm yet.
   Until the first release, follow [Installing before the first release](#installing-before-the-first-release).
-- **Demo:** <https://froussios.github.io/burrow-storage/> is a page whose theme and text draft
-  follow you across devices, with both ways of signing in: on every visit (nothing stored on the
-  device) or staying signed in (the page keeps the token and an unencrypted copy). It is
+- **Demo:** <https://froussios.github.io/burrow-storage/> compares remote-only and remote + offline
+  storage in one scenario-based editor. Token remembering is a separate device option in
+  either scenario. It is
   redeployed from every push to `main`, and its footer shows the commit it was built from. It
   syncs through the maintainer's demo project, which does not delete documents, so what you type
   there stays in it, encrypted. The source is in
