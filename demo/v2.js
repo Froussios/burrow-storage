@@ -173,24 +173,43 @@
   // Token custody is an explicit demo choice, scoped to this scenario.
   const KEPT = `${APP}:token`;
   const backendConfig = Burrow.readBackendConfig();
-  const { observeCloud } = await import("./cloud-freshness.mjs");
+  const { observeCloud, cloudHistory } = await import("./cloud-freshness.mjs");
   Burrow.registerBackend("demo-firestore", (config) =>
     observeCloud(new Burrow.FirestoreBackend(config), config.confirmed),
   );
   let connection = 0;
+  const showFreshness = (kind, at, previous = false) => {
+    const date = new Date(at);
+    const time = $("cloud-" + kind);
+    time.dateTime = date.toISOString();
+    time.title = date.toISOString();
+    time.dataset.session = previous ? "previous" : "current";
+    time.textContent =
+      date.toLocaleString(undefined, {
+        dateStyle: "medium",
+        timeStyle: "medium",
+      }) + (previous ? " (not from this session)" : "");
+  };
   const resetFreshness = () => {
     connection++;
     for (const kind of ["read", "save"]) {
       const time = $("cloud-" + kind);
       time.removeAttribute("datetime");
       time.removeAttribute("title");
-      time.textContent = "Not yet this connection";
+      delete time.dataset.session;
+      time.textContent = "Not recorded";
     }
   };
-  const observedBackend = () => {
+  const observedBackend = async (input) => {
     resetFreshness();
     if (!backendConfig) return backendConfig;
     const current = connection;
+    const history = await cloudHistory(APP, canonical(input));
+    if (current === connection)
+      for (const kind of ["read", "save"]) {
+        const at = history.read(kind);
+        if (at !== null) showFreshness(kind, at, true);
+      }
     return {
       ...backendConfig,
       type:
@@ -199,14 +218,8 @@
           : backendConfig?.type,
       confirmed(kind, at) {
         if (current !== connection) return;
-        const date = new Date(at);
-        const time = $("cloud-" + kind);
-        time.dateTime = date.toISOString();
-        time.title = date.toISOString();
-        time.textContent = date.toLocaleString(undefined, {
-          dateStyle: "medium",
-          timeStyle: "medium",
-        });
+        history.record(kind, at);
+        showFreshness(kind, at);
       },
     };
   };
@@ -425,7 +438,7 @@
   const open = async (input, source, remember, since) => {
     const core = await Burrow.burrow({
       app: APP,
-      backend: observedBackend(),
+      backend: await observedBackend(input),
       token: input,
     });
     const token = canonical(input);

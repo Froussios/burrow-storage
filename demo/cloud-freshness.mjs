@@ -25,3 +25,36 @@ export function observeCloud(backend, confirmed) {
   if (backend.subscribe) observed.subscribe = backend.subscribe.bind(backend);
   return observed;
 }
+
+// Remember times, not credentials or content. A one-way identifier separates
+// app/token spaces without saving a token or any encryption/write key.
+export async function cloudHistory(app, token) {
+  const bytes = new TextEncoder().encode(`${app}\0${token}`);
+  let digest;
+  try {
+    digest = await crypto.subtle.digest("SHA-256", bytes);
+  } finally {
+    bytes.fill(0);
+  }
+  const identity = Array.from(new Uint8Array(digest), (b) =>
+    b.toString(16).padStart(2, "0"),
+  ).join("");
+  const prefix = `${app}:cloud-times:${identity}:`;
+  return {
+    read(kind) {
+      try {
+        const at = Number(localStorage.getItem(prefix + kind));
+        return Number.isSafeInteger(at) && at > 0 && at <= 8.64e15 ? at : null;
+      } catch {
+        return null;
+      }
+    },
+    record(kind, at) {
+      try {
+        localStorage.setItem(prefix + kind, String(at));
+      } catch {
+        // The current confirmation still displays if storage is unavailable.
+      }
+    },
+  };
+}

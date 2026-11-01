@@ -7,6 +7,24 @@ import { databases, profileDump } from "./helpers.js";
 const OFFLINE = "burrow-demo-v2-offline:token";
 const TOKEN = /^([0-9A-Z]{4}-){13}[0-9A-Z]{4}$/;
 
+// Cloud-time history may remain on this device; it contains timestamps only.
+// Every other storage record still participates in the token-custody checks.
+function withoutCloudTimes(dump: string) {
+  return Object.fromEntries(
+    Object.entries(JSON.parse(dump).localStorage).filter(([key, value]) => {
+      if (
+        !/^burrow-demo-v2-(core|offline):cloud-times:[a-f0-9]{64}:(read|save)$/.test(
+          key,
+        )
+      )
+        return true;
+      expect(value).toMatch(/^\d+$/);
+      expect(Number(value)).toBeGreaterThan(0);
+      return false;
+    }),
+  );
+}
+
 // A real encrypted store shared across navigations and browser contexts,
 // without reaching the live project or depending on network timing.
 async function backend(context: BrowserContext, remote = new MemoryBackend()) {
@@ -155,6 +173,67 @@ test("cloud freshness records successful requests and resets on sign-out", async
   await page.locator("#signout").click();
   await expect(read).not.toHaveAttribute("datetime", /.+/);
   await expect(saved).not.toHaveAttribute("datetime", /.+/);
+});
+
+test("earlier cloud times are labelled until this session confirms them, and stay scoped to their space", async ({
+  context,
+  page,
+}) => {
+  const remote = await backend(context);
+  const at = Date.now();
+  await page.clock.setFixedTime(new Date(at));
+  await open(page, "core");
+  const token = await start(page);
+  await page.locator("#draft").fill("confirmed in an earlier session");
+  await expect(page.locator("#status")).toHaveText("synced");
+  await page.locator("#signout").click();
+  remote.failWith = "network";
+  await page.clock.setFixedTime(new Date(at + 1_000));
+  await page
+    .locator("#token-input")
+    .fill(token.toLowerCase().replaceAll("-", ""));
+  await page.locator("#token-form button").click();
+  await expect(page.locator("#draft")).toBeEnabled();
+  for (const kind of ["read", "save"]) {
+    const time = page.locator(`#cloud-${kind}`);
+    await expect(time).toHaveAttribute("datetime", new Date(at).toISOString());
+    await expect(time).toContainText("(not from this session)");
+    await expect(time).toHaveAttribute("data-session", "previous");
+  }
+  remote.failWith = null;
+  await page.evaluate(() =>
+    document.dispatchEvent(new Event("visibilitychange")),
+  );
+  await expect(page.locator("#cloud-read")).toHaveAttribute(
+    "data-session",
+    "current",
+  );
+  await expect(page.locator("#cloud-read")).not.toContainText(
+    "not from this session",
+  );
+  await expect(page.locator("#cloud-save")).toHaveAttribute(
+    "data-session",
+    "previous",
+  );
+  await page.locator("#draft").fill("confirmed now");
+  await expect(page.locator("#status")).toHaveText("synced");
+  await expect(page.locator("#cloud-save")).toHaveAttribute(
+    "data-session",
+    "current",
+  );
+  await page.locator("#signout").click();
+  await start(page);
+  await expect(page.locator("#cloud-save")).not.toHaveAttribute(
+    "datetime",
+    /.+/,
+  );
+  await page.locator('[data-scenario="offline"]').click();
+  await enter(page, token);
+  await expect(page.locator("#cloud-save")).not.toHaveAttribute(
+    "datetime",
+    /.+/,
+  );
+  expect(await profileDump(page)).not.toContain(token);
 });
 
 test("late confirmations from a signed-out connection cannot change the new connection's times", async ({
@@ -306,6 +385,10 @@ test("offline writes survive a reload without a backend, then reach another devi
   await backend(second, remote);
   await open(page);
   const token = await start(page, true);
+  await page.locator("#draft").fill("synced before disconnecting");
+  await expect(page.locator("#status")).toHaveText("synced");
+  const lastRead = await page.locator("#cloud-read").getAttribute("datetime");
+  const lastSave = await page.locator("#cloud-save").getAttribute("datetime");
   remote.failWith = "network";
   await page.locator("#draft").fill("queued while offline");
   await expect(page.locator("#status")).toHaveText("offline");
@@ -313,13 +396,19 @@ test("offline writes survive a reload without a backend, then reach another devi
   await page.reload();
   await expect(page.locator("#draft")).toHaveValue("queued while offline");
   await expect(page.locator("#code")).toHaveText(token);
-  await expect(page.locator("#cloud-read")).not.toHaveAttribute(
+  await expect(page.locator("#cloud-read")).toHaveAttribute(
     "datetime",
-    /.+/,
+    lastRead!,
   );
-  await expect(page.locator("#cloud-save")).not.toHaveAttribute(
+  await expect(page.locator("#cloud-save")).toHaveAttribute(
     "datetime",
-    /.+/,
+    lastSave!,
+  );
+  await expect(page.locator("#cloud-read")).toContainText(
+    "(not from this session)",
+  );
+  await expect(page.locator("#cloud-save")).toContainText(
+    "(not from this session)",
   );
   remote.failWith = null;
   // Reopening triggers sync without waiting for the retry timer.
@@ -353,14 +442,14 @@ test("even an explicitly reused token cannot expose another scenario's remote co
   await page.locator("#signout").click();
   await expect(page.locator("#signin")).toBeVisible();
   const dump = await profileDump(page);
-  expect(JSON.parse(dump).localStorage).toEqual({});
+  expect(withoutCloudTimes(dump)).toEqual({});
   expect(databases(dump)).toEqual([]);
   await page.locator('[data-scenario="core"]').click();
   await enter(page, token);
   await expect(page.locator("#draft")).toHaveValue("separate remote content");
 });
 
-test("core reports a refused write, keeps nothing on disk, and asks before abandoning the edit", async ({
+test("core reports a refused write, keeps no token or content on disk, and asks before abandoning the edit", async ({
   context,
   page,
 }) => {
@@ -375,7 +464,7 @@ test("core reports a refused write, keeps nothing on disk, and asks before aband
   await expect(page.locator("#draft")).toBeEnabled();
   await expect(page.locator("#draft")).toHaveValue("not saved");
   const dump = await profileDump(page);
-  expect(JSON.parse(dump).localStorage).toEqual({});
+  expect(withoutCloudTimes(dump)).toEqual({});
   expect(databases(dump)).toEqual([]);
   page.once("dialog", (d) => void d.dismiss());
   await page.locator('[data-scenario="offline"]').click();
@@ -455,7 +544,7 @@ test("core can remember the token as a demo option without persisting content", 
   await expect(page.locator("#draft")).toHaveValue("remote content only");
   await page.locator("#signout").click();
   await expect(page.locator("#signin")).toBeVisible();
-  expect(JSON.parse(await profileDump(page)).localStorage).toEqual({});
+  expect(withoutCloudTimes(await profileDump(page))).toEqual({});
   await page.reload();
   await expect(page.locator("#signin")).toBeVisible();
   await expect(page.locator("#remember-new")).not.toBeChecked();
@@ -476,7 +565,7 @@ test("offline content can persist without remembering the token; a token is requ
   await page.locator("#draft").fill("cached without token custody");
   await expect(page.locator("#status")).toHaveText("synced");
   const dump = await profileDump(page);
-  expect(JSON.parse(dump).localStorage).toEqual({});
+  expect(withoutCloudTimes(dump)).toEqual({});
   expect(dump).not.toContain(token);
   expect(databases(dump)).toHaveLength(1);
   remote.failWith = "network";
@@ -490,7 +579,7 @@ test("offline content can persist without remembering the token; a token is requ
     "cached without token custody",
   );
   await expect(page.locator("#status")).toHaveText("offline");
-  expect(JSON.parse(await profileDump(page)).localStorage).toEqual({});
+  expect(withoutCloudTimes(await profileDump(page))).toEqual({});
 });
 
 test("a failed demo token save stays in memory and tells the user to keep it", async ({
@@ -509,7 +598,13 @@ test("a failed demo token save stays in memory and tells the user to keep it", a
     "could not save your token",
   );
   await expect(page.locator("#custody")).toContainText("memory only");
-  expect(JSON.parse(await profileDump(page)).localStorage).toEqual({});
+  await page.locator("#draft").fill("saved without timestamp storage");
+  await expect(page.locator("#status")).toHaveText("synced");
+  await expect(page.locator("#cloud-save")).toHaveAttribute(
+    "data-session",
+    "current",
+  );
+  expect(withoutCloudTimes(await profileDump(page))).toEqual({});
   await page.reload();
   await expect(page.locator("#signin")).toBeVisible();
 });
@@ -574,12 +669,12 @@ test("new and returning users have independent remembering choices", async ({
   await page.locator("#remember-returning").check();
   // The checked returning choice must not save a newly generated token.
   const token = await start(page);
-  expect(JSON.parse(await profileDump(page)).localStorage).toEqual({});
+  expect(withoutCloudTimes(await profileDump(page))).toEqual({});
   await page.locator("#signout").click();
   await page.locator("#remember-new").check();
   // The checked new-user choice must not save a pasted token.
   await enter(page, token);
-  expect(JSON.parse(await profileDump(page)).localStorage).toEqual({});
+  expect(withoutCloudTimes(await profileDump(page))).toEqual({});
   await page.locator("#signout").click();
   await enter(page, token, true);
   expect(
