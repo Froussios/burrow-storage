@@ -1,13 +1,13 @@
 # Burrow
 
-[Demo v2: remote only](https://froussios.github.io/burrow-storage/v2.html?scenario=core) · [Remote + offline](https://froussios.github.io/burrow-storage/v2.html?scenario=offline)
+[Demo: remote only](https://froussios.github.io/burrow-storage/?scenario=core) · [Remote + offline](https://froussios.github.io/burrow-storage/?scenario=offline)
 
-Burrow gives static apps encrypted, user-scoped storage spaces without maintaining
-server-side user records or app registrations. Access can follow users across
-devices through their password manager, as a synced passkey or a saved storage
-token; Burrow never stores the token. The browser derives each app's addresses and
-keys locally, so your shared backend serves independent users and apps, storing
-encrypted documents under opaque IDs.
+Burrow gives static apps encrypted, user-scoped storage spaces without
+maintaining server-side user records or app registrations. User content is
+stored encrypted on the server. Login information and the master key (storage
+token) stay on the client side; neither Burrow nor your app stores them on its
+backend. The user's password manager controls credential syncing across devices,
+and syncs only when the user has chosen to enable it.
 
 [See what Burrow does](docs/overview.md) and try it with your own content in the demo.
 
@@ -43,9 +43,9 @@ Burrow comes in three independent parts:
 - **Status:** pre-release. Everything below is implemented and tested in Chromium, Firefox and
   WebKit (passkeys in Chromium only, with a virtual authenticator), but nothing is on npm yet.
   Until the first release, follow [Installing before the first release](#installing-before-the-first-release).
-- **Demo:** <https://froussios.github.io/burrow-storage/> is a page whose theme and text draft
-  follow you across devices, with both ways of signing in: on every visit (nothing stored on the
-  device) or staying signed in (the page keeps the token and an unencrypted copy). It is
+- **Demo:** <https://froussios.github.io/burrow-storage/> compares remote-only and remote + offline
+  storage in one scenario-based editor. Token remembering is a separate device option in
+  either scenario. It is
   redeployed from every push to `main`, and its footer shows the commit it was built from. It
   syncs through the maintainer's demo project, which does not delete documents, so what you type
   there stays in it, encrypted. The source is in

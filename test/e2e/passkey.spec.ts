@@ -146,7 +146,7 @@ test("journeys 1 and 2 in the demo: create a passkey, reload (locked), sign in w
   await expect(page.locator("body")).toHaveAttribute("data-ready", "true");
   await expect(page.locator("#signin")).toBeVisible();
   await page.locator("#passkey-create").click();
-  await expect(page.locator("#app")).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator("#draft")).toBeEnabled({ timeout: 15_000 });
   await expect(page.locator("#token-source")).toContainText(
     "A new passkey created here",
   );
@@ -159,7 +159,7 @@ test("journeys 1 and 2 in the demo: create a passkey, reload (locked), sign in w
     timeout: 15_000,
   });
 
-  // Login often: a reload locks the page; nothing was stored.
+  // Without token remembering, a reload requires the passkey again.
   await page.reload();
   await expect(page.locator("body")).toHaveAttribute("data-ready", "true");
   await expect(page.locator("#signin")).toBeVisible();

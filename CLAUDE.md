@@ -84,6 +84,9 @@ compatibility and migration expectations before further breaking changes.
 - Terminology: the **storage token** (`burrow({ token })`, `generateToken()`, `bad-token`), the
   **core**, the **offline wrapper** and the **passkey token**, in user-facing text and the API
   alike. The requirements brief's *sync code* and *root secret* are the same token.
+  Introductory copy may call it the **master key (storage token)** and describe
+  client-held access as **login information**, as requested by the owner. These
+  are reader-facing aliases, not a second secret, a new API or server-side accounts.
 - The store deals only in the token string. Ways to obtain or keep it (the passkey utility, a
   site's own) live outside the core and the wrapper; there is no provider interface (D-42), and
   there is no online token storage or keyslot (D-58).
@@ -165,7 +168,7 @@ src/
 test/                   unit/, property/, conformance/, e2e/, smoke/, support/, vectors.json, setup.ts
 firebase/               SETUP-AGENT.md, firestore.rules, firebase.json, README.md, tests/ (rules tests, own package.json)
 scripts/                burrow-setup.mjs, burrow-reaper.mjs (bins), emulator.mjs, serve.mjs, build-demo.mjs, size.mjs, sri.mjs, gen-vectors.mjs, check-docs.mjs
-demo/                   index.html, demo.js, demo.css, favicon.svg, burrow.config.example.html
+demo/                   index.html, demo.js, demo.css, snippets.mjs, cloud-freshness.mjs, favicon.svg, burrow.config.example.html
 docs/                   guides, api, architecture, decisions, user-journeys, history/
 ```
 

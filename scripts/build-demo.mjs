@@ -22,10 +22,8 @@ const out = join(root, "site");
 const FILES = [
   ["demo", "demo.js"],
   ["demo", "demo.css"],
-  ["demo", "v2.js"],
   ["demo", "snippets.mjs"],
   ["demo", "cloud-freshness.mjs"],
-  ["demo", "v2.css"],
   ["demo", "favicon.svg"],
   ["dist", "burrow.min.js"],
   ["dist", "burrow-firestore.js"],
@@ -70,17 +68,24 @@ const footer =
 
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out);
-for (const page of ["index.html", "v2.html"]) {
-  const html = readFileSync(join(root, "demo", page), "utf8");
-  if (!FOOTER.test(html)) fail(`demo/${page} has no <footer id="build">`);
-  writeFileSync(
-    join(out, page),
-    html.replace(FOOTER, () => footer),
-  );
-}
+const html = readFileSync(join(root, "demo", "index.html"), "utf8");
+if (!FOOTER.test(html)) fail('demo/index.html has no <footer id="build">');
+let page = html.replace(FOOTER, () => footer);
+for (const asset of ["demo.js", "demo.css", "burrow.min.js"])
+  page = page.replaceAll(`"${asset}"`, `"${asset}?build=${commit}"`);
+writeFileSync(join(out, "index.html"), page);
+// Existing shared v2 links serve the same main demo, from the same source.
+writeFileSync(join(out, "v2.html"), page);
 for (const [dir, f] of [
   ...FILES,
   ...OPTIONAL.filter(([d, f]) => existsSync(join(root, d, f))),
-])
-  copyFileSync(join(root, dir, f), join(out, f));
+]) {
+  if (f === "demo.js") {
+    const script = readFileSync(join(root, dir, f), "utf8").replace(
+      /import\("\.\/(snippets|cloud-freshness)\.mjs"\)/g,
+      (_, name) => `import("./${name}.mjs?build=${commit}")`,
+    );
+    writeFileSync(join(out, f), script);
+  } else copyFileSync(join(root, dir, f), join(out, f));
+}
 console.log(`site/ assembled: build ${commit.slice(0, 7)} at ${built}`);

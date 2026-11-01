@@ -1,21 +1,233 @@
-// The Burrow demo: a theme and a text draft that follow the user across
-// devices. It shows the two ways an app can hold the storage token
-// (docs/user-journeys.md):
-//   - "every visit": the core alone. The token is in this page's memory, the
-//     data only in the store; a reload locks the page again.
-//   - "stay signed in": this page keeps the token in localStorage itself and
-//     opens the offline wrapper, which keeps a plaintext copy in IndexedDB.
-// Burrow stores no token in either case; keeping one is the page's choice.
+// The demo: one editor, with configuration selected by ?scenario=.
+// Each scenario owns its app namespace, passkey derivation and token record.
 (async () => {
   const $ = (id) => document.getElementById(id);
   const say = (text) => {
     $("message").textContent = text;
   };
-  const APP = "burrow-demo";
-  // "Stay signed in": the page's own record of the token, in plaintext.
-  const KEPT = "burrow-demo:token";
-  const backend = Burrow.readBackendConfig();
-  const passkey = Burrow.passkeyToken({ app: APP });
+  // Add scenarios here; the navigation enumerates the entire registry.
+  const scenarios = [
+    {
+      id: "core",
+      title: "Remote only",
+      app: "burrow-demo-v2-core",
+      offline: false,
+      summary: "Core lib, backed by Firebase.",
+      detail:
+        "The core library stores no content or token on disk. Network failures reject reads and writes; there is no durable offline queue. This demo can remember the token separately if you choose.",
+      storage: "No persistent content copy",
+      network: "Failed writes are reported",
+    },
+    {
+      id: "offline",
+      title: "Remote + offline",
+      app: "burrow-demo-v2-offline",
+      offline: true,
+      summary: "Keep working when the network goes away.",
+      detail:
+        "The offline wrapper keeps a plaintext content copy on this device and syncs changes when the store is reachable. Remembering the token is a separate option implemented by this demo.",
+      storage: "Plaintext copy in IndexedDB",
+      network: "Edits queue locally, then sync",
+    },
+  ];
+  const url = new URL(location.href);
+  const requested = url.searchParams.get("scenario") ?? scenarios[0].id;
+  const scenario = scenarios.find(({ id }) => id === requested);
+  for (const item of scenarios) {
+    const target = new URL(location.href);
+    target.search = "";
+    target.hash = "";
+    target.searchParams.set("scenario", item.id);
+    const link = document.createElement("a");
+    link.href = target.href;
+    link.className = "scenario-link";
+    link.dataset.scenario = item.id;
+    if (item === scenario) link.setAttribute("aria-current", "page");
+    const name = document.createElement("strong");
+    name.textContent = item.title;
+    const hint = document.createElement("span");
+    hint.textContent = item.offline
+      ? "Local copy + sync"
+      : "Core lib, backed by Firebase";
+    link.append(name, hint);
+    $("scenarios").append(link);
+  }
+  if (!scenario) {
+    $("scenario-title").textContent = "Choose a scenario";
+    $("scenario-summary").textContent =
+      "That scenario is not available. Choose one from the navigation.";
+    $("scenario-config").hidden = true;
+    $("status").textContent = "unknown scenario";
+    document.body.dataset.ready = "true";
+    return;
+  }
+  if (!url.searchParams.has("scenario")) {
+    url.searchParams.set("scenario", scenario.id);
+    history.replaceState(null, "", url);
+  }
+  document.body.dataset.scenario = scenario.id;
+  document.title = `Burrow demo · ${scenario.title}`;
+  $("scenario-title").textContent = scenario.title;
+  $("scenario-summary").textContent = scenario.summary;
+  $("scenario-detail").textContent = scenario.detail;
+  const { demoSnippets } = await import("./snippets.mjs");
+  // Highlight only presentation tokens; build DOM text nodes so copying code
+  // preserves the exact example and code-like HTML never becomes markup.
+  const syntaxTokens =
+    /(?<comment>\/\/[^\n]*|\/\*[\s\S]*?\*\/)|(?<string>"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)|(?<keyword>\b(?:async|await|const|let|if|else|try|catch|throw|new|return|typeof|function|for|of)\b)|(?<literal>\b(?:true|false|null|undefined)\b)|(?<number>\b\d+(?:\.\d+)?\b)|(?<api>\b(?:Burrow|JSON|Date|URL|Blob|Error|Promise|document|navigator|localStorage)\b)|(?<call>\b[A-Za-z_$][\w$]*(?=\s*\())/g;
+  const highlightCode = (element, source) => {
+    let offset = 0;
+    for (const match of source.matchAll(syntaxTokens)) {
+      element.append(
+        document.createTextNode(source.slice(offset, match.index)),
+      );
+      const token = document.createElement("span");
+      const kind = Object.keys(match.groups).find(
+        (name) => match.groups[name] !== undefined,
+      );
+      token.className = `syntax-${kind}`;
+      token.textContent = match[0];
+      element.append(token);
+      offset = match.index + match[0].length;
+    }
+    element.append(document.createTextNode(source.slice(offset)));
+  };
+  const { actions } = demoSnippets(scenario);
+  for (const action of actions) {
+    const slot = document.querySelector(`[data-code="${action.id}"]`);
+    const details = document.createElement("details");
+    details.id = `snippet-${action.id}`;
+    details.className = "action-code";
+    const summary = document.createElement("summary");
+    summary.setAttribute("aria-label", `Code for ${action.title}`);
+    summary.append($("code-icon").content.cloneNode(true), " Code");
+    const description = document.createElement("p");
+    description.className = "hint";
+    description.textContent = action.description;
+    details.append(summary, description);
+    for (const snippet of action.snippets ?? [{ code: action.code }]) {
+      if (snippet.label) {
+        const label = document.createElement("h4");
+        label.textContent = snippet.label;
+        details.append(label);
+      }
+      const pre = document.createElement("pre");
+      const code = document.createElement("code");
+      code.className = "language-javascript";
+      highlightCode(code, snippet.code);
+      pre.append(code);
+      details.append(pre);
+    }
+    slot.replaceWith(details);
+  }
+  for (const key of ["storage", "network"])
+    $("scenario-" + key).textContent = scenario[key];
+  const updateCustodyChoice = () => {
+    $("token-only-hint").textContent = $("remember-new").checked
+      ? "No passkey is created. This demo will save the token on this device because remembering is selected. Keep a separate copy: clearing browser data removes it."
+      : "No passkey is created, and this demo will not store the token. Write it down or save it in your password manager before leaving.";
+  };
+  $("remember-new").addEventListener("change", updateCustodyChoice);
+  updateCustodyChoice();
+
+  // Tooltip help supports pointer, keyboard, and touch without changing the
+  // remembering choice. A second tap, Escape and outside clicks dismiss it.
+  const tooltipHelp = [...document.querySelectorAll(".remember-help")];
+  const pinnedTooltips = new Set();
+  const setTooltip = (help, visible) => {
+    help.querySelector('[role="tooltip"]').hidden = !visible;
+    help.querySelector("button").setAttribute("aria-expanded", String(visible));
+    if (!visible) pinnedTooltips.delete(help);
+  };
+  const hideTooltips = () => {
+    for (const help of tooltipHelp) setTooltip(help, false);
+  };
+  for (const help of tooltipHelp) {
+    help
+      .querySelector('[role="tooltip"]')
+      .append($("remember-help-content").content.cloneNode(true));
+    const trigger = help.querySelector("button");
+    help.addEventListener("pointerenter", () => setTooltip(help, true));
+    help.addEventListener("pointerleave", () => {
+      if (document.activeElement !== trigger) setTooltip(help, false);
+    });
+    trigger.addEventListener("focus", () => setTooltip(help, true));
+    trigger.addEventListener("blur", () => {
+      if (!help.matches(":hover")) setTooltip(help, false);
+    });
+    trigger.addEventListener("click", () => {
+      // Focus/hover can already show the hint before the first click.
+      const visible = !pinnedTooltips.has(help);
+      if (visible) pinnedTooltips.add(help);
+      setTooltip(help, visible);
+    });
+  }
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") hideTooltips();
+  });
+  document.addEventListener("click", (e) => {
+    if (!(e.target instanceof Element) || !e.target.closest(".remember-help"))
+      hideTooltips();
+  });
+  const APP = scenario.app;
+  // Token custody is an explicit demo choice, scoped to this scenario.
+  const KEPT = `${APP}:token`;
+  const backendConfig = Burrow.readBackendConfig();
+  const { observeCloud, cloudHistory } = await import("./cloud-freshness.mjs");
+  Burrow.registerBackend("demo-firestore", (config) =>
+    observeCloud(new Burrow.FirestoreBackend(config), config.confirmed),
+  );
+  let connection = 0;
+  const showFreshness = (kind, at, previous = false) => {
+    const date = new Date(at);
+    const time = $("cloud-" + kind);
+    time.dateTime = date.toISOString();
+    time.title = date.toISOString();
+    time.dataset.session = previous ? "previous" : "current";
+    time.textContent =
+      date.toLocaleString(undefined, {
+        dateStyle: "medium",
+        timeStyle: "medium",
+      }) + (previous ? " (not from this session)" : "");
+  };
+  const resetFreshness = () => {
+    connection++;
+    for (const kind of ["read", "save"]) {
+      const time = $("cloud-" + kind);
+      time.removeAttribute("datetime");
+      time.removeAttribute("title");
+      delete time.dataset.session;
+      time.textContent = "Not recorded";
+    }
+  };
+  const observedBackend = async (input) => {
+    resetFreshness();
+    if (!backendConfig) return backendConfig;
+    const current = connection;
+    const history = await cloudHistory(APP, canonical(input));
+    if (current === connection)
+      for (const kind of ["read", "save"]) {
+        const at = history.read(kind);
+        if (at !== null) showFreshness(kind, at, true);
+      }
+    return {
+      ...backendConfig,
+      type:
+        backendConfig?.type === "firestore"
+          ? "demo-firestore"
+          : backendConfig?.type,
+      confirmed(kind, at) {
+        if (current !== connection) return;
+        history.record(kind, at);
+        showFreshness(kind, at);
+      },
+    };
+  };
+  const passkey = Burrow.passkeyToken({
+    app: APP,
+    userName: APP,
+    displayName: `Burrow · ${scenario.title}`,
+  });
 
   /** The open store (core or offline wrapper) and how the page got it. */
   let store = null;
@@ -47,7 +259,9 @@
   const debug = () => {
     $("debug").textContent = JSON.stringify(
       {
-        mode: session?.mode ?? null,
+        scenario: scenario.id,
+        app: APP,
+        library: scenario.offline ? "offline wrapper" : "core",
         status,
         tokenKeptByPage: !!kept(),
       },
@@ -83,27 +297,36 @@
   };
   const draft = $("draft");
   const render = (data) => {
-    applyTheme(data.theme);
-    if (document.activeElement !== draft) draft.value = data.draft ?? "";
+    if (!failedKeys.has("theme")) applyTheme(data.theme);
+    if (!failedKeys.has("draft") && !typing && document.activeElement !== draft)
+      draft.value = data.draft ?? "";
   };
 
   /**
    * Write through the store. The core rejects when the store cannot be
    * reached; the offline wrapper keeps the write and reports status instead.
    */
-  const save = async (items) => {
-    if (!store) return;
+  const save = (items) => {
+    if (!store) return Promise.resolve();
+    const target = store;
     saving++;
-    try {
-      await store.set(items);
-      saving--;
-      showStatus(session.mode === "often" ? "idle" : store.status);
-    } catch (e) {
-      saving--;
-      if (e.code === "closed") return locked();
-      showStatus("offline", e);
-      say(`Not saved: the store could not be reached (${e.code ?? e.name}).`);
-    }
+    showStatus();
+    writes = writes.then(async () => {
+      try {
+        await target.set(items);
+        for (const key of Object.keys(items)) failedKeys.delete(key);
+        if (!failedKeys.size) say("");
+        status = scenario.offline ? target.status : "idle";
+      } catch (e) {
+        for (const key of Object.keys(items)) failedKeys.add(key);
+        status = "offline";
+        say(`Not saved: the store could not be reached (${e.code ?? e.name}).`);
+      } finally {
+        saving--;
+        showStatus();
+      }
+    });
+    return writes;
   };
 
   $("theme").addEventListener("click", () => {
@@ -115,12 +338,14 @@
   // Saved shortly after typing stops: with the core, every write is a network
   // round trip.
   let typing;
+  let writes = Promise.resolve();
+  const failedKeys = new Set();
   const flush = () => {
-    if (!typing) return;
+    if (!typing) return writes;
     clearTimeout(typing);
     typing = undefined;
     saving--;
-    void save({ draft: draft.value });
+    return save({ draft: draft.value });
   };
   draft.addEventListener("input", () => {
     if (!typing) saving++;
@@ -136,7 +361,7 @@
     if (!store) return;
     try {
       render(await store.get());
-      if (session.mode === "often") showStatus("idle");
+      if (!scenario.offline) showStatus(failedKeys.size ? "offline" : "idle");
     } catch (e) {
       if (e.code === "closed") return locked();
       showStatus("offline", e);
@@ -154,46 +379,71 @@
     pasted: "pasted or typed in",
   };
   const showToken = () => {
-    const { token, source, mode, since } = session;
+    const { token, source, since, remembered, persistenceFailed } = session;
     const from = SOURCES[source] ?? source;
     $("code").textContent = token;
     $("token-source").textContent =
       (since
         ? `Kept by this page since ${new Date(since).toLocaleString()}; originally ${from}`
         : from.charAt(0).toUpperCase() + from.slice(1)) + ".";
-    $("custody").textContent =
-      mode === "once"
-        ? "Kept by this page in this browser's localStorage, unencrypted, until you sign out."
-        : "In this page's memory only. Reloading or closing the page locks it.";
-    $("data-copy").textContent =
-      mode === "once"
-        ? "Encrypted in the store, plus an unencrypted copy in this browser for offline use."
-        : "Only in the store, encrypted. Nothing is kept on this device.";
+    $("custody").textContent = remembered
+      ? "Saved unencrypted in localStorage by this demo, until you sign out. The library does not store it."
+      : "In this page's memory only. This demo has not stored it; reloading or closing the page requires the token or passkey again.";
+    $("token-reminder").textContent = persistenceFailed
+      ? "This browser could not save your token. Write it down or save it in your password manager before leaving."
+      : remembered
+        ? "This demo saved the token on this device. Keep a separate copy in case browser data is cleared."
+        : source === "passkey" || source === "new passkey"
+          ? "This demo has not stored your token. Use the passkey to get it again, or write the token down."
+          : "This demo has not stored your token. Write it down or save it in your password manager before leaving; otherwise you cannot restore access to this data.";
+    $("data-copy").textContent = scenario.offline
+      ? "Encrypted in the store, plus an unencrypted content copy in this browser for offline use."
+      : "Only in the store, encrypted. No persistent content copy on this device.";
+    $("scenario-token").textContent = remembered
+      ? "Saved by this demo on this device"
+      : "In memory for this visit";
   };
 
   /** Show the sign-in choices; nothing is open. */
   const locked = () => {
+    resetFreshness();
+    failedKeys.clear();
     if (typing) saving--;
     clearTimeout(typing);
     typing = undefined;
     store = null;
     session = null;
-    $("app").hidden = true;
+    $("workspace").disabled = true;
+    $("workspace").setAttribute("aria-describedby", "workspace-hint");
+    $("workspace-hint").hidden = false;
+    $("autosave-hint").hidden = true;
+    draft.removeAttribute("aria-describedby");
+    $("token-details").hidden = true;
     $("signin").hidden = false;
     draft.value = "";
+    $("code").textContent = "";
+    $("remember-new").checked = false;
+    $("remember-returning").checked = false;
+    $("scenario-token").textContent = "Not connected";
+    hideTooltips();
+    updateCustodyChoice();
     applyTheme("light");
     showStatus("locked");
   };
 
   /**
-   * Open the store with a token. "once" also keeps the token in this page's
-   * own record and wraps the core in the offline copy.
+   * Library choice controls content caching; the separate remember choice
+   * controls the demo-owned token record for either library setup.
    */
-  const open = async (input, source, mode, since) => {
-    const core = await Burrow.burrow({ app: APP, backend, token: input });
+  const open = async (input, source, remember, since) => {
+    const core = await Burrow.burrow({
+      app: APP,
+      backend: await observedBackend(input),
+      token: input,
+    });
     const token = canonical(input);
     store?.close();
-    if (mode === "once") {
+    if (scenario.offline) {
       store = await Burrow.offline(core);
       store.onStatus.addListener(({ status: s, error }) =>
         showStatus(s, error),
@@ -204,35 +454,48 @@
         if ("draft" in changes && document.activeElement !== draft)
           draft.value = changes.draft.newValue ?? "";
       });
-      if (!since)
-        localStorage.setItem(
-          KEPT,
-          JSON.stringify({ token, source, since: Date.now() }),
-        );
     } else {
       store = core;
     }
-    session = { token, source, mode, since };
+    let remembered = false;
+    let persistenceFailed = false;
+    if (remember) {
+      try {
+        if (!since)
+          localStorage.setItem(
+            KEPT,
+            JSON.stringify({ token, source, since: Date.now() }),
+          );
+        remembered = true;
+      } catch {
+        persistenceFailed = true;
+      }
+    }
+    session = { token, source, since, remembered, persistenceFailed };
     showToken();
-    showStatus(mode === "once" ? store.status : "syncing");
+    showStatus(scenario.offline ? store.status : "syncing");
     await refresh();
     if (!store) return;
     $("signin").hidden = true;
-    $("app").hidden = false;
+    $("workspace").disabled = false;
+    $("workspace").removeAttribute("aria-describedby");
+    $("workspace-hint").hidden = true;
+    $("autosave-hint").hidden = false;
+    draft.setAttribute("aria-describedby", "autosave-hint");
+    $("token-details").hidden = false;
   };
 
-  const mode = () =>
-    document.querySelector("input[name=mode]:checked")?.value ?? "often";
-
-  // Passkey: the token comes from the passkey itself; nothing is stored.
+  // Passkey: the utility derives a token. The demo owns any persistence.
   const NO_PASSKEY =
     "This browser cannot use passkeys for this. Use a storage token instead.";
-  const signin = async (get, source) => {
-    for (const b of document.querySelectorAll("#signin button"))
+  const signin = async (get, source, rememberId) => {
+    const remember = $(rememberId).checked;
+    hideTooltips();
+    for (const b of document.querySelectorAll("#signin button, #signin input"))
       b.disabled = true;
     try {
       const token = await get();
-      await open(token, source, mode());
+      await open(token, source, remember);
       return true;
     } catch (e) {
       say(
@@ -242,35 +505,45 @@
             ? "No passkey was used. Try again, or use a storage token."
             : e.code === "bad-token"
               ? "That token is not right. Check it and try again."
-              : `Could not open your storage (${e.code ?? e.name}).`,
+              : `Could not connect to your storage (${e.code ?? e.name}).`,
       );
       return false;
     } finally {
-      for (const b of document.querySelectorAll("#signin button"))
+      for (const b of document.querySelectorAll(
+        "#signin button, #signin input",
+      ))
         b.disabled = false;
     }
   };
   $("passkey-get").addEventListener("click", async () => {
     if (!(await passkey.available())) return say(NO_PASSKEY);
-    if (await signin(() => passkey.get(), "passkey"))
+    if (await signin(() => passkey.get(), "passkey", "remember-returning"))
       say("Signed in with your passkey.");
   });
   $("passkey-create").addEventListener("click", async () => {
     if (!(await passkey.available())) return say(NO_PASSKEY);
-    if (await signin(() => passkey.create(), "new passkey"))
+    if (await signin(() => passkey.create(), "new passkey", "remember-new"))
       say(
-        "Passkey created. On another device with this passkey, choose “Use my passkey”.",
+        "Passkey and token created. On another device with this passkey, choose “Get token from passkey”.",
       );
   });
   $("new-token").addEventListener("click", async () => {
-    if (await signin(() => Burrow.generateToken(), "generated"))
+    if (await signin(() => Burrow.generateToken(), "generated", "remember-new"))
       say(
-        "New token. Copy it and keep it: it is the only way back to this data.",
+        session.remembered
+          ? "Token created and saved on this device by the demo. Keep a separate copy."
+          : "Token created. This demo has not stored it. Write it down or save it in your password manager before leaving.",
       );
   });
   $("token-form").addEventListener("submit", async (e) => {
     e.preventDefault();
-    if (await signin(async () => $("token-input").value, "pasted")) {
+    if (
+      await signin(
+        async () => $("token-input").value,
+        "pasted",
+        "remember-returning",
+      )
+    ) {
       $("token-input").value = "";
       say("Your data is here.");
     }
@@ -305,23 +578,17 @@
     );
     const a = Object.assign(document.createElement("a"), {
       href: URL.createObjectURL(blob),
-      download: "burrow-demo.json",
+      download: `burrow-demo-${scenario.id}.json`,
     });
     a.click();
     URL.revokeObjectURL(a.href);
   });
 
-  // Sign out: forget the token here. "Stay signed in" also deletes the page's
-  // token record and the local copy (after pushing unsynced writes, or with
-  // confirmation). The data stays in the store for the token.
+  // Sign out removes the demo-owned token record for either scenario. The
+  // offline wrapper also clears its content copy, after handling queued edits.
   $("signout").addEventListener("click", async () => {
-    if (session.mode === "once") {
-      if (typing) {
-        clearTimeout(typing);
-        typing = undefined;
-        saving--;
-        await save({ draft: draft.value });
-      }
+    await flush();
+    if (scenario.offline) {
       try {
         await store.forget();
       } catch (e) {
@@ -335,17 +602,62 @@
           return say("Still signed in.");
         await store.forget({ discardLocal: true });
       }
+    } else {
+      if (
+        failedKeys.size &&
+        !confirm("Some edits were not saved. Sign out and discard them?")
+      )
+        return say("Still signed in.");
+      store.close();
+    }
+    let cleanupFailed = false;
+    try {
       localStorage.removeItem(KEPT);
-    } else store.close();
+    } catch {
+      cleanupFailed = session.remembered;
+    }
     locked();
-    say("Signed out. Keep your token or passkey to come back to your data.");
+    say(
+      cleanupFailed
+        ? "Could not remove the saved token. Clear this site's browser data to remove it."
+        : "Signed out. Keep your token or passkey to come back to your data.",
+    );
   });
 
-  // Another tab signed out of "stay signed in".
+  // Another tab removed this scenario's demo-owned token record.
   window.addEventListener("storage", (e) => {
-    if (e.key === KEPT && !e.newValue && session?.mode === "once") {
+    if (e.key === KEPT && !e.newValue && session?.remembered) {
       store.close();
       locked();
+    }
+  });
+
+  for (const link of document.querySelectorAll(".scenario-link")) {
+    link.addEventListener("click", async (e) => {
+      if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)
+        return;
+      if (link.dataset.scenario === scenario.id) {
+        e.preventDefault();
+        return;
+      }
+      e.preventDefault();
+      await flush();
+      if (
+        failedKeys.size &&
+        !confirm(
+          "Some edits were not saved. Switch scenarios and discard them?",
+        )
+      )
+        return;
+      failedKeys.clear();
+      store?.close();
+      location.assign(link.href);
+    });
+  }
+  window.addEventListener("beforeunload", (e) => {
+    if (typing || saving || failedKeys.size) {
+      e.preventDefault();
+      e.returnValue = "";
     }
   });
 
@@ -355,17 +667,22 @@
       await open(
         remembered.token,
         remembered.source,
-        "once",
+        true,
         remembered.since ?? Date.now(),
       );
     } catch (e) {
       // Only a token that cannot be right is dropped; any other failure may
       // pass, and the record is the user's way back in.
       locked();
-      if (e?.code === "bad-token") localStorage.removeItem(KEPT);
-      else
+      if (e?.code === "bad-token") {
+        try {
+          localStorage.removeItem(KEPT);
+        } catch {
+          /* browser storage unavailable */
+        }
+      } else
         say(
-          `Could not open your storage (${e?.code ?? e?.name}). Reload to try again.`,
+          `Could not connect to your storage (${e?.code ?? e?.name}). Reload to try again.`,
         );
     }
   } else locked();

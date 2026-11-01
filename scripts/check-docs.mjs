@@ -221,7 +221,7 @@ for (const file of DOCS) {
   }
 }
 
-// Check the exact examples rendered by demo v2 against the public API. Each
+// Check the displayed demo examples against the public API. Each
 // action shares the declared context, while its store has the selected type.
 for (const offline of [false, true]) {
   const app = `burrow-demo-v2-${offline ? "offline" : "core"}`;

@@ -1050,9 +1050,40 @@ Burrow configuration flag or a library mode. With remembering off, even an
 offline content copy needs the user to provide its token again after reload.
 With it on, the demo can reopen either setup from its saved token. The page
 states that the saved token is plaintext and anyone who reads the browser files
-can use it. Signing out removes that scenario's record; offline sign-out also
+can use it. Signing out removes that scenario's token record; offline sign-out also
 handles queued edits and clears the wrapper's content copy.
 
 This illustrates the token-custody ownership in D-57 without changing the core,
 the offline wrapper, or passkey derivation. The token-only action tells users to
 write down the token or keep it in a password manager when remembering is off.
+
+### D-62 Demo cloud-time history is separate from token custody
+
+Returning to a space should show this device's last confirmed cloud read/save
+times, marked **(not from this session)** until a current request confirms them.
+The demo therefore keeps numeric timestamps in its own localStorage, independently
+of the token-remembering choice in D-61. The library still persists no token or key.
+
+History is scoped by app and a domain-separated SHA-256 fingerprint of the
+normalized token (`burrow-demo/cloud-times\0app\0token`). It contains no token,
+encryption/write key, user content or backend document id. History is optional:
+storage or history-hashing failures leave current requests and confirmations usable.
+
+Sign-out clears the visible times, the token record and the optional offline
+content copy, but deliberately retains timestamp history. A browser profile can
+therefore reveal that an opaque space was used here, and when, even after sign-out.
+The fingerprint cannot grant access to that space. Clearing site data removes
+the history. This is demo-owned metadata, not another library storage mode.
+
+### D-63 The scenario demo is the project's main demo
+
+The scenario UI replaces the previous demo at `demo/index.html` and the public
+root URL. Its script and stylesheet are now `demo.js` and `demo.css`; there is no
+separate older implementation. The build emits `v2.html` from that same HTML
+source so previously shared links reach the promoted page.
+
+Remote only remains the default and Remote + offline remains the second scenario.
+The existing app namespaces are retained so the scenario spaces, tokens, passkeys
+and cloud-time history continue to refer to their existing data. Token remembering
+stays independent of library selection. README links and deployment smoke tests
+use the main URL, and the main browser suite covers both scenarios.
