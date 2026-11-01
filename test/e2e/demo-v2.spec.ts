@@ -236,6 +236,36 @@ test("earlier cloud times are labelled until this session confirms them, and sta
   expect(await profileDump(page)).not.toContain(token);
 });
 
+test("an optional history hash failure does not block connection or saving", async ({
+  context,
+  page,
+}) => {
+  await backend(context);
+  await open(page, "core");
+  const token = await start(page);
+  await page.locator("#signout").click();
+  await page.evaluate(() => {
+    const digest = crypto.subtle.digest.bind(crypto.subtle);
+    crypto.subtle.digest = () => {
+      crypto.subtle.digest = digest;
+      return Promise.reject(
+        new DOMException("History hash unavailable", "OperationError"),
+      );
+    };
+  });
+  await enter(page, token);
+  await page.locator("#draft").fill("saved after a history hash failure");
+  await expect(page.locator("#status")).toHaveText("synced");
+  await expect(page.locator("#cloud-read")).toHaveAttribute(
+    "data-session",
+    "current",
+  );
+  await expect(page.locator("#cloud-save")).toHaveAttribute(
+    "data-session",
+    "current",
+  );
+});
+
 test("late confirmations from a signed-out connection cannot change the new connection's times", async ({
   context,
   page,

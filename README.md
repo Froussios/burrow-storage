@@ -2,12 +2,12 @@
 
 [Demo v2: remote only](https://froussios.github.io/burrow-storage/v2.html?scenario=core) · [Remote + offline](https://froussios.github.io/burrow-storage/v2.html?scenario=offline)
 
-Burrow gives static apps encrypted, user-scoped storage spaces without maintaining
-server-side user records or app registrations. User content is stored encrypted
-on the server. Login information and the master key stay on the client side;
-neither Burrow nor your app stores them on its backend. The user's password
-manager controls credential syncing across devices, and syncs only when the user
-has chosen to enable it.
+Burrow gives static apps encrypted, user-scoped storage spaces without
+maintaining server-side user records or app registrations. User content is
+stored encrypted on the server. Login information and the master key (storage
+token) stay on the client side; neither Burrow nor your app stores them on its
+backend. The user's password manager controls credential syncing across devices,
+and syncs only when the user has chosen to enable it.
 
 [See what Burrow does](docs/overview.md) and try it with your own content in the demo.
 

@@ -29,10 +29,14 @@ export function observeCloud(backend, confirmed) {
 // Remember times, not credentials or content. A one-way identifier separates
 // app/token spaces without saving a token or any encryption/write key.
 export async function cloudHistory(app, token) {
-  const bytes = new TextEncoder().encode(`${app}\0${token}`);
+  const bytes = new TextEncoder().encode(
+    `burrow-demo/cloud-times\0${app}\0${token}`,
+  );
   let digest;
   try {
     digest = await crypto.subtle.digest("SHA-256", bytes);
+  } catch {
+    return { read: () => null, record() {} };
   } finally {
     bytes.fill(0);
   }

@@ -19,8 +19,9 @@ stores a token anywhere. This is a breaking change throughout, made under the no
 - The demo retains confirmed cloud read/save times on the device, separately for
   each storage space. Reconnected sessions label those times “not from this
   session” until a new cloud confirmation arrives. The overview and README
-  clarify encrypted server-side content, client-side credentials/master keys,
-  and password-manager-controlled credential syncing enabled by the user.
+  clarify encrypted server-side content, client-side login information and
+  storage tokens (master keys), and password-manager-controlled credential
+  syncing enabled by the user.
 
 - Demo v2 cloud read/save timestamps for confirmed requests in the current
   connection, including background sync without counting local-only work. A

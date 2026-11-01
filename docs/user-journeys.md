@@ -18,22 +18,22 @@ The header links to [an introduction to Burrow](overview.md), so visitors arrivi
 directly at the demo can see what the library provides.
 
 The editor shows **Last cloud read** and **Last cloud save**, using the device's
-clock. These are successful encrypted-document requests,
-including initial reads and background offline replay; local-copy reads, queued
-edits and failed requests do not advance them. An empty cloud response still
-counts as a confirmed read. The demo remembers only these times on this device,
-separately for each app and token, under a one-way fingerprint. It stores neither
-the token nor any encryption/write key in that history. Reconnecting restores
-each earlier timestamp with **(not from this session)** until the current session
-confirms a newer request of that kind. With no recorded timestamp, it shows
-**Not recorded**. Sign-out clears the display but retains this timestamp history;
-if browser storage is unavailable, current confirmations still display normally.
-These are not server modification times or a promise that every pending edit has synced; the
-status badge reports pending work. The demo observes its backend without changing
-the library API or storing timestamps with user content. Cached subscription
-notifications alone do not count as cloud reads.
-The supplied Firestore demo setup is instrumented; a custom backend needs
-equivalent demo-side request observation.
+clock. These are successful encrypted-document requests, including initial reads
+and background offline replay; local-copy reads, queued edits and failed
+requests do not advance them. An empty cloud response still counts as a
+confirmed read. The demo remembers only these times on this device, separately
+for each app and token, under a one-way fingerprint. It stores neither the token
+nor any encryption/write key in that history. Reconnecting restores each earlier
+timestamp with **(not from this session)** until the current session confirms a
+newer request of that kind. With no recorded timestamp, it shows **Not
+recorded**. Sign-out clears the display but retains this timestamp history; if
+browser storage is unavailable, current confirmations still display normally.
+These are not server modification times or a promise that every pending edit has
+synced; the status badge reports pending work. The demo observes its backend
+without changing the library API or storing timestamps with user content. Cached
+subscription notifications alone do not count as cloud reads. The supplied
+Firestore demo setup is instrumented; a custom backend needs equivalent
+demo-side request observation.
 
 - **Remote only / Core lib, backed by Firebase** uses app `burrow-demo-v2-core`.
   It keeps no persistent content copy. Remote failures are shown as failed saves,
